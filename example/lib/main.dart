@@ -16,7 +16,7 @@ class PoseDetectionApp extends StatelessWidget {
     return MaterialApp(
       title: 'Pose Detection Demo',
       theme: ThemeData(
-        primarySwatch: Colors.blue,
+        colorSchemeSeed: Colors.blue,
         useMaterial3: true,
       ),
       home: const PoseDetectionScreen(),
@@ -54,10 +54,7 @@ class _PoseDetectionScreenState extends State<PoseDetectionScreen> {
     });
 
     try {
-      await _poseDetector.initialize(
-        complexity: PoseModelComplexity.heavy,
-      );
-
+      await _poseDetector.initialize(complexity: PoseModelComplexity.heavy);
       setState(() {
         _isInitialized = true;
         _isProcessing = false;
@@ -73,7 +70,6 @@ class _PoseDetectionScreenState extends State<PoseDetectionScreen> {
   Future<void> _pickImage(ImageSource source) async {
     try {
       final XFile? pickedFile = await _picker.pickImage(source: source);
-
       if (pickedFile == null) return;
 
       setState(() {
@@ -83,17 +79,12 @@ class _PoseDetectionScreenState extends State<PoseDetectionScreen> {
         _errorMessage = null;
       });
 
-      // Detect pose
       final result = await _poseDetector.detectPose(_imageFile!);
-
-      print(result);
 
       setState(() {
         _poseResult = result;
         _isProcessing = false;
-        if (result == null) {
-          _errorMessage = 'No pose detected in image';
-        }
+        if (result == null) _errorMessage = 'No pose detected in image';
       });
     } catch (e) {
       setState(() {
@@ -106,7 +97,7 @@ class _PoseDetectionScreenState extends State<PoseDetectionScreen> {
   void _showImageSourceDialog() {
     showDialog(
       context: context,
-      builder: (BuildContext context) {
+      builder: (context) {
         return AlertDialog(
           title: const Text('Select Image Source'),
           content: Column(
@@ -206,19 +197,10 @@ class _PoseDetectionScreenState extends State<PoseDetectionScreen> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(
-              Icons.person_outline,
-              size: 100,
-              color: Colors.grey[400],
-            ),
+            Icon(Icons.person_outline, size: 100, color: Colors.grey[400]),
             const SizedBox(height: 24),
-            Text(
-              'Select an image to detect pose',
-              style: TextStyle(
-                fontSize: 18,
-                color: Colors.grey[600],
-              ),
-            ),
+            Text('Select an image to detect pose',
+                style: TextStyle(fontSize: 18, color: Colors.grey[600])),
             const SizedBox(height: 16),
             ElevatedButton.icon(
               onPressed: _showImageSourceDialog,
@@ -233,19 +215,13 @@ class _PoseDetectionScreenState extends State<PoseDetectionScreen> {
     return SingleChildScrollView(
       child: Column(
         children: [
-          // Image with pose overlay
           if (_poseResult != null)
-            PoseVisualizerWidget(
-              imageFile: _imageFile!,
-              poseResult: _poseResult!,
-            )
+            PoseVisualizerWidget(imageFile: _imageFile!, poseResult: _poseResult!)
           else
             Image.file(_imageFile!),
-
-          // Processing indicator
           if (_isProcessing)
             const Padding(
-              padding: EdgeInsets.all(16.0),
+              padding: EdgeInsets.all(16),
               child: Column(
                 children: [
                   CircularProgressIndicator(),
@@ -254,15 +230,13 @@ class _PoseDetectionScreenState extends State<PoseDetectionScreen> {
                 ],
               ),
             ),
-
-          // Error message
           if (_errorMessage != null && !_isProcessing)
             Padding(
-              padding: const EdgeInsets.all(16.0),
+              padding: const EdgeInsets.all(16),
               child: Card(
                 color: Colors.red[50],
                 child: Padding(
-                  padding: const EdgeInsets.all(16.0),
+                  padding: const EdgeInsets.all(16),
                   child: Row(
                     children: [
                       const Icon(Icons.error_outline, color: Colors.red),
@@ -273,43 +247,32 @@ class _PoseDetectionScreenState extends State<PoseDetectionScreen> {
                 ),
               ),
             ),
-
-          // Quick stats
           if (_poseResult != null)
             Padding(
-              padding: const EdgeInsets.all(16.0),
+              padding: const EdgeInsets.all(16),
               child: Card(
                 child: Padding(
-                  padding: const EdgeInsets.all(16.0),
+                  padding: const EdgeInsets.all(16),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        'Pose Detected! ✓',
-                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                          color: Colors.green,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
+                      Text('Pose Detected! ✓',
+                          style: Theme.of(context)
+                              .textTheme
+                              .titleLarge
+                              ?.copyWith(color: Colors.green, fontWeight: FontWeight.bold)),
                       const SizedBox(height: 12),
                       _buildStatRow(
                         'Confidence',
                         '${((1.0 / (1.0 + math.exp(-_poseResult!.detection.score))) * 100).toStringAsFixed(1)}%',
                       ),
-                      _buildStatRow(
-                        'Landmarks',
-                        '${_poseResult!.landmarks.length}',
-                      ),
-                      _buildStatRow(
-                        'Visibility',
-                        _poseResult!.isVisible ? 'Good' : 'Poor',
-                      ),
+                      _buildStatRow('Landmarks', '${_poseResult!.landmarks.length}'),
+                      _buildStatRow('Visibility', _poseResult!.isVisible ? 'Good' : 'Poor'),
                     ],
                   ),
                 ),
               ),
             ),
-
         ],
       ),
     );
@@ -317,7 +280,7 @@ class _PoseDetectionScreenState extends State<PoseDetectionScreen> {
 
   Widget _buildStatRow(String label, String value) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4.0),
+      padding: const EdgeInsets.symmetric(vertical: 4),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
@@ -342,10 +305,8 @@ class _PoseDetectionScreenState extends State<PoseDetectionScreen> {
           controller: scrollController,
           padding: const EdgeInsets.all(16),
           children: [
-            Text(
-              'Landmark Details',
-              style: Theme.of(context).textTheme.headlineSmall,
-            ),
+            Text('Landmark Details',
+                style: Theme.of(context).textTheme.headlineSmall),
             const SizedBox(height: 16),
             ..._buildLandmarkList(),
           ],
@@ -356,33 +317,21 @@ class _PoseDetectionScreenState extends State<PoseDetectionScreen> {
 
   List<Widget> _buildLandmarkList() {
     if (_poseResult == null) return [];
-
     return _poseResult!.landmarks.map((landmark) {
-      final pixel = landmark.toPixel(
-        _poseResult!.imageWidth,
-        _poseResult!.imageHeight,
-      );
-
+      final pixel = landmark.toPixel(_poseResult!.imageWidth, _poseResult!.imageHeight);
       return Card(
         margin: const EdgeInsets.only(bottom: 8),
         child: ListTile(
           leading: CircleAvatar(
-            backgroundColor: landmark.visibility > 0.5
-                ? Colors.green
-                : Colors.orange,
-            child: Text(
-              landmark.type.index.toString(),
-              style: const TextStyle(fontSize: 12),
-            ),
+            backgroundColor:
+            landmark.visibility > 0.5 ? Colors.green : Colors.orange,
+            child: Text(landmark.type.index.toString(),
+                style: const TextStyle(fontSize: 12)),
           ),
-          title: Text(
-            _landmarkName(landmark.type),
-            style: const TextStyle(fontWeight: FontWeight.w500),
-          ),
+          title: Text(_landmarkName(landmark.type),
+              style: const TextStyle(fontWeight: FontWeight.w500)),
           subtitle: Text(
-            'Position: (${pixel.x}, ${pixel.y})\n'
-                'Visibility: ${(landmark.visibility * 100).toStringAsFixed(0)}%',
-          ),
+              'Position: (${pixel.x}, ${pixel.y})\nVisibility: ${(landmark.visibility * 100).toStringAsFixed(0)}%'),
           isThreeLine: true,
         ),
       );
@@ -390,190 +339,116 @@ class _PoseDetectionScreenState extends State<PoseDetectionScreen> {
   }
 
   String _landmarkName(PoseLandmarkType type) {
-    return type.toString().split('.').last
-        .replaceAllMapped(
+    return type.toString().split('.').last.replaceAllMapped(
       RegExp(r'[A-Z]'),
           (match) => ' ${match.group(0)}',
-    )
-        .trim();
+    ).trim();
   }
 }
-
-// ============================================================================
-// POSE VISUALIZER WIDGET WITH CUSTOM PAINTER
-// ============================================================================
 
 class PoseVisualizerWidget extends StatelessWidget {
   final File imageFile;
   final PoseDetectionResult poseResult;
 
-  const PoseVisualizerWidget({
-    super.key,
-    required this.imageFile,
-    required this.poseResult,
-  });
+  const PoseVisualizerWidget({super.key, required this.imageFile, required this.poseResult});
 
   @override
   Widget build(BuildContext context) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        return Stack(
-          children: [
-            // Background image
-            Image.file(
-              imageFile,
-              fit: BoxFit.contain,
-            ),
-            // Pose overlay
-            Positioned.fill(
-              child: CustomPaint(
-                painter: PosePainter(
-                  result: poseResult,
-                ),
-              ),
-            ),
-          ],
-        );
-      },
-    );
+    return LayoutBuilder(builder: (context, constraints) {
+      return Stack(
+        children: [
+          Image.file(imageFile, fit: BoxFit.contain),
+          Positioned.fill(child: CustomPaint(painter: PosePainter(result: poseResult))),
+        ],
+      );
+    });
   }
 }
 
-// ============================================================================
-// CUSTOM PAINTER FOR DRAWING POSE SKELETON
-// ============================================================================
-
 class PosePainter extends CustomPainter {
   final PoseDetectionResult result;
-
   PosePainter({required this.result});
 
   @override
   void paint(Canvas canvas, Size size) {
-    // Calculate scale factors
     final imageAspect = result.imageWidth / result.imageHeight;
     final canvasAspect = size.width / size.height;
-
     double scaleX, scaleY;
     double offsetX = 0, offsetY = 0;
 
     if (canvasAspect > imageAspect) {
-      // Canvas is wider - fit to height
       scaleY = size.height / result.imageHeight;
       scaleX = scaleY;
       offsetX = (size.width - result.imageWidth * scaleX) / 2;
     } else {
-      // Canvas is taller - fit to width
       scaleX = size.width / result.imageWidth;
       scaleY = scaleX;
       offsetY = (size.height - result.imageHeight * scaleY) / 2;
     }
 
-    // Draw connections first (so they appear behind points)
     _drawConnections(canvas, scaleX, scaleY, offsetX, offsetY);
-
-    // Draw landmarks on top
     _drawLandmarks(canvas, scaleX, scaleY, offsetX, offsetY);
   }
 
-  void _drawConnections(Canvas canvas, double scaleX, double scaleY,
-      double offsetX, double offsetY) {
-    final linePaint = Paint()
+  void _drawConnections(Canvas canvas, double scaleX, double scaleY, double offsetX, double offsetY) {
+    final paint = Paint()
       ..color = Colors.green.withOpacity(0.8)
       ..strokeWidth = 3
-      ..style = PaintingStyle.stroke
       ..strokeCap = StrokeCap.round;
 
-    // Define skeleton connections
     final connections = [
-      // Face
       [PoseLandmarkType.leftEye, PoseLandmarkType.nose],
       [PoseLandmarkType.rightEye, PoseLandmarkType.nose],
       [PoseLandmarkType.leftEye, PoseLandmarkType.leftEar],
       [PoseLandmarkType.rightEye, PoseLandmarkType.rightEar],
       [PoseLandmarkType.mouthLeft, PoseLandmarkType.mouthRight],
-
-      // Torso
       [PoseLandmarkType.leftShoulder, PoseLandmarkType.rightShoulder],
       [PoseLandmarkType.leftShoulder, PoseLandmarkType.leftHip],
       [PoseLandmarkType.rightShoulder, PoseLandmarkType.rightHip],
       [PoseLandmarkType.leftHip, PoseLandmarkType.rightHip],
-
-      // Left arm
       [PoseLandmarkType.leftShoulder, PoseLandmarkType.leftElbow],
       [PoseLandmarkType.leftElbow, PoseLandmarkType.leftWrist],
       [PoseLandmarkType.leftWrist, PoseLandmarkType.leftPinky],
       [PoseLandmarkType.leftWrist, PoseLandmarkType.leftIndex],
       [PoseLandmarkType.leftWrist, PoseLandmarkType.leftThumb],
-
-      // Right arm
       [PoseLandmarkType.rightShoulder, PoseLandmarkType.rightElbow],
       [PoseLandmarkType.rightElbow, PoseLandmarkType.rightWrist],
       [PoseLandmarkType.rightWrist, PoseLandmarkType.rightPinky],
       [PoseLandmarkType.rightWrist, PoseLandmarkType.rightIndex],
       [PoseLandmarkType.rightWrist, PoseLandmarkType.rightThumb],
-
-      // Left leg
       [PoseLandmarkType.leftHip, PoseLandmarkType.leftKnee],
       [PoseLandmarkType.leftKnee, PoseLandmarkType.leftAnkle],
       [PoseLandmarkType.leftAnkle, PoseLandmarkType.leftHeel],
       [PoseLandmarkType.leftAnkle, PoseLandmarkType.leftFootIndex],
-
-      // Right leg
       [PoseLandmarkType.rightHip, PoseLandmarkType.rightKnee],
       [PoseLandmarkType.rightKnee, PoseLandmarkType.rightAnkle],
       [PoseLandmarkType.rightAnkle, PoseLandmarkType.rightHeel],
       [PoseLandmarkType.rightAnkle, PoseLandmarkType.rightFootIndex],
     ];
 
-    for (final connection in connections) {
-      final start = result.getLandmark(connection[0]);
-      final end = result.getLandmark(connection[1]);
-
-      if (start != null && end != null &&
-          start.visibility > 0.5 && end.visibility > 0.5) {
+    for (final c in connections) {
+      final start = result.getLandmark(c[0]);
+      final end = result.getLandmark(c[1]);
+      if (start != null && end != null && start.visibility > 0.5 && end.visibility > 0.5) {
         canvas.drawLine(
-          Offset(
-            start.x * result.imageWidth * scaleX + offsetX,
-            start.y * result.imageHeight * scaleY + offsetY,
-          ),
-          Offset(
-            end.x * result.imageWidth * scaleX + offsetX,
-            end.y * result.imageHeight * scaleY + offsetY,
-          ),
-          linePaint,
+          Offset(start.x * result.imageWidth * scaleX + offsetX, start.y * result.imageHeight * scaleY + offsetY),
+          Offset(end.x * result.imageWidth * scaleX + offsetX, end.y * result.imageHeight * scaleY + offsetY),
+          paint,
         );
       }
     }
   }
 
-  void _drawLandmarks(Canvas canvas, double scaleX, double scaleY,
-      double offsetX, double offsetY) {
-    for (final landmark in result.landmarks) {
-      if (landmark.visibility > 0.5) {
-        // Draw point with glow effect
-        final center = Offset(
-          landmark.x * result.imageWidth * scaleX + offsetX,
-          landmark.y * result.imageHeight * scaleY + offsetY,
-        );
-
-        // Outer glow
-        final glowPaint = Paint()
-          ..color = Colors.blue.withOpacity(0.3)
-          ..style = PaintingStyle.fill;
-        canvas.drawCircle(center, 8, glowPaint);
-
-        // Inner point
-        final pointPaint = Paint()
-          ..color = Colors.red
-          ..style = PaintingStyle.fill;
-        canvas.drawCircle(center, 5, pointPaint);
-
-        // White center
-        final centerPaint = Paint()
-          ..color = Colors.white
-          ..style = PaintingStyle.fill;
-        canvas.drawCircle(center, 2, centerPaint);
+  void _drawLandmarks(Canvas canvas, double scaleX, double scaleY, double offsetX, double offsetY) {
+    for (final l in result.landmarks) {
+      if (l.visibility > 0.5) {
+        final center = Offset(l.x * result.imageWidth * scaleX + offsetX, l.y * result.imageHeight * scaleY + offsetY);
+        final glow = Paint()..color = Colors.blue.withOpacity(0.3);
+        final point = Paint()..color = Colors.red;
+        final centerDot = Paint()..color = Colors.white;
+        canvas.drawCircle(center, 8, glow);
+        canvas.drawCircle(center, 5, point);
+        canvas.drawCircle(center, 2, centerDot);
       }
     }
   }
