@@ -207,17 +207,18 @@ class PoseDetector {
       final xOrigPx = xContent / s;
       final yOrigPx = yContent / s;
 
-      final xNorm = (xOrigPx / W).clamp(0.0, 1.0);
-      final yNorm = (yOrigPx / H).clamp(0.0, 1.0);
+      final xPx = xOrigPx.clamp(0.0, W.toDouble());
+      final yPx = yOrigPx.clamp(0.0, H.toDouble());
 
       out.add(PoseLandmark(
         type: lm.type,
-        x: xNorm,
-        y: yNorm,
+        x: xPx,
+        y: yPx,
         z: lm.z,
         visibility: lm.visibility,
       ));
     }
+
 
     return PoseDetectionResult(
       landmarks: out,
@@ -397,9 +398,9 @@ class PoseLandmarks {
 
 class PoseLandmark {
   final PoseLandmarkType type;
-  final double x; // Normalized 0-1
-  final double y; // Normalized 0-1
-  final double z; // Depth
+  final double x; // Pixels
+  final double y; // Pixels
+  final double z;
   final double visibility;
 
   PoseLandmark({
@@ -410,13 +411,14 @@ class PoseLandmark {
     required this.visibility,
   });
 
+  double xNorm(int imageWidth) => (x / imageWidth).clamp(0.0, 1.0);
+  double yNorm(int imageHeight) => (y / imageHeight).clamp(0.0, 1.0);
+
   Point toPixel(int imageWidth, int imageHeight) {
-    return Point(
-      (x * imageWidth).toInt(),
-      (y * imageHeight).toInt(),
-    );
+    return Point(x.toInt(), y.toInt());
   }
 }
+
 
 class PoseDetectionResult {
   final List<PoseLandmark> landmarks;

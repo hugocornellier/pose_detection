@@ -431,8 +431,8 @@ class PosePainter extends CustomPainter {
       final end = result.getLandmark(c[1]);
       if (start != null && end != null && start.visibility > 0.5 && end.visibility > 0.5) {
         canvas.drawLine(
-          Offset(start.x * result.imageWidth * scaleX + offsetX, start.y * result.imageHeight * scaleY + offsetY),
-          Offset(end.x * result.imageWidth * scaleX + offsetX, end.y * result.imageHeight * scaleY + offsetY),
+          Offset(start.x * scaleX + offsetX, start.y * scaleY + offsetY),
+          Offset(end.x * scaleX + offsetX, end.y * scaleY + offsetY),
           paint,
         );
       }
@@ -442,7 +442,7 @@ class PosePainter extends CustomPainter {
   void _drawLandmarks(Canvas canvas, double scaleX, double scaleY, double offsetX, double offsetY) {
     for (final l in result.landmarks) {
       if (l.visibility > 0.5) {
-        final center = Offset(l.x * result.imageWidth * scaleX + offsetX, l.y * result.imageHeight * scaleY + offsetY);
+        final center = Offset(l.x * scaleX + offsetX, l.y * scaleY + offsetY);
         final glow = Paint()..color = Colors.blue.withOpacity(0.3);
         final point = Paint()..color = Colors.red;
         final centerDot = Paint()..color = Colors.white;
