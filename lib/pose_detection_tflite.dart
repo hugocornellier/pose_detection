@@ -176,34 +176,61 @@ class PoseDetector {
       throw StateError('PoseDetector not initialized. Call initialize() first.');
     }
 
-    final fullFrame = PoseDetection(
-      xCenter: 0.5,
-      yCenter: 0.5,
-      width: 1.0,
-      height: 1.0,
-      score: 1.0,
-      keypoints: const [],
-    );
+    final W = image.width;
+    final H = image.height;
 
-    final roiImage = img.copyResize(image, width: 256, height: 256);
-    final landmarks = await _runLandmarkDetection(roiImage);
+    final s = math.min(256.0 / W, 256.0 / H);
+    final wScaled = (W * s).round();
+    final hScaled = (H * s).round();
+
+    final leftPad = ((256 - wScaled) / 2).floor();
+    final topPad = ((256 - hScaled) / 2).floor();
+
+    final resized = img.copyResize(image, width: wScaled, height: hScaled);
+    final canvas = img.Image(width: 256, height: 256);
+    img.compositeImage(canvas, resized, dstX: leftPad, dstY: topPad);
+
+    final landmarks = await _runLandmarkDetection(canvas);
 
     if (landmarks.score < 0.5) {
       return null;
     }
 
-    final transformedLandmarks = _transformLandmarks(
-      landmarks,
-      fullFrame,
-      image.width,
-      image.height,
-    );
+    final out = <PoseLandmark>[];
+    for (final lm in landmarks.landmarks) {
+      final xp = lm.x * 256.0;
+      final yp = lm.y * 256.0;
+
+      final xContent = xp - leftPad;
+      final yContent = yp - topPad;
+
+      final xOrigPx = xContent / s;
+      final yOrigPx = yContent / s;
+
+      final xNorm = (xOrigPx / W).clamp(0.0, 1.0);
+      final yNorm = (yOrigPx / H).clamp(0.0, 1.0);
+
+      out.add(PoseLandmark(
+        type: lm.type,
+        x: xNorm,
+        y: yNorm,
+        z: lm.z,
+        visibility: lm.visibility,
+      ));
+    }
 
     return PoseDetectionResult(
-      landmarks: transformedLandmarks,
-      detection: fullFrame,
-      imageWidth: image.width,
-      imageHeight: image.height,
+      landmarks: out,
+      detection: PoseDetection(
+        xCenter: 0.5,
+        yCenter: 0.5,
+        width: 1.0,
+        height: 1.0,
+        score: 1.0,
+        keypoints: const [],
+      ),
+      imageWidth: W,
+      imageHeight: H,
     );
   }
 
@@ -309,36 +336,6 @@ class PoseDetector {
       landmarks: lm,
       score: score,
     );
-  }
-
-  List<PoseLandmark> _transformLandmarks(
-    PoseLandmarks landmarks,
-    PoseDetection detection,
-    int imageWidth,
-    int imageHeight,
-  ) {
-    final usePad = (detection.width < 0.999 || detection.height < 0.999);
-    final paddingFactor = usePad ? 1.8 : 1.0;
-
-    final w = (detection.width * paddingFactor).clamp(0.1, 1.0);
-    final h = (detection.height * paddingFactor).clamp(0.1, 1.0);
-    final cx = detection.xCenter.clamp(0.0, 1.0);
-    final cy = detection.yCenter.clamp(0.0, 1.0);
-
-    final left = (cx - w / 2).clamp(0.0, 1.0);
-    final top = (cy - h / 2).clamp(0.0, 1.0);
-
-    return landmarks.landmarks.map((lm) {
-      final nx = (left + lm.x * w).clamp(0.0, 1.0);
-      final ny = (top + lm.y * h).clamp(0.0, 1.0);
-      return PoseLandmark(
-        type: lm.type,
-        x: nx,
-        y: ny,
-        z: lm.z,
-        visibility: lm.visibility,
-      );
-    }).toList();
   }
 
   bool get isInitialized => _isInitialized;
@@ -505,11 +502,6 @@ class Point {
   Point(this.x, this.y);
 }
 
-// ============================================================================
-// UTILITY FUNCTIONS
-// ============================================================================
-
-/// Helper to reshape a flat list into nested structure for 4D tensors
 List<List<List<List<double>>>> _reshapeToTensor4D(
     List<double> flat,
     int dim1,
