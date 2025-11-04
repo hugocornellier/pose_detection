@@ -220,11 +220,12 @@ class PoseDetector {
     _complexity = complexity;
 
     _detectorInterpreter = await _loadModelFromAssets(
-      'assets/models/pose_detection.tflite',
+      'packages/pose_detection_tflite/assets/models/pose_detection.tflite',
     );
     _landmarkInterpreter = await _loadModelFromAssets(
       _getLandmarkModelPath(complexity),
     );
+
 
     _detectorInterpreter!.resizeInputTensor(0, [1, 224, 224, 3]);
     _detectorInterpreter!.allocateTensors();
@@ -239,13 +240,14 @@ class PoseDetector {
   String _getLandmarkModelPath(PoseModelComplexity complexity) {
     switch (complexity) {
       case PoseModelComplexity.lite:
-        return 'assets/models/pose_landmark_lite.tflite';
+        return 'packages/pose_detection_tflite/assets/models/pose_landmark_lite.tflite';
       case PoseModelComplexity.full:
-        return 'assets/models/pose_landmark_full.tflite';
+        return 'packages/pose_detection_tflite/assets/models/pose_landmark_full.tflite';
       case PoseModelComplexity.heavy:
-        return 'assets/models/pose_landmark_heavy.tflite';
+        return 'packages/pose_detection_tflite/assets/models/pose_landmark_heavy.tflite';
     }
   }
+
 
   Future<Interpreter> _loadModelFromAssets(String assetPath) async {
     return await Interpreter.fromAsset(assetPath);
