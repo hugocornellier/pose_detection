@@ -26,6 +26,9 @@ class YoloV8PersonDetector {
 
   final _outShapes = <List<int>>[];
 
+  List<List<List<List<double>>>>? _inputBuffer;
+  Map<int, Object>? _outputBuffers;
+
   Future<void> initialize() async {
     const assetPath = 'packages/pose_detection_tflite/assets/models/yolov8n_float32.tflite';
     if (_isInitialized) await dispose();
@@ -51,6 +54,8 @@ class YoloV8PersonDetector {
   Future<void> dispose() async {
     _interpreter?.close();
     _interpreter = null;
+    _inputBuffer = null;
+    _outputBuffers = null;
     _isInitialized = false;
   }
 
@@ -186,20 +191,23 @@ class YoloV8PersonDetector {
     final r = ratio.first;
     final dw = dwdh[0], dh = dwdh[1];
 
-    final input = List.generate(
-      1,
-          (_) => List.generate(
-        _inH,
+    if (_inputBuffer == null) {
+      _inputBuffer = List.generate(
+        1,
             (_) => List.generate(
-          _inW,
-              (_) => List<double>.filled(3, 0.0),
+          _inH,
+              (_) => List.generate(
+            _inW,
+                (_) => List<double>.filled(3, 0.0),
+            growable: false,
+          ),
           growable: false,
         ),
         growable: false,
-      ),
-      growable: false,
-    );
+      );
+    }
 
+    final input = _inputBuffer!;
     for (int y = 0; y < _inH; y++) {
       for (int x = 0; x < _inW; x++) {
         final px = letter.getPixel(x, y);
@@ -209,31 +217,35 @@ class YoloV8PersonDetector {
       }
     }
 
-    final outputs = <int, Object>{};
-    for (int i = 0; i < _outShapes.length; i++) {
-      final shape = _outShapes[i];
-      Object buf;
-      if (shape.length == 3) {
-        buf = List.generate(
-          shape[0],
-              (_) => List.generate(
-            shape[1],
-                (_) => List<double>.filled(shape[2], 0.0),
+    if (_outputBuffers == null) {
+      _outputBuffers = <int, Object>{};
+      for (int i = 0; i < _outShapes.length; i++) {
+        final shape = _outShapes[i];
+        Object buf;
+        if (shape.length == 3) {
+          buf = List.generate(
+            shape[0],
+                (_) => List.generate(
+              shape[1],
+                  (_) => List<double>.filled(shape[2], 0.0),
+              growable: false,
+            ),
             growable: false,
-          ),
-          growable: false,
-        );
-      } else if (shape.length == 2) {
-        buf = List.generate(
-          shape[0],
-              (_) => List<double>.filled(shape[1], 0.0),
-          growable: false,
-        );
-      } else {
-        buf = List.filled(shape.reduce((a, b) => a * b), 0.0);
+          );
+        } else if (shape.length == 2) {
+          buf = List.generate(
+            shape[0],
+                (_) => List<double>.filled(shape[1], 0.0),
+            growable: false,
+          );
+        } else {
+          buf = List.filled(shape.reduce((a, b) => a * b), 0.0);
+        }
+        _outputBuffers![i] = buf;
       }
-      outputs[i] = buf;
     }
+
+    final outputs = _outputBuffers!;
 
     _interpreter!.runForMultipleInputs([input], outputs);
 

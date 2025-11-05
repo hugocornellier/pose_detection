@@ -8,9 +8,9 @@
 #include <string>
 #include <variant>
 
-#include "face_detection_tflite_plugin.h"
+#include "pose_detection_tflite_plugin.h"
 
-namespace face_detection_tflite {
+namespace pose_detection_tflite {
 namespace test {
 
 namespace {
@@ -40,4 +40,4 @@ TEST(PoseDetectionTflitePlugin, GetPlatformVersion) {
 }
 
 }  // namespace test
-}  // namespace face_detection_tflite
+}  // namespace pose_detection_tflite

@@ -1,5 +1,5 @@
-#include "face_detection_tflite_plugin.h"
-#include "include/face_detection_tflite/face_detection_tflite_plugin.h"  // ensures dllexport is seen here
+#include "pose_detection_tflite_plugin.h"
+#include "include/pose_detection_tflite/pose_detection_tflite_plugin.h"  // ensures dllexport is seen here
 
 // This must be included before many other Windows headers.
 #include <windows.h>
@@ -14,14 +14,14 @@
 #include <memory>
 #include <sstream>
 
-namespace face_detection_tflite {
+namespace pose_detection_tflite {
 
 // static
 void PoseDetectionTflitePlugin::RegisterWithRegistrar(
     flutter::PluginRegistrarWindows *registrar) {
   auto channel =
       std::make_unique<flutter::MethodChannel<flutter::EncodableValue>>(
-          registrar->messenger(), "face_detection_tflite",
+          registrar->messenger(), "pose_detection_tflite",
           &flutter::StandardMethodCodec::GetInstance());
 
   auto plugin = std::make_unique<PoseDetectionTflitePlugin>();
@@ -57,7 +57,7 @@ void PoseDetectionTflitePlugin::HandleMethodCall(
   }
 }
 
-}  // namespace face_detection_tflite
+}  // namespace pose_detection_tflite
 
 // Free function expected by generated_plugin_registrant on Windows.
 // Uses the C API type, then converts to the C++ registrar.
@@ -66,5 +66,5 @@ void PoseDetectionTflitePluginRegisterWithRegistrar(
   auto cpp_registrar =
       flutter::PluginRegistrarManager::GetInstance()
           ->GetRegistrar<flutter::PluginRegistrarWindows>(registrar);
-  face_detection_tflite::PoseDetectionTflitePlugin::RegisterWithRegistrar(cpp_registrar);
+  pose_detection_tflite::PoseDetectionTflitePlugin::RegisterWithRegistrar(cpp_registrar);
 }

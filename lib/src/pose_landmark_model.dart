@@ -13,6 +13,13 @@ class PoseLandmarkModelRunner {
 
   static ffi.DynamicLibrary? _tfliteLib;
 
+  List<List<List<List<double>>>>? _inputBuffer;
+  List<List<double>>? _outputLandmarks;
+  List<List<double>>? _outputScore;
+  List<List<List<List<double>>>>? _outputMask;
+  List<List<List<List<double>>>>? _outputHeatmap;
+  List<List<double>>? _outputWorld;
+
   static Future<void> ensureTFLiteLoaded() async {
     if (_tfliteLib != null) return;
 
@@ -80,42 +87,48 @@ class PoseLandmarkModelRunner {
   Future<void> dispose() async {
     _interpreter?.close();
     _interpreter = null;
+    _inputBuffer = null;
+    _outputLandmarks = null;
+    _outputScore = null;
+    _outputMask = null;
+    _outputHeatmap = null;
+    _outputWorld = null;
     _isInitialized = false;
   }
 
   PoseLandmarks run(img.Image roiImage) {
-    final input4d = ImageUtils.imageToNHWC4D(roiImage, 256, 256);
+    _inputBuffer = ImageUtils.imageToNHWC4D(roiImage, 256, 256, reuse: _inputBuffer);
 
-    final outputLandmarks = [List.filled(195, 0.0)];
-    final outputScore = [[0.0]];
-    final outputMask = ImageUtils.reshapeToTensor4D(
+    _outputLandmarks ??= [List.filled(195, 0.0)];
+    _outputScore ??= [[0.0]];
+    _outputMask ??= ImageUtils.reshapeToTensor4D(
       List.filled(1 * 256 * 256 * 1, 0.0),
       1,
       256,
       256,
       1,
     );
-    final outputHeatmap = ImageUtils.reshapeToTensor4D(
+    _outputHeatmap ??= ImageUtils.reshapeToTensor4D(
       List.filled(1 * 64 * 64 * 39, 0.0),
       1,
       64,
       64,
       39,
     );
-    final outputWorld = [List.filled(117, 0.0)];
+    _outputWorld ??= [List.filled(117, 0.0)];
 
     _interpreter!.runForMultipleInputs(
-      [input4d],
+      [_inputBuffer!],
       {
-        0: outputLandmarks,
-        1: outputScore,
-        2: outputMask,
-        3: outputHeatmap,
-        4: outputWorld,
+        0: _outputLandmarks!,
+        1: _outputScore!,
+        2: _outputMask!,
+        3: _outputHeatmap!,
+        4: _outputWorld!,
       },
     );
 
-    return _parseLandmarks(outputLandmarks, outputScore, outputWorld);
+    return _parseLandmarks(_outputLandmarks!, _outputScore!, _outputWorld!);
   }
 
   PoseLandmarks _parseLandmarks(

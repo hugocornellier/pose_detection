@@ -6,7 +6,7 @@
 
 #include <memory>
 
-namespace face_detection_tflite {
+namespace pose_detection_tflite {
 
 class PoseDetectionTflitePlugin : public flutter::Plugin {
  public:
@@ -26,6 +26,6 @@ class PoseDetectionTflitePlugin : public flutter::Plugin {
       std::unique_ptr<flutter::MethodResult<flutter::EncodableValue>> result);
 };
 
-}  // namespace face_detection_tflite
+}  // namespace pose_detection_tflite
 
 #endif  // FLUTTER_PLUGIN_FACE_DETECTION_TFLITE_PLUGIN_H_
