@@ -1,5 +1,5 @@
-#ifndef FLUTTER_PLUGIN_FACE_DETECTION_TFLITE_PLUGIN_H_
-#define FLUTTER_PLUGIN_FACE_DETECTION_TFLITE_PLUGIN_H_
+#ifndef FLUTTER_PLUGIN_POSE_DETECTION_TFLITE_PLUGIN_H_
+#define FLUTTER_PLUGIN_POSE_DETECTION_TFLITE_PLUGIN_H_
 
 #include <flutter/method_channel.h>
 #include <flutter/plugin_registrar_windows.h>
@@ -28,4 +28,4 @@ class PoseDetectionTflitePlugin : public flutter::Plugin {
 
 }  // namespace pose_detection_tflite
 
-#endif  // FLUTTER_PLUGIN_FACE_DETECTION_TFLITE_PLUGIN_H_
+#endif  // FLUTTER_PLUGIN_POSE_DETECTION_TFLITE_PLUGIN_H_

@@ -1,5 +1,5 @@
-#ifndef FLUTTER_PLUGIN_FACE_DETECTION_TFLITE_PLUGIN_H_
-#define FLUTTER_PLUGIN_FACE_DETECTION_TFLITE_PLUGIN_H_
+#ifndef FLUTTER_PLUGIN_POSE_DETECTION_TFLITE_PLUGIN_H_
+#define FLUTTER_PLUGIN_POSE_DETECTION_TFLITE_PLUGIN_H_
 
 #include <flutter_linux/flutter_linux.h>
 
@@ -16,11 +16,11 @@ typedef struct {
   GObjectClass parent_class;
 } PoseDetectionTflitePluginClass;
 
-FLUTTER_PLUGIN_EXPORT GType face_detection_tflite_plugin_get_type();
+FLUTTER_PLUGIN_EXPORT GType pose_detection_tflite_plugin_get_type();
 
-FLUTTER_PLUGIN_EXPORT void face_detection_tflite_plugin_register_with_registrar(
+FLUTTER_PLUGIN_EXPORT void pose_detection_tflite_plugin_register_with_registrar(
     FlPluginRegistrar* registrar);
 
 G_END_DECLS
 
-#endif  // FLUTTER_PLUGIN_FACE_DETECTION_TFLITE_PLUGIN_H_
+#endif  // FLUTTER_PLUGIN_POSE_DETECTION_TFLITE_PLUGIN_H_

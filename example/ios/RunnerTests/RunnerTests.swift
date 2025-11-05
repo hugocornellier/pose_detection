@@ -3,7 +3,7 @@ import UIKit
 import XCTest
 
 
-@testable import face_detection_tflite
+@testable import pose_detection_tflite
 
 // This demonstrates a simple unit test of the Swift portion of this plugin's implementation.
 //

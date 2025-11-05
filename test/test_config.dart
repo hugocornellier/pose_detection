@@ -3,7 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter/material.dart' show Size;
 import 'dart:math' as math;
 
-/// Global test setup and configuration for face_detection_tflite tests.
+/// Global test setup and configuration for pose_detection_tflite tests.
 ///
 /// This file provides:
 /// - Flutter test environment initialization

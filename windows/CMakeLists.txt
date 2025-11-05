@@ -21,5 +21,5 @@ target_include_directories(${PLUGIN_NAME}
 )
 target_link_libraries(${PLUGIN_NAME} PRIVATE flutter flutter_wrapper_plugin)
 
-set(FACE_DETECTION_TFLITE_DLL "${CMAKE_CURRENT_SOURCE_DIR}/../assets/bin/libtensorflowlite_c-win.dll")
-set(${PROJECT_NAME}_bundled_libraries "${FACE_DETECTION_TFLITE_DLL}" PARENT_SCOPE)
+set(POSE_DETECTION_TFLITE_DLL "${CMAKE_CURRENT_SOURCE_DIR}/../assets/bin/libtensorflowlite_c-win.dll")
+set(${PROJECT_NAME}_bundled_libraries "${POSE_DETECTION_TFLITE_DLL}" PARENT_SCOPE)

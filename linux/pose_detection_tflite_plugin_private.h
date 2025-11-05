@@ -1,6 +1,6 @@
 #include <flutter_linux/flutter_linux.h>
 
-#include "include/face_detection_tflite/face_detection_tflite_plugin.h"
+#include "include/pose_detection_tflite/pose_detection_tflite_plugin.h"
 
 // This file exposes some plugin internals for unit testing. See
 // https://github.com/flutter/flutter/issues/88724 for current limitations

@@ -2,8 +2,8 @@
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
-#include "include/face_detection_tflite/face_detection_tflite_plugin.h"
-#include "face_detection_tflite_plugin_private.h"
+#include "include/pose_detection_tflite/pose_detection_tflite_plugin.h"
+#include "pose_detection_tflite_plugin_private.h"
 
 // This demonstrates a simple unit test of the C portion of this plugin's
 // implementation.
@@ -13,7 +13,7 @@
 // built for x64 debug, run:
 // $ build/linux/x64/debug/plugins/my_plugin/my_plugin_test
 
-namespace face_detection_tflite {
+namespace pose_detection_tflite {
 namespace test {
 
 TEST(PoseDetectionTflitePlugin, GetPlatformVersion) {
@@ -28,4 +28,4 @@ TEST(PoseDetectionTflitePlugin, GetPlatformVersion) {
 }
 
 }  // namespace test
-}  // namespace face_detection_tflite
+}  // namespace pose_detection_tflite

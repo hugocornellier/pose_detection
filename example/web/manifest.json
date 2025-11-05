@@ -1,11 +1,11 @@
 {
-    "name": "face_detection_tflite_example",
-    "short_name": "face_detection_tflite_example",
+    "name": "pose_detection_tflite_example",
+    "short_name": "pose_detection_tflite_example",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",
     "theme_color": "#0175C2",
-    "description": "Demonstrates how to use the face_detection_tflite plugin.",
+    "description": "Demonstrates how to use the pose_detection_tflite plugin.",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [

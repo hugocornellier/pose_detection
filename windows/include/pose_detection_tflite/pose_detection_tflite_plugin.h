@@ -1,5 +1,5 @@
-#ifndef FACE_DETECTION_TFLITE_PUBLIC_PLUGIN_H_
-#define FACE_DETECTION_TFLITE_PUBLIC_PLUGIN_H_
+#ifndef POSE_DETECTION_TFLITE_PUBLIC_PLUGIN_H_
+#define POSE_DETECTION_TFLITE_PUBLIC_PLUGIN_H_
 
 #include <flutter_windows.h>
 
@@ -13,4 +13,4 @@
 FLUTTER_PLUGIN_EXPORT void PoseDetectionTflitePluginRegisterWithRegistrar(
     FlutterDesktopPluginRegistrarRef registrar);
 
-#endif  // FACE_DETECTION_TFLITE_PUBLIC_PLUGIN_H_
+#endif  // POSE_DETECTION_TFLITE_PUBLIC_PLUGIN_H_

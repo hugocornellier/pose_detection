@@ -4,16 +4,16 @@
 cmake_minimum_required(VERSION 3.10)
 
 # Project-level configuration.
-set(PROJECT_NAME "face_detection_tflite")
+set(PROJECT_NAME "pose_detection_tflite")
 project(${PROJECT_NAME} LANGUAGES CXX)
 
 # This value is used when generating builds using this plugin, so it must
 # not be changed.
-set(PLUGIN_NAME "face_detection_tflite_plugin")
+set(PLUGIN_NAME "pose_detection_tflite_plugin")
 
 # Any new source files that you add to the plugin should be added here.
 list(APPEND PLUGIN_SOURCES
-  "face_detection_tflite_plugin.cc"
+  "pose_detection_tflite_plugin.cc"
 )
 
 # Define the plugin library target. Its name must not be changed (see comment
@@ -75,7 +75,7 @@ FetchContent_MakeAvailable(googletest)
 # The plugin's exported API is not very useful for unit testing, so build the
 # sources directly into the test binary rather than using the shared library.
 add_executable(${TEST_RUNNER}
-  test/face_detection_tflite_plugin_test.cc
+  test/pose_detection_tflite_plugin_test.cc
   ${PLUGIN_SOURCES}
 )
 apply_standard_settings(${TEST_RUNNER})

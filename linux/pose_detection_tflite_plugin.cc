@@ -1,4 +1,4 @@
-#include "include/face_detection_tflite/face_detection_tflite_plugin.h"
+#include "include/pose_detection_tflite/pose_detection_tflite_plugin.h"
 
 #include <flutter_linux/flutter_linux.h>
 #include <gtk/gtk.h>
@@ -6,20 +6,20 @@
 
 #include <cstring>
 
-#include "face_detection_tflite_plugin_private.h"
+#include "pose_detection_tflite_plugin_private.h"
 
-#define FACE_DETECTION_TFLITE_PLUGIN(obj) \
-  (G_TYPE_CHECK_INSTANCE_CAST((obj), face_detection_tflite_plugin_get_type(), \
+#define POSE_DETECTION_TFLITE_PLUGIN(obj) \
+  (G_TYPE_CHECK_INSTANCE_CAST((obj), pose_detection_tflite_plugin_get_type(), \
                               PoseDetectionTflitePlugin))
 
 struct _PoseDetectionTflitePlugin {
   GObject parent_instance;
 };
 
-G_DEFINE_TYPE(PoseDetectionTflitePlugin, face_detection_tflite_plugin, g_object_get_type())
+G_DEFINE_TYPE(PoseDetectionTflitePlugin, pose_detection_tflite_plugin, g_object_get_type())
 
 // Called when a method call is received from Flutter.
-static void face_detection_tflite_plugin_handle_method_call(
+static void pose_detection_tflite_plugin_handle_method_call(
     PoseDetectionTflitePlugin* self,
     FlMethodCall* method_call) {
   g_autoptr(FlMethodResponse) response = nullptr;
@@ -43,30 +43,30 @@ FlMethodResponse* get_platform_version() {
   return FL_METHOD_RESPONSE(fl_method_success_response_new(result));
 }
 
-static void face_detection_tflite_plugin_dispose(GObject* object) {
-  G_OBJECT_CLASS(face_detection_tflite_plugin_parent_class)->dispose(object);
+static void pose_detection_tflite_plugin_dispose(GObject* object) {
+  G_OBJECT_CLASS(pose_detection_tflite_plugin_parent_class)->dispose(object);
 }
 
-static void face_detection_tflite_plugin_class_init(PoseDetectionTflitePluginClass* klass) {
-  G_OBJECT_CLASS(klass)->dispose = face_detection_tflite_plugin_dispose;
+static void pose_detection_tflite_plugin_class_init(PoseDetectionTflitePluginClass* klass) {
+  G_OBJECT_CLASS(klass)->dispose = pose_detection_tflite_plugin_dispose;
 }
 
-static void face_detection_tflite_plugin_init(PoseDetectionTflitePlugin* self) {}
+static void pose_detection_tflite_plugin_init(PoseDetectionTflitePlugin* self) {}
 
 static void method_call_cb(FlMethodChannel* channel, FlMethodCall* method_call,
                            gpointer user_data) {
-  PoseDetectionTflitePlugin* plugin = FACE_DETECTION_TFLITE_PLUGIN(user_data);
-  face_detection_tflite_plugin_handle_method_call(plugin, method_call);
+  PoseDetectionTflitePlugin* plugin = POSE_DETECTION_TFLITE_PLUGIN(user_data);
+  pose_detection_tflite_plugin_handle_method_call(plugin, method_call);
 }
 
-void face_detection_tflite_plugin_register_with_registrar(FlPluginRegistrar* registrar) {
-  PoseDetectionTflitePlugin* plugin = FACE_DETECTION_TFLITE_PLUGIN(
-      g_object_new(face_detection_tflite_plugin_get_type(), nullptr));
+void pose_detection_tflite_plugin_register_with_registrar(FlPluginRegistrar* registrar) {
+  PoseDetectionTflitePlugin* plugin = POSE_DETECTION_TFLITE_PLUGIN(
+      g_object_new(pose_detection_tflite_plugin_get_type(), nullptr));
 
   g_autoptr(FlStandardMethodCodec) codec = fl_standard_method_codec_new();
   g_autoptr(FlMethodChannel) channel =
       fl_method_channel_new(fl_plugin_registrar_get_messenger(registrar),
-                            "face_detection_tflite",
+                            "pose_detection_tflite",
                             FL_METHOD_CODEC(codec));
   fl_method_channel_set_method_call_handler(channel, method_call_cb,
                                             g_object_ref(plugin),
