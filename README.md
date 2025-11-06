@@ -42,6 +42,8 @@ Future main() async {
 }
 ```
 
+Refer to the [sample code](https://pub.dev/packages/pose_detection_tflite/example) on the pub.dev example tab for a more in-depth example.
+
 ## Pose Detection Modes
 
 This package supports two operation modes that determine what data is returned:
