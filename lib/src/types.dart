@@ -1,7 +1,4 @@
-import 'dart:math' as math;
-
 enum PoseLandmarkModel { lite, full, heavy }
-
 enum PoseMode { boxes, boxesAndLandmarks }
 
 class PoseOptions {

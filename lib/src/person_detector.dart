@@ -68,11 +68,11 @@ class YoloV8PersonDetector {
   }
 
   static List<int> _nms(
-      List<List<double>> boxes,
-      List<double> scores, {
-        double iouThres = 0.45,
-        int maxDet = 100,
-      }) {
+    List<List<double>> boxes,
+    List<double> scores, {
+    double iouThres = 0.45,
+    int maxDet = 100,
+  }) {
     if (boxes.isEmpty) return <int>[];
     final order = _argSortDesc(scores);
     final keep = <int>[];
@@ -87,7 +87,9 @@ class YoloV8PersonDetector {
       return w * h;
     }
 
-    double area(List<double> b) => math.max(0.0, b[2] - b[0]) * math.max(0.0, b[3] - b[1]);
+    double area(List<double> b) =>
+        math.max(0.0, b[2] - b[0]) * math.max(0.0, b[3] - b[1]);
+
     final areas = boxes.map(area).toList();
 
     final suppressed = List<bool>.filled(order.length, false);
@@ -130,7 +132,8 @@ class YoloV8PersonDetector {
   }
 
   static List<List<double>> _ensure2D(List<dynamic> raw) {
-    return raw.map<List<double>>((e) => (e as List).map((v) => (v as num).toDouble()).toList()).toList();
+    return raw.map<List<double>>((e) => (e as List).map((v) => (v as num)
+        .toDouble()).toList()).toList();
   }
 
   List<Map<String, dynamic>> _decodeAnyYoloOutputs(List<dynamic> outputs) {
@@ -257,8 +260,10 @@ class YoloV8PersonDetector {
 
     for (final row in decoded) {
       final C = row['C'] as int;
-      final xywh = (row['xywh'] as List).map((v) => (v as num).toDouble()).toList();
-      final rest = (row['rest'] as List).map((v) => (v as num).toDouble()).toList();
+      final xywh = (row['xywh'] as List).map((v) =>
+          (v as num).toDouble()).toList();
+      final rest = (row['rest'] as List).map((v) =>
+          (v as num).toDouble()).toList();
 
       if (C == 84) {
         int argMax = 0;

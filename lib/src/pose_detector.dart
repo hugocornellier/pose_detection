@@ -100,8 +100,10 @@ class PoseDetector {
         final yp = lm.y * 256.0;
         final xContent = (xp - dw) / r;
         final yContent = (yp - dh) / r;
-        final xOrig = (x1.toDouble() + xContent).clamp(0.0, image.width.toDouble());
-        final yOrig = (y1.toDouble() + yContent).clamp(0.0, image.height.toDouble());
+        final xOrig = (x1.toDouble() + xContent)
+            .clamp(0.0, image.width.toDouble());
+        final yOrig = (y1.toDouble() + yContent)
+            .clamp(0.0, image.height.toDouble());
         pts.add(
           PoseLandmark(
             type: lm.type,

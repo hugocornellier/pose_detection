@@ -3,12 +3,12 @@ import 'package:image/image.dart' as img;
 
 class ImageUtils {
   static img.Image letterbox(
-      img.Image src,
-      int tw,
-      int th,
-      List<double> ratioOut,
-      List<int> dwdhOut,
-      ) {
+    img.Image src,
+    int tw,
+    int th,
+    List<double> ratioOut,
+    List<int> dwdhOut,
+  ) {
     final w = src.width;
     final h = src.height;
     final r = math.min(th / h, tw / w);
@@ -33,19 +33,19 @@ class ImageUtils {
   }
 
   static img.Image letterbox256(
-      img.Image src,
-      List<double> ratioOut,
-      List<int> dwdhOut,
-      ) {
+    img.Image src,
+    List<double> ratioOut,
+    List<int> dwdhOut,
+  ) {
     return letterbox(src, 256, 256, ratioOut, dwdhOut);
   }
 
   static List<double> scaleFromLetterbox(
-      List<double> xyxy,
-      double ratio,
-      int dw,
-      int dh,
-      ) {
+    List<double> xyxy,
+    double ratio,
+    int dw,
+    int dh,
+  ) {
     final x1 = (xyxy[0] - dw) / ratio;
     final y1 = (xyxy[1] - dh) / ratio;
     final x2 = (xyxy[2] - dw) / ratio;
@@ -54,11 +54,11 @@ class ImageUtils {
   }
 
   static List<List<List<List<double>>>> imageToNHWC4D(
-      img.Image image,
-      int width,
-      int height, {
-        List<List<List<List<double>>>>? reuse,
-      }) {
+    img.Image image,
+    int width,
+    int height, {
+    List<List<List<List<double>>>>? reuse,
+  }) {
     final out = reuse ??
         List.generate(
           1,
@@ -86,12 +86,12 @@ class ImageUtils {
   }
 
   static List<List<List<List<double>>>> reshapeToTensor4D(
-      List<double> flat,
-      int dim1,
-      int dim2,
-      int dim3,
-      int dim4,
-      ) {
+    List<double> flat,
+    int dim1,
+    int dim2,
+    int dim3,
+    int dim4,
+  ) {
     final result = List.generate(
       dim1,
           (_) => List.generate(

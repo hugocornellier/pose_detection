@@ -1,4 +1,3 @@
-// lib/pose_detection_tflite.dart
 library pose_detection_tflite;
 
 export 'src/types.dart';

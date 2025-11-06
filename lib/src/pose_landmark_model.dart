@@ -132,10 +132,10 @@ class PoseLandmarkModelRunner {
   }
 
   PoseLandmarks _parseLandmarks(
-      List<dynamic> landmarksData,
-      List<dynamic> scoreData,
-      List<dynamic> worldData,
-      ) {
+    List<dynamic> landmarksData,
+    List<dynamic> scoreData,
+    List<dynamic> worldData,
+  ) {
     double sigmoid(double x) => 1.0 / (1.0 + math.exp(-x));
     double clamp01(double v) => v.isNaN ? 0.0 : v < 0.0 ? 0.0 : (v > 1.0 ? 1.0 : v);
 
