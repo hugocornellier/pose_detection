@@ -98,7 +98,7 @@ class PoseDetector {
       final int dw = dwdh[0];
       final int dh = dwdh[1];
 
-      final PoseLandmarks lms = _lm.run(letter);
+      final PoseLandmarks lms = await _lm.run(letter);
       if (lms.score < _opts.minLandmarkScore) continue;
 
       final List<PoseLandmark> pts = <PoseLandmark>[];

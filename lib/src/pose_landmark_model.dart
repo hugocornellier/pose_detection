@@ -9,6 +9,7 @@ import 'types.dart';
 
 class PoseLandmarkModelRunner {
   Interpreter? _interpreter;
+  IsolateInterpreter? _iso;
   bool _isInitialized = false;
   static ffi.DynamicLibrary? _tfliteLib;
   List<List<List<List<double>>>>? _inputBuffer;
@@ -66,6 +67,8 @@ class PoseLandmarkModelRunner {
     _interpreter!.resizeInputTensor(0, [1, 256, 256, 3]);
     _interpreter!.allocateTensors();
 
+    _iso = await IsolateInterpreter.create(address: _interpreter!.address);
+
     _isInitialized = true;
   }
 
@@ -83,6 +86,8 @@ class PoseLandmarkModelRunner {
   bool get isInitialized => _isInitialized;
 
   Future<void> dispose() async {
+    _iso?.close();
+    _iso = null;
     _interpreter?.close();
     _interpreter = null;
     _inputBuffer = null;
@@ -94,7 +99,7 @@ class PoseLandmarkModelRunner {
     _isInitialized = false;
   }
 
-  PoseLandmarks run(img.Image roiImage) {
+  Future<PoseLandmarks> run(img.Image roiImage) async {
     _inputBuffer = ImageUtils.imageToNHWC4D(
       roiImage,
       256,
@@ -120,16 +125,29 @@ class PoseLandmarkModelRunner {
     );
     _outputWorld ??= [List.filled(117, 0.0)];
 
-    _interpreter!.runForMultipleInputs(
-      [_inputBuffer!],
-      {
-        0: _outputLandmarks!,
-        1: _outputScore!,
-        2: _outputMask!,
-        3: _outputHeatmap!,
-        4: _outputWorld!,
-      },
-    );
+    if (_iso != null) {
+      await _iso!.runForMultipleInputs(
+        [_inputBuffer!],
+        {
+          0: _outputLandmarks!,
+          1: _outputScore!,
+          2: _outputMask!,
+          3: _outputHeatmap!,
+          4: _outputWorld!,
+        },
+      );
+    } else {
+      _interpreter!.runForMultipleInputs(
+        [_inputBuffer!],
+        {
+          0: _outputLandmarks!,
+          1: _outputScore!,
+          2: _outputMask!,
+          3: _outputHeatmap!,
+          4: _outputWorld!,
+        },
+      );
+    }
 
     return _parseLandmarks(_outputLandmarks!, _outputScore!, _outputWorld!);
   }
