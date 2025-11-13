@@ -137,8 +137,8 @@ class PoseResult {
 
   @override
   String toString() {
-    final lm = landmarks ?? const <PoseLandmark>[];
-    final landmarksInfo = lm
+    final List<PoseLandmark> lm = landmarks ?? const <PoseLandmark>[];
+    final String landmarksInfo = lm
         .map((l) => '${l.type.name}: (${l.x.toStringAsFixed(2)}, ${l.y.toStringAsFixed(2)}) vis=${l.visibility.toStringAsFixed(2)}')
         .join('\n');
     return 'PoseResult(\n'

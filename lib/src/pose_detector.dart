@@ -6,11 +6,10 @@ import 'person_detector.dart';
 import 'pose_landmark_model.dart';
 
 class PoseDetector {
-  bool _isInitialized = false;
-  late PoseOptions _opts;
-
   final YoloV8PersonDetector _yolo = YoloV8PersonDetector();
   final PoseLandmarkModelRunner _lm = PoseLandmarkModelRunner();
+  late PoseOptions _opts;
+  bool _isInitialized = false;
   img.Image? _canvasBuffer256;
 
   Future<void> initialize({PoseOptions options = const PoseOptions()}) async {
@@ -36,7 +35,7 @@ class PoseDetector {
     if (!_isInitialized) {
       throw StateError('PoseDetector not initialized. Call initialize() first.');
     }
-    final image = img.decodeImage(Uint8List.fromList(imageBytes));
+    final img.Image? image = img.decodeImage(Uint8List.fromList(imageBytes));
     if (image == null) return <PoseResult>[];
     return detectOnImage(image);
   }
@@ -46,7 +45,7 @@ class PoseDetector {
       throw StateError('PoseDetector not initialized. Call initialize() first.');
     }
 
-    final dets = _yolo.detectOnImage(
+    final List<YoloDetection> dets = await _yolo.detectOnImage(
       image,
       confThres: _opts.detectorConf,
       iouThres: _opts.detectorIou,
@@ -56,8 +55,8 @@ class PoseDetector {
     );
 
     if (_opts.mode == PoseMode.boxes) {
-      final out = <PoseResult>[];
-      for (final d in dets) {
+      final List<PoseResult> out = <PoseResult>[];
+      for (final YoloDetection d in dets) {
         out.add(
           PoseResult(
             bboxPx: RectPx(
@@ -76,36 +75,41 @@ class PoseDetector {
       return out;
     }
 
-    final results = <PoseResult>[];
-    for (final d in dets) {
-      final x1 = d.bboxXYXY[0].clamp(0.0, image.width.toDouble()).toInt();
-      final y1 = d.bboxXYXY[1].clamp(0.0, image.height.toDouble()).toInt();
-      final x2 = d.bboxXYXY[2].clamp(0.0, image.width.toDouble()).toInt();
-      final y2 = d.bboxXYXY[3].clamp(0.0, image.height.toDouble()).toInt();
-      final cw = (x2 - x1).clamp(1, image.width);
-      final ch = (y2 - y1).clamp(1, image.height);
+    final List<PoseResult> results = <PoseResult>[];
+    for (final YoloDetection d in dets) {
+      final int x1 = d.bboxXYXY[0].clamp(0.0, image.width.toDouble()).toInt();
+      final int y1 = d.bboxXYXY[1].clamp(0.0, image.height.toDouble()).toInt();
+      final int x2 = d.bboxXYXY[2].clamp(0.0, image.width.toDouble()).toInt();
+      final int y2 = d.bboxXYXY[3].clamp(0.0, image.height.toDouble()).toInt();
+      final int cw = (x2 - x1).clamp(1, image.width);
+      final int ch = (y2 - y1).clamp(1, image.height);
 
-      final crop = img.copyCrop(image, x: x1, y: y1, width: cw, height: ch);
-      final ratio = <double>[];
-      final dwdh = <int>[];
+      final img.Image crop = img.copyCrop(image, x: x1, y: y1, width: cw, height: ch);
+      final List<double> ratio = <double>[];
+      final List<int> dwdh = <int>[];
       _canvasBuffer256 ??= img.Image(width: 256, height: 256);
-      final letter = ImageUtils.letterbox256(crop, ratio, dwdh, reuseCanvas: _canvasBuffer256);
-      final r = ratio.first;
-      final dw = dwdh[0];
-      final dh = dwdh[1];
+      final img.Image letter = ImageUtils.letterbox256(
+        crop,
+        ratio,
+        dwdh,
+        reuseCanvas: _canvasBuffer256
+      );
+      final double r = ratio.first;
+      final int dw = dwdh[0];
+      final int dh = dwdh[1];
 
-      final lms = _lm.run(letter);
+      final PoseLandmarks lms = _lm.run(letter);
       if (lms.score < _opts.minLandmarkScore) continue;
 
-      final pts = <PoseLandmark>[];
-      for (final lm in lms.landmarks) {
-        final xp = lm.x * 256.0;
-        final yp = lm.y * 256.0;
-        final xContent = (xp - dw) / r;
-        final yContent = (yp - dh) / r;
-        final xOrig = (x1.toDouble() + xContent)
+      final List<PoseLandmark> pts = <PoseLandmark>[];
+      for (final PoseLandmark lm in lms.landmarks) {
+        final double xp = lm.x * 256.0;
+        final double yp = lm.y * 256.0;
+        final double xContent = (xp - dw) / r;
+        final double yContent = (yp - dh) / r;
+        final double xOrig = (x1.toDouble() + xContent)
             .clamp(0.0, image.width.toDouble());
-        final yOrig = (y1.toDouble() + yContent)
+        final double yOrig = (y1.toDouble() + yContent)
             .clamp(0.0, image.height.toDouble());
         pts.add(
           PoseLandmark(

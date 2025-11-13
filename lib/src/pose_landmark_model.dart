@@ -10,9 +10,7 @@ import 'types.dart';
 class PoseLandmarkModelRunner {
   Interpreter? _interpreter;
   bool _isInitialized = false;
-
   static ffi.DynamicLibrary? _tfliteLib;
-
   List<List<List<List<double>>>>? _inputBuffer;
   List<List<double>>? _outputLandmarks;
   List<List<double>>? _outputScore;
@@ -48,7 +46,7 @@ class PoseLandmarkModelRunner {
       return;
     }
 
-    for (final c in candidates) {
+    for (final String c in candidates) {
       try {
         if (c.contains(p.separator)) {
           if (!File(c).existsSync()) continue;
@@ -63,7 +61,7 @@ class PoseLandmarkModelRunner {
     if (_isInitialized) await dispose();
     await ensureTFLiteLoaded();
 
-    final path = _getModelPath(model);
+    final String path = _getModelPath(model);
     _interpreter = await Interpreter.fromAsset(path);
     _interpreter!.resizeInputTensor(0, [1, 256, 256, 3]);
     _interpreter!.allocateTensors();
@@ -97,7 +95,12 @@ class PoseLandmarkModelRunner {
   }
 
   PoseLandmarks run(img.Image roiImage) {
-    _inputBuffer = ImageUtils.imageToNHWC4D(roiImage, 256, 256, reuse: _inputBuffer);
+    _inputBuffer = ImageUtils.imageToNHWC4D(
+      roiImage,
+      256,
+      256,
+      reuse: _inputBuffer
+    );
 
     _outputLandmarks ??= [List.filled(195, 0.0)];
     _outputScore ??= [[0.0]];
@@ -139,18 +142,18 @@ class PoseLandmarkModelRunner {
     double sigmoid(double x) => 1.0 / (1.0 + math.exp(-x));
     double clamp01(double v) => v.isNaN ? 0.0 : v < 0.0 ? 0.0 : (v > 1.0 ? 1.0 : v);
 
-    final score = sigmoid(scoreData[0][0] as double);
-    final raw = landmarksData[0] as List<dynamic>;
-    final lm = <PoseLandmark>[];
+    final double score = sigmoid(scoreData[0][0] as double);
+    final List<dynamic> raw = landmarksData[0] as List<dynamic>;
+    final List<PoseLandmark> lm = <PoseLandmark>[];
 
     for (int i = 0; i < 33; i++) {
-      final base = i * 5;
-      final x = clamp01((raw[base + 0] as double) / 256.0);
-      final y = clamp01((raw[base + 1] as double) / 256.0);
-      final z = raw[base + 2] as double;
-      final visibility = sigmoid(raw[base + 3] as double);
-      final presence = sigmoid(raw[base + 4] as double);
-      final vis = (visibility * presence).clamp(0.0, 1.0);
+      final int base = i * 5;
+      final double x = clamp01((raw[base + 0] as double) / 256.0);
+      final double y = clamp01((raw[base + 1] as double) / 256.0);
+      final double z = raw[base + 2] as double;
+      final double visibility = sigmoid(raw[base + 3] as double);
+      final double presence = sigmoid(raw[base + 4] as double);
+      final double vis = (visibility * presence).clamp(0.0, 1.0);
 
       lm.add(
         PoseLandmark(

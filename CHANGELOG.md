@@ -1,3 +1,7 @@
+## 0.0.3
+
+* Removed unused dependency `path_provider`
+
 ## 0.0.2
 
 * Improved documentation

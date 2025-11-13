@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
@@ -88,8 +89,8 @@ class _PoseDetectionScreenState extends State<PoseDetectionScreen> {
         _errorMessage = null;
       });
 
-      final bytes = await _imageFile!.readAsBytes();
-      final results = await _poseDetector.detect(bytes);
+      final Uint8List bytes = await _imageFile!.readAsBytes();
+      final List<PoseResult> results = await _poseDetector.detect(bytes);
 
       setState(() {
         _results = results;
@@ -283,7 +284,7 @@ class _PoseDetectionScreenState extends State<PoseDetectionScreen> {
 
   void _showPoseInfo() {
     if (_results.isEmpty) return;
-    final first = _results.first;
+    final PoseResult first = _results.first;
 
     showModalBottomSheet(
       context: context,
@@ -307,18 +308,29 @@ class _PoseDetectionScreenState extends State<PoseDetectionScreen> {
   }
 
   List<Widget> _buildLandmarkListFor(PoseResult result) {
-    final lm = result.landmarks ?? const <PoseLandmark>[];
+    final List<PoseLandmark> lm = result.landmarks ?? const <PoseLandmark>[];
     return lm.map((landmark) {
-      final pixel = landmark.toPixel(result.imageWidth, result.imageHeight);
+      final Point pixel = landmark.toPixel(result.imageWidth, result.imageHeight);
       return Card(
         margin: const EdgeInsets.only(bottom: 8),
         child: ListTile(
           leading: CircleAvatar(
-            backgroundColor: landmark.visibility > 0.5 ? Colors.green : Colors.orange,
-            child: Text(landmark.type.index.toString(), style: const TextStyle(fontSize: 12)),
+            backgroundColor: landmark.visibility > 0.5
+                ? Colors.green
+                : Colors.orange,
+            child: Text(
+              landmark.type.index.toString(),
+              style: const TextStyle(fontSize: 12)
+            ),
           ),
-          title: Text(_landmarkName(landmark.type), style: const TextStyle(fontWeight: FontWeight.w500)),
-          subtitle: Text('Position: (${pixel.x}, ${pixel.y})\nVisibility: ${(landmark.visibility * 100).toStringAsFixed(0)}%'),
+          title: Text(
+            _landmarkName(landmark.type),
+            style: const TextStyle(fontWeight: FontWeight.w500)
+          ),
+          subtitle: Text(''
+            'Position: (${pixel.x}, ${pixel.y})\n'
+            'Visibility: ${(landmark.visibility * 100).toStringAsFixed(0)}%'
+          ),
           isThreeLine: true,
         ),
       );
@@ -328,7 +340,7 @@ class _PoseDetectionScreenState extends State<PoseDetectionScreen> {
   String _landmarkName(PoseLandmarkType type) {
     return type.toString().split('.').last.replaceAllMapped(
       RegExp(r'[A-Z]'),
-          (match) => ' ${match.group(0)}',
+      (match) => ' ${match.group(0)}',
     ).trim();
   }
 }
@@ -361,11 +373,11 @@ class MultiOverlayPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     if (results.isEmpty) return;
 
-    final iw = results.first.imageWidth;
-    final ih = results.first.imageHeight;
+    final int iw = results.first.imageWidth;
+    final int ih = results.first.imageHeight;
 
-    final imageAspect = iw / ih;
-    final canvasAspect = size.width / size.height;
+    final double imageAspect = iw / ih;
+    final double canvasAspect = size.width / size.height;
     double scaleX, scaleY;
     double offsetX = 0, offsetY = 0;
 
@@ -389,7 +401,7 @@ class MultiOverlayPainter extends CustomPainter {
   }
 
   void _drawConnections(Canvas canvas, PoseResult result, double scaleX, double scaleY, double offsetX, double offsetY) {
-    final paint = Paint()
+    final Paint paint = Paint()
       ..color = Colors.green.withOpacity(0.8)
       ..strokeWidth = 3
       ..strokeCap = StrokeCap.round;
@@ -424,9 +436,9 @@ class MultiOverlayPainter extends CustomPainter {
       [PoseLandmarkType.rightAnkle, PoseLandmarkType.rightFootIndex],
     ];
 
-    for (final c in connections) {
-      final start = result.getLandmark(c[0]);
-      final end = result.getLandmark(c[1]);
+    for (final List<PoseLandmarkType> c in connections) {
+      final PoseLandmark? start = result.getLandmark(c[0]);
+      final PoseLandmark? end = result.getLandmark(c[1]);
       if (start != null && end != null && start.visibility > 0.5 && end.visibility > 0.5) {
         canvas.drawLine(
           Offset(start.x * scaleX + offsetX, start.y * scaleY + offsetY),
@@ -437,13 +449,20 @@ class MultiOverlayPainter extends CustomPainter {
     }
   }
 
-  void _drawLandmarks(Canvas canvas, PoseResult result, double scaleX, double scaleY, double offsetX, double offsetY) {
-    for (final l in result.landmarks ?? const <PoseLandmark>[]) {
+  void _drawLandmarks(
+    Canvas canvas,
+    PoseResult result,
+    double scaleX,
+    double scaleY,
+    double offsetX,
+    double offsetY
+  ) {
+    for (final PoseLandmark l in result.landmarks ?? const <PoseLandmark>[]) {
       if (l.visibility > 0.5) {
-        final center = Offset(l.x * scaleX + offsetX, l.y * scaleY + offsetY);
-        final glow = Paint()..color = Colors.blue.withOpacity(0.3);
-        final point = Paint()..color = Colors.red;
-        final centerDot = Paint()..color = Colors.white;
+        final Offset center = Offset(l.x * scaleX + offsetX, l.y * scaleY + offsetY);
+        final Paint glow = Paint()..color = Colors.blue.withOpacity(0.3);
+        final Paint point = Paint()..color = Colors.red;
+        final Paint centerDot = Paint()..color = Colors.white;
         canvas.drawCircle(center, 8, glow);
         canvas.drawCircle(center, 5, point);
         canvas.drawCircle(center, 2, centerDot);
@@ -451,21 +470,28 @@ class MultiOverlayPainter extends CustomPainter {
     }
   }
 
-  void _drawBbox(Canvas canvas, PoseResult r, double scaleX, double scaleY, double offsetX, double offsetY) {
-    final boxPaint = Paint()
+  void _drawBbox(
+    Canvas canvas,
+    PoseResult r,
+    double scaleX,
+    double scaleY,
+    double offsetX,
+    double offsetY
+  ) {
+    final Paint boxPaint = Paint()
       ..color = Colors.orangeAccent.withOpacity(0.9)
       ..style = PaintingStyle.stroke
       ..strokeWidth = 3;
 
-    final fillPaint = Paint()
+    final Paint fillPaint = Paint()
       ..color = Colors.orangeAccent.withOpacity(0.08)
       ..style = PaintingStyle.fill;
 
-    final x1 = r.bboxPx.left * scaleX + offsetX;
-    final y1 = r.bboxPx.top * scaleY + offsetY;
-    final x2 = r.bboxPx.right * scaleX + offsetX;
-    final y2 = r.bboxPx.bottom * scaleY + offsetY;
-    final rect = Rect.fromLTRB(x1, y1, x2, y2);
+    final double x1 = r.bboxPx.left * scaleX + offsetX;
+    final double y1 = r.bboxPx.top * scaleY + offsetY;
+    final double x2 = r.bboxPx.right * scaleX + offsetX;
+    final double y2 = r.bboxPx.bottom * scaleY + offsetY;
+    final Rect rect = Rect.fromLTRB(x1, y1, x2, y2);
     canvas.drawRect(rect, fillPaint);
     canvas.drawRect(rect, boxPaint);
   }
