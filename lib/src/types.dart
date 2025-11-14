@@ -109,14 +109,14 @@ class RectPx {
   });
 }
 
-class PoseResult {
+class Pose {
   final RectPx bboxPx;
   final double score;
-  final List<PoseLandmark>? landmarks;
+  final List<PoseLandmark> landmarks;
   final int imageWidth;
   final int imageHeight;
 
-  const PoseResult({
+  const Pose({
     required this.bboxPx,
     required this.score,
     required this.landmarks,
@@ -141,7 +141,7 @@ class PoseResult {
     final String landmarksInfo = lm
         .map((l) => '${l.type.name}: (${l.x.toStringAsFixed(2)}, ${l.y.toStringAsFixed(2)}) vis=${l.visibility.toStringAsFixed(2)}')
         .join('\n');
-    return 'PoseResult(\n'
+    return 'Pose(\n'
         '  score=${score.toStringAsFixed(3)},\n'
         '  landmarks=${lm.length},\n'
         '  coords:\n$landmarksInfo\n)';

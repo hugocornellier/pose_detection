@@ -9,11 +9,12 @@ This package provides on-device, multi-person pose detection with minimal depend
 
 ```dart
 import 'dart:io';
+import 'dart:typed_data';
 import 'package:pose_detection_tflite/pose_detection_tflite.dart';
 
 Future main() async {
   // 1. initialize
-  final detector = PoseDetector();
+  final PoseDetector detector = PoseDetector();
   await detector.initialize(
     options: const PoseOptions(
       mode: PoseMode.boxesAndLandmarks,
@@ -22,16 +23,16 @@ Future main() async {
   );
 
   // 2. detect
-  final imageBytes = await File('path/to/image.jpg').readAsBytes();
-  final results = await detector.detect(imageBytes);
+  final Uint8List imageBytes = await File('path/to/image.jpg').readAsBytes();
+  final List<Pose> results = await detector.detect(imageBytes);
 
   // 3. access results
-  for (final pose in results) {
-    final bbox = pose.bboxPx;
+  for (final Pose pose in results) {
+    final RectPx bbox = pose.bboxPx;
     print('Bounding box: (${bbox.left}, ${bbox.top}) → (${bbox.right}, ${bbox.bottom})');
 
     if (pose.hasLandmarks) {
-      for (final lm in pose.landmarks) {
+      for (final PoseLandmark lm in pose.landmarks) {
         print('${lm.type}: (${lm.x.toStringAsFixed(1)}, ${lm.y.toStringAsFixed(1)}) vis=${lm.visibility.toStringAsFixed(2)}');
       }
     }

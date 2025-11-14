@@ -31,16 +31,16 @@ class PoseDetector {
     _isInitialized = false;
   }
 
-  Future<List<PoseResult>> detect(List<int> imageBytes) async {
+  Future<List<Pose>> detect(List<int> imageBytes) async {
     if (!_isInitialized) {
       throw StateError('PoseDetector not initialized. Call initialize() first.');
     }
     final img.Image? image = img.decodeImage(Uint8List.fromList(imageBytes));
-    if (image == null) return <PoseResult>[];
+    if (image == null) return <Pose>[];
     return detectOnImage(image);
   }
 
-  Future<List<PoseResult>> detectOnImage(img.Image image) async {
+  Future<List<Pose>> detectOnImage(img.Image image) async {
     if (!_isInitialized) {
       throw StateError('PoseDetector not initialized. Call initialize() first.');
     }
@@ -55,10 +55,10 @@ class PoseDetector {
     );
 
     if (_opts.mode == PoseMode.boxes) {
-      final List<PoseResult> out = <PoseResult>[];
+      final List<Pose> out = <Pose>[];
       for (final YoloDetection d in dets) {
         out.add(
-          PoseResult(
+          Pose(
             bboxPx: RectPx(
               left: d.bboxXYXY[0],
               top: d.bboxXYXY[1],
@@ -66,7 +66,7 @@ class PoseDetector {
               bottom: d.bboxXYXY[3],
             ),
             score: d.score,
-            landmarks: null,
+            landmarks: const <PoseLandmark>[],
             imageWidth: image.width,
             imageHeight: image.height,
           ),
@@ -75,7 +75,7 @@ class PoseDetector {
       return out;
     }
 
-    final List<PoseResult> results = <PoseResult>[];
+    final List<Pose> results = <Pose>[];
     for (final YoloDetection d in dets) {
       final int x1 = d.bboxXYXY[0].clamp(0.0, image.width.toDouble()).toInt();
       final int y1 = d.bboxXYXY[1].clamp(0.0, image.height.toDouble()).toInt();
@@ -123,7 +123,7 @@ class PoseDetector {
       }
 
       results.add(
-        PoseResult(
+        Pose(
           bboxPx: RectPx(
             left: d.bboxXYXY[0],
             top: d.bboxXYXY[1],

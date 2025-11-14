@@ -39,7 +39,7 @@ class _PoseDetectionScreenState extends State<PoseDetectionScreen> {
   bool _isInitialized = false;
   bool _isProcessing = false;
   File? _imageFile;
-  List<PoseResult> _results = [];
+  List<Pose> _results = [];
   String? _errorMessage;
 
   @override
@@ -90,7 +90,7 @@ class _PoseDetectionScreenState extends State<PoseDetectionScreen> {
       });
 
       final Uint8List bytes = await _imageFile!.readAsBytes();
-      final List<PoseResult> results = await _poseDetector.detect(bytes);
+      final List<Pose> results = await _poseDetector.detect(bytes);
 
       setState(() {
         _results = results;
@@ -284,7 +284,7 @@ class _PoseDetectionScreenState extends State<PoseDetectionScreen> {
 
   void _showPoseInfo() {
     if (_results.isEmpty) return;
-    final PoseResult first = _results.first;
+    final Pose first = _results.first;
 
     showModalBottomSheet(
       context: context,
@@ -307,7 +307,7 @@ class _PoseDetectionScreenState extends State<PoseDetectionScreen> {
     );
   }
 
-  List<Widget> _buildLandmarkListFor(PoseResult result) {
+  List<Widget> _buildLandmarkListFor(Pose result) {
     final List<PoseLandmark> lm = result.landmarks ?? const <PoseLandmark>[];
     return lm.map((landmark) {
       final Point pixel = landmark.toPixel(result.imageWidth, result.imageHeight);
@@ -347,7 +347,7 @@ class _PoseDetectionScreenState extends State<PoseDetectionScreen> {
 
 class PoseVisualizerWidget extends StatelessWidget {
   final File imageFile;
-  final List<PoseResult> results;
+  final List<Pose> results;
 
   const PoseVisualizerWidget({super.key, required this.imageFile, required this.results});
 
@@ -365,7 +365,7 @@ class PoseVisualizerWidget extends StatelessWidget {
 }
 
 class MultiOverlayPainter extends CustomPainter {
-  final List<PoseResult> results;
+  final List<Pose> results;
 
   MultiOverlayPainter({required this.results});
 
@@ -400,7 +400,7 @@ class MultiOverlayPainter extends CustomPainter {
     }
   }
 
-  void _drawConnections(Canvas canvas, PoseResult result, double scaleX, double scaleY, double offsetX, double offsetY) {
+  void _drawConnections(Canvas canvas, Pose result, double scaleX, double scaleY, double offsetX, double offsetY) {
     final Paint paint = Paint()
       ..color = Colors.green.withOpacity(0.8)
       ..strokeWidth = 3
@@ -451,7 +451,7 @@ class MultiOverlayPainter extends CustomPainter {
 
   void _drawLandmarks(
     Canvas canvas,
-    PoseResult result,
+    Pose result,
     double scaleX,
     double scaleY,
     double offsetX,
@@ -472,7 +472,7 @@ class MultiOverlayPainter extends CustomPainter {
 
   void _drawBbox(
     Canvas canvas,
-    PoseResult r,
+    Pose r,
     double scaleX,
     double scaleY,
     double offsetX,
