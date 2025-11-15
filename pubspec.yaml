@@ -25,6 +25,8 @@ dependencies:
 dev_dependencies:
   flutter_test:
     sdk: flutter
+  integration_test:
+    sdk: flutter
   flutter_lints: ^6.0.0
 
 flutter:
@@ -36,6 +38,13 @@ flutter:
     - assets/models/yolov8n_float32.tflite
     - assets/bin/libtensorflowlite_c-win.dll
     - assets/bin/libtensorflowlite_c-linux.so
+    - assets/samples/pose1.jpg
+    - assets/samples/pose2.jpg
+    - assets/samples/pose3.jpg
+    - assets/samples/pose4.jpg
+    - assets/samples/pose5.jpg
+    - assets/samples/pose6.jpg
+    - assets/samples/pose7.jpg
 
   plugin:
     platforms:

@@ -18,6 +18,16 @@ dependencies:
     path: ../
   flutter_colorpicker: ^1.1.0
   path_provider: ^2.1.5
+  camera: ^0.11.0+2
+  camera_macos: ^0.0.9
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  integration_test:
+    sdk: flutter
 
 flutter:
   uses-material-design: true
+  assets:
+    - assets/samples/

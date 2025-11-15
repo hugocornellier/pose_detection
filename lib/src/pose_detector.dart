@@ -48,9 +48,14 @@ class PoseDetector {
     if (!_isInitialized) {
       throw StateError('PoseDetector not initialized. Call initialize() first.');
     }
-    final img.Image? image = img.decodeImage(Uint8List.fromList(imageBytes));
-    if (image == null) return <Pose>[];
-    return detectOnImage(image);
+    try {
+      final img.Image? image = img.decodeImage(Uint8List.fromList(imageBytes));
+      if (image == null) return <Pose>[];
+      return detectOnImage(image);
+    } catch (e) {
+      // Return empty list if image decoding fails (invalid/corrupted image data)
+      return <Pose>[];
+    }
   }
 
   Future<List<Pose>> detectOnImage(img.Image image) async {
