@@ -33,7 +33,14 @@ class PoseDetectionScreen extends StatefulWidget {
 }
 
 class _PoseDetectionScreenState extends State<PoseDetectionScreen> {
-  final PoseDetector _poseDetector = PoseDetector();
+  final PoseDetector _poseDetector = PoseDetector(
+    mode: PoseMode.boxesAndLandmarks,
+    landmarkModel: PoseLandmarkModel.heavy,
+    detectorConf: 0.6,
+    detectorIou: 0.4,
+    maxDetections: 10,
+    minLandmarkScore: 0.5,
+  );
   final ImagePicker _picker = ImagePicker();
 
   bool _isInitialized = false;
@@ -55,16 +62,7 @@ class _PoseDetectionScreenState extends State<PoseDetectionScreen> {
     });
 
     try {
-      await _poseDetector.initialize(
-        options: const PoseOptions(
-          mode: PoseMode.boxesAndLandmarks,
-          landmarkModel: PoseLandmarkModel.heavy,
-          detectorConf: 0.6,
-          detectorIou: 0.4,
-          maxDetections: 10,
-          minLandmarkScore: 0.5,
-        ),
-      );
+      await _poseDetector.initialize();
       setState(() {
         _isInitialized = true;
         _isProcessing = false;
@@ -308,7 +306,7 @@ class _PoseDetectionScreenState extends State<PoseDetectionScreen> {
   }
 
   List<Widget> _buildLandmarkListFor(Pose result) {
-    final List<PoseLandmark> lm = result.landmarks ?? const <PoseLandmark>[];
+    final List<PoseLandmark> lm = result.landmarks;
     return lm.map((landmark) {
       final Point pixel = landmark.toPixel(result.imageWidth, result.imageHeight);
       return Card(
@@ -457,7 +455,7 @@ class MultiOverlayPainter extends CustomPainter {
     double offsetX,
     double offsetY
   ) {
-    for (final PoseLandmark l in result.landmarks ?? const <PoseLandmark>[]) {
+    for (final PoseLandmark l in result.landmarks) {
       if (l.visibility > 0.5) {
         final Offset center = Offset(l.x * scaleX + offsetX, l.y * scaleY + offsetY);
         final Paint glow = Paint()..color = Colors.blue.withOpacity(0.3);

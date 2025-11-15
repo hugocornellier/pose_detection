@@ -1,24 +1,6 @@
 enum PoseLandmarkModel { lite, full, heavy }
 enum PoseMode { boxes, boxesAndLandmarks }
 
-class PoseOptions {
-  final PoseMode mode;
-  final PoseLandmarkModel landmarkModel;
-  final double detectorConf;
-  final double detectorIou;
-  final int maxDetections;
-  final double minLandmarkScore;
-
-  const PoseOptions({
-    this.mode = PoseMode.boxesAndLandmarks,
-    this.landmarkModel = PoseLandmarkModel.heavy,
-    this.detectorConf = 0.5,
-    this.detectorIou = 0.45,
-    this.maxDetections = 10,
-    this.minLandmarkScore = 0.5,
-  });
-}
-
 class PoseLandmarks {
   final List<PoseLandmark> landmarks;
   final double score;

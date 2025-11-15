@@ -8,16 +8,29 @@ import 'pose_landmark_model.dart';
 class PoseDetector {
   final YoloV8PersonDetector _yolo = YoloV8PersonDetector();
   final PoseLandmarkModelRunner _lm = PoseLandmarkModelRunner();
-  late PoseOptions _opts;
+  final PoseMode mode;
+  final PoseLandmarkModel landmarkModel;
+  final double detectorConf;
+  final double detectorIou;
+  final int maxDetections;
+  final double minLandmarkScore;
   bool _isInitialized = false;
   img.Image? _canvasBuffer256;
 
-  Future<void> initialize({PoseOptions options = const PoseOptions()}) async {
+  PoseDetector({
+    this.mode = PoseMode.boxesAndLandmarks,
+    this.landmarkModel = PoseLandmarkModel.heavy,
+    this.detectorConf = 0.5,
+    this.detectorIou = 0.45,
+    this.maxDetections = 10,
+    this.minLandmarkScore = 0.5,
+  });
+
+  Future<void> initialize() async {
     if (_isInitialized) {
       await dispose();
     }
-    _opts = options;
-    await _lm.initialize(_opts.landmarkModel);
+    await _lm.initialize(landmarkModel);
     await _yolo.initialize();
     _isInitialized = true;
   }
@@ -47,14 +60,14 @@ class PoseDetector {
 
     final List<YoloDetection> dets = await _yolo.detectOnImage(
       image,
-      confThres: _opts.detectorConf,
-      iouThres: _opts.detectorIou,
+      confThres: detectorConf,
+      iouThres: detectorIou,
       topkPreNms: 100,
-      maxDet: _opts.maxDetections,
+      maxDet: maxDetections,
       personOnly: true,
     );
 
-    if (_opts.mode == PoseMode.boxes) {
+    if (mode == PoseMode.boxes) {
       final List<Pose> out = <Pose>[];
       for (final YoloDetection d in dets) {
         out.add(
@@ -99,7 +112,7 @@ class PoseDetector {
       final int dh = dwdh[1];
 
       final PoseLandmarks lms = await _lm.run(letter);
-      if (lms.score < _opts.minLandmarkScore) continue;
+      if (lms.score < minLandmarkScore) continue;
 
       final List<PoseLandmark> pts = <PoseLandmark>[];
       for (final PoseLandmark lm in lms.landmarks) {
