@@ -1,6 +1,18 @@
+/// BlazePose model variant for landmark extraction.
+///
+/// Controls the accuracy/performance trade-off:
+/// - [lite]: Fastest, good accuracy
+/// - [full]: Balanced speed/accuracy
+/// - [heavy]: Slowest, best accuracy
 enum PoseLandmarkModel { lite, full, heavy }
+
+/// Detection mode controlling the two-stage pipeline behavior.
+///
+/// - [boxes]: Fast detection returning only bounding boxes (Stage 1 only)
+/// - [boxesAndLandmarks]: Full pipeline returning boxes + 33 landmarks (both stages)
 enum PoseMode { boxes, boxesAndLandmarks }
 
+/// Collection of pose landmarks with confidence score (internal use).
 class PoseLandmarks {
   final List<PoseLandmark> landmarks;
   final double score;
@@ -11,11 +23,24 @@ class PoseLandmarks {
   });
 }
 
+/// A single body keypoint with 3D coordinates and visibility score.
+///
+/// Coordinates are in the original image space (pixels).
+/// The [z] coordinate represents depth relative to the body center (not absolute depth).
 class PoseLandmark {
+  /// The body part this landmark represents (nose, leftShoulder, etc.)
   final PoseLandmarkType type;
+
+  /// X coordinate in pixels (original image space)
   final double x;
+
+  /// Y coordinate in pixels (original image space)
   final double y;
+
+  /// Z coordinate representing depth relative to hips midpoint (not absolute depth)
   final double z;
+
+  /// Visibility/confidence score (0.0 to 1.0). Higher means more confident the landmark is visible.
   final double visibility;
 
   PoseLandmark({
@@ -26,14 +51,42 @@ class PoseLandmark {
     required this.visibility,
   });
 
+  /// Converts x coordinate to normalized range (0.0 to 1.0)
   double xNorm(int imageWidth) => (x / imageWidth).clamp(0.0, 1.0);
+
+  /// Converts y coordinate to normalized range (0.0 to 1.0)
   double yNorm(int imageHeight) => (y / imageHeight).clamp(0.0, 1.0);
 
+  /// Converts landmark coordinates to integer pixel point
   Point toPixel(int imageWidth, int imageHeight) {
     return Point(x.toInt(), y.toInt());
   }
 }
 
+/// Body part types for the 33 BlazePose landmarks.
+///
+/// Follows MediaPipe BlazePose topology with landmarks for face, torso, arms, and legs.
+///
+/// Available landmarks:
+/// - **Face**: [nose], [leftEyeInner], [leftEye], [leftEyeOuter], [rightEyeInner],
+///   [rightEye], [rightEyeOuter], [leftEar], [rightEar], [mouthLeft], [mouthRight]
+/// - **Torso**: [leftShoulder], [rightShoulder], [leftHip], [rightHip]
+/// - **Arms**: [leftElbow], [rightElbow], [leftWrist], [rightWrist]
+/// - **Hands**: [leftPinky], [rightPinky], [leftIndex], [rightIndex], [leftThumb], [rightThumb]
+/// - **Legs**: [leftKnee], [rightKnee], [leftAnkle], [rightAnkle]
+/// - **Feet**: [leftHeel], [rightHeel], [leftFootIndex], [rightFootIndex]
+///
+/// Example:
+/// ```dart
+/// final pose = poses.first;
+/// final nose = pose.getLandmark(PoseLandmarkType.nose);
+/// final leftWrist = pose.getLandmark(PoseLandmarkType.leftWrist);
+/// final rightAnkle = pose.getLandmark(PoseLandmarkType.rightAnkle);
+///
+/// if (nose != null) {
+///   print('Nose at (${nose.x}, ${nose.y}) with visibility ${nose.visibility}');
+/// }
+/// ```
 enum PoseLandmarkType {
   nose,
   leftEyeInner,
@@ -70,6 +123,7 @@ enum PoseLandmarkType {
   rightFootIndex,
 }
 
+/// 2D integer pixel coordinate.
 class Point {
   final int x;
   final int y;
@@ -77,10 +131,20 @@ class Point {
   Point(this.x, this.y);
 }
 
+/// Axis-aligned bounding box in pixel coordinates.
+///
+/// Coordinates are in the original image space (not normalized).
 class BoundingBox {
+  /// Left edge x-coordinate in pixels
   final double left;
+
+  /// Top edge y-coordinate in pixels
   final double top;
+
+  /// Right edge x-coordinate in pixels
   final double right;
+
+  /// Bottom edge y-coordinate in pixels
   final double bottom;
 
   const BoundingBox({
@@ -91,11 +155,41 @@ class BoundingBox {
   });
 }
 
+/// Detected person with bounding box and optional body landmarks.
+///
+/// This is the main result returned by [PoseDetector.detect()].
+///
+/// Contains:
+/// - [boundingBox]: Location of the detected person in the image
+/// - [score]: Confidence score from the person detector (0.0 to 1.0)
+/// - [landmarks]: List of 33 body keypoints (empty if [PoseMode.boxes])
+/// - [imageWidth] and [imageHeight]: Original image dimensions for coordinate reference
+///
+/// Example:
+/// ```dart
+/// final poses = await detector.detect(imageBytes);
+/// for (final pose in poses) {
+///   print('Person detected with confidence ${pose.score}');
+///   if (pose.hasLandmarks) {
+///     final nose = pose.getLandmark(PoseLandmarkType.nose);
+///     print('Nose at (${nose?.x}, ${nose?.y})');
+///   }
+/// }
+/// ```
 class Pose {
+  /// Bounding box of the detected person in pixel coordinates
   final BoundingBox boundingBox;
+
+  /// Confidence score from person detector (0.0 to 1.0)
   final double score;
+
+  /// List of 33 body landmarks. Empty if using [PoseMode.boxes].
   final List<PoseLandmark> landmarks;
+
+  /// Width of the original image in pixels
   final int imageWidth;
+
+  /// Height of the original image in pixels
   final int imageHeight;
 
   const Pose({

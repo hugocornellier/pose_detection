@@ -70,11 +70,11 @@ class YoloV8PersonDetector {
   }
 
   static List<int> _nms(
-      List<List<double>> boxes,
-      List<double> scores, {
-        double iouThres = 0.45,
-        int maxDet = 100,
-      }) {
+    List<List<double>> boxes,
+    List<double> scores, {
+    double iouThres = 0.45,
+    int maxDet = 100,
+  }) {
     if (boxes.isEmpty) return <int>[];
     final List<int> order = _argSortDesc(scores);
     final List<int> keep = <int>[];
@@ -113,17 +113,17 @@ class YoloV8PersonDetector {
   }
 
   static List<List<List<List<double>>>> _asNHWC4D(
-      Float32List flat,
-      int h,
-      int w,
-      ) {
+    Float32List flat,
+    int h,
+    int w,
+  ) {
     final out = List<List<List<List<double>>>>.filled(
       1,
       List.generate(
         h,
-            (_) => List.generate(
+          (_) => List.generate(
           w,
-              (_) => List<double>.filled(3, 0.0, growable: false),
+          (_) => List<double>.filled(3, 0.0, growable: false),
           growable: false,
         ),
         growable: false,
@@ -197,6 +197,7 @@ class YoloV8PersonDetector {
     if (out.isEmpty || out[0].length < 84) {
       throw StateError('Expected channels >=84');
     }
+
     final int channels = out[0].length;
     return out
         .map(

@@ -116,8 +116,8 @@ class HomeScreen extends StatelessWidget {
                       Text(
                         description,
                         style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                              color: Colors.grey[600],
-                            ),
+                          color: Colors.grey[600],
+                        ),
                       ),
                     ],
                   ),
@@ -262,13 +262,12 @@ class _StillImageScreenState extends State<StillImageScreen> {
         ],
       ),
       body: _buildBody(),
-      floatingActionButton: _isInitialized && !_isProcessing
-          ? FloatingActionButton.extended(
-        onPressed: _showImageSourceDialog,
-        icon: const Icon(Icons.add_photo_alternate),
-        label: const Text('Select Image'),
-      )
-          : null,
+      floatingActionButton: _isInitialized && !_isProcessing ?
+        FloatingActionButton.extended(
+          onPressed: _showImageSourceDialog,
+          icon: const Icon(Icons.add_photo_alternate),
+          label: const Text('Select Image'),
+        ) : null,
     );
   }
 
@@ -315,8 +314,10 @@ class _StillImageScreenState extends State<StillImageScreen> {
           children: [
             Icon(Icons.person_outline, size: 100, color: Colors.grey[400]),
             const SizedBox(height: 24),
-            Text('Select an image to detect pose',
-                style: TextStyle(fontSize: 18, color: Colors.grey[600])),
+            Text(
+              'Select an image to detect pose',
+              style: TextStyle(fontSize: 18, color: Colors.grey[600])
+            ),
             const SizedBox(height: 16),
             ElevatedButton.icon(
               onPressed: _showImageSourceDialog,
@@ -372,11 +373,10 @@ class _StillImageScreenState extends State<StillImageScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('Detections: ${_results.length} ✓',
-                          style: Theme.of(context)
-                              .textTheme
-                              .titleLarge
-                              ?.copyWith(color: Colors.green, fontWeight: FontWeight.bold)),
+                      Text(
+                        'Detections: ${_results.length} ✓',
+                        style: Theme.of(context).textTheme.titleLarge
+                            ?.copyWith(color: Colors.green, fontWeight: FontWeight.bold)),
                     ],
                   ),
                 ),
@@ -615,9 +615,9 @@ class CameraScreen extends StatefulWidget {
 class _CameraScreenState extends State<CameraScreen> {
   CameraMacOSController? _cameraController;
   final PoseDetector _poseDetector = PoseDetector(
-    mode: PoseMode.boxesAndLandmarks,
+    mode: PoseMode.boxes,
     landmarkModel: PoseLandmarkModel.lite, // Use lite for better real-time performance
-    detectorConf: 0.5,
+    detectorConf: 0.7,
     detectorIou: 0.4,
     maxDetections: 5,
     minLandmarkScore: 0.5,
@@ -628,7 +628,7 @@ class _CameraScreenState extends State<CameraScreen> {
   List<Pose> _currentPoses = [];
   String? _errorMessage;
   int _frameCount = 0;
-  static const int _frameSkip = 5; // Process every 5th frame for performance
+  static const int _frameSkip = 10; // Process every 5th frame for performance
   Size? _cameraSize;
 
   @override
