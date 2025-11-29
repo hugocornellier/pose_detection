@@ -4,7 +4,6 @@ import 'package:image/image.dart' as img;
 import 'package:tflite_flutter_custom/tflite_flutter.dart';
 import 'image_utils.dart';
 
-
 class YoloDetection {
   final int cls;
   final double score;
@@ -28,9 +27,11 @@ class YoloV8PersonDetector {
   img.Image? _canvasBuffer;
 
   Future<void> initialize() async {
-    const String assetPath = 'packages/pose_detection_tflite/assets/models/yolov8n_float32.tflite';
+    const String assetPath =
+        'packages/pose_detection_tflite/assets/models/yolov8n_float32.tflite';
     if (_isInitialized) await dispose();
-    final Interpreter itp = await Interpreter.fromAsset(assetPath, options: InterpreterOptions());
+    final Interpreter itp =
+        await Interpreter.fromAsset(assetPath, options: InterpreterOptions());
     _interpreter = itp;
     itp.allocateTensors();
 
@@ -121,7 +122,7 @@ class YoloV8PersonDetector {
       1,
       List.generate(
         h,
-          (_) => List.generate(
+        (_) => List.generate(
           w,
           (_) => List<double>.filled(3, 0.0, growable: false),
           growable: false,
@@ -148,7 +149,7 @@ class YoloV8PersonDetector {
     final int rows = a.length, cols = a[0].length;
     final List<List<double>> out = List.generate(
       cols,
-          (_) => List<double>.filled(rows, 0.0),
+      (_) => List<double>.filled(rows, 0.0),
     );
     for (int r = 0; r < rows; r++) {
       final List<double> row = a[r];
@@ -171,7 +172,7 @@ class YoloV8PersonDetector {
     return raw
         .map<List<double>>(
           (e) => (e as List).map((v) => (v as num).toDouble()).toList(),
-    )
+        )
         .toList();
   }
 
@@ -202,11 +203,11 @@ class YoloV8PersonDetector {
     return out
         .map(
           (row) => {
-        'xywh': row.sublist(0, 4),
-        'rest': row.sublist(4),
-        'C': channels,
-      },
-    )
+            'xywh': row.sublist(0, 4),
+            'rest': row.sublist(4),
+            'C': channels,
+          },
+        )
         .toList();
   }
 
@@ -226,13 +227,13 @@ class YoloV8PersonDetector {
   }
 
   Future<List<YoloDetection>> detectOnImage(
-      img.Image image, {
-        double confThres = 0.35,
-        double iouThres = 0.4,
-        int topkPreNms = 100,
-        int maxDet = 10,
-        bool personOnly = true,
-      }) async {
+    img.Image image, {
+    double confThres = 0.35,
+    double iouThres = 0.4,
+    int topkPreNms = 100,
+    int maxDet = 10,
+    bool personOnly = true,
+  }) async {
     if (!_isInitialized || _interpreter == null) {
       throw StateError('YoloV8PersonDetector not initialized.');
     }
@@ -264,7 +265,7 @@ class YoloV8PersonDetector {
     }
 
     final List<List<List<List<double>>>> input4d =
-    _asNHWC4D(flatInput, _inH, _inW);
+        _asNHWC4D(flatInput, _inH, _inW);
 
     final int inputCount = _interpreter!.getInputTensors().length;
     final List<Object> inputs = List<Object>.filled(
@@ -281,9 +282,9 @@ class YoloV8PersonDetector {
       if (shape.length == 3) {
         buf = List.generate(
           shape[0],
-              (_) => List.generate(
+          (_) => List.generate(
             shape[1],
-                (_) => List<double>.filled(shape[2], 0.0, growable: false),
+            (_) => List<double>.filled(shape[2], 0.0, growable: false),
             growable: false,
           ),
           growable: false,
@@ -291,7 +292,7 @@ class YoloV8PersonDetector {
       } else if (shape.length == 2) {
         buf = List.generate(
           shape[0],
-              (_) => List<double>.filled(shape[1], 0.0, growable: false),
+          (_) => List<double>.filled(shape[1], 0.0, growable: false),
           growable: false,
         );
       } else {
@@ -311,7 +312,7 @@ class YoloV8PersonDetector {
     }
 
     final List<Map<String, dynamic>> decoded =
-    _decodeAnyYoloOutputs(outputs.values.toList());
+        _decodeAnyYoloOutputs(outputs.values.toList());
     final List<double> scores = <double>[];
     final List<int> clsIds = <int>[];
     final List<List<double>> xywhs = <List<double>>[];
@@ -319,9 +320,9 @@ class YoloV8PersonDetector {
     for (final Map<String, dynamic> row in decoded) {
       final int C = row['C'] as int;
       final List<double> xywh =
-      (row['xywh'] as List).map((v) => (v as num).toDouble()).toList();
+          (row['xywh'] as List).map((v) => (v as num).toDouble()).toList();
       final List<double> rest =
-      (row['rest'] as List).map((v) => (v as num).toDouble()).toList();
+          (row['rest'] as List).map((v) => (v as num).toDouble()).toList();
 
       if (C == 84) {
         int argMax = 0;
@@ -392,23 +393,23 @@ class YoloV8PersonDetector {
 
     if (topkPreNms > 0 && keptScore.length > topkPreNms) {
       final List<int> ord = _argSortDesc(keptScore).take(topkPreNms).toList();
-      final List<List<double>> _boxes = <List<double>>[];
-      final List<double> _scores = <double>[];
-      final List<int> _cls = <int>[];
+      final List<List<double>> sortedBoxes = <List<double>>[];
+      final List<double> sortedScores = <double>[];
+      final List<int> sortedCls = <int>[];
       for (final int i in ord) {
-        _boxes.add(boxes[i]);
-        _scores.add(keptScore[i]);
-        _cls.add(keptCls[i]);
+        sortedBoxes.add(boxes[i]);
+        sortedScores.add(keptScore[i]);
+        sortedCls.add(keptCls[i]);
       }
       boxes
         ..clear()
-        ..addAll(_boxes);
+        ..addAll(sortedBoxes);
       keptScore
         ..clear()
-        ..addAll(_scores);
+        ..addAll(sortedScores);
       keptCls
         ..clear()
-        ..addAll(_cls);
+        ..addAll(sortedCls);
     }
 
     if (personOnly) {
@@ -434,7 +435,7 @@ class YoloV8PersonDetector {
     }
 
     final List<int> keep =
-    _nms(boxes, keptScore, iouThres: iouThres, maxDet: maxDet);
+        _nms(boxes, keptScore, iouThres: iouThres, maxDet: maxDet);
     final List<YoloDetection> out = <YoloDetection>[];
     for (final int i in keep) {
       out.add(

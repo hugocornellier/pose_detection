@@ -26,16 +26,22 @@ class ImageUtils {
     );
     final img.Image canvas = reuseCanvas ?? img.Image(width: tw, height: th);
     if (canvas.width != tw || canvas.height != th) {
+      final String reuseDims = '${canvas.width}x${canvas.height}';
+      final String targetDims = '${tw}x$th';
       throw ArgumentError(
-          'Reuse canvas dimensions (${canvas.width}x${canvas.height}) '
-              'do not match target dimensions (${tw}x${th})'
+        'Reuse canvas dimensions ($reuseDims) '
+        'do not match target dimensions ($targetDims)',
       );
     }
     img.fill(canvas, color: img.ColorRgb8(114, 114, 114));
     img.compositeImage(canvas, resized, dstX: dw, dstY: dh);
 
-    ratioOut..clear()..add(r);
-    dwdhOut..clear()..addAll([dw, dh]);
+    ratioOut
+      ..clear()
+      ..add(r);
+    dwdhOut
+      ..clear()
+      ..addAll([dw, dh]);
     return canvas;
   }
 
@@ -45,7 +51,8 @@ class ImageUtils {
     List<int> dwdhOut, {
     img.Image? reuseCanvas,
   }) {
-    return letterbox(src, 256, 256, ratioOut, dwdhOut, reuseCanvas: reuseCanvas);
+    return letterbox(src, 256, 256, ratioOut, dwdhOut,
+        reuseCanvas: reuseCanvas);
   }
 
   static List<double> scaleFromLetterbox(
@@ -68,19 +75,19 @@ class ImageUtils {
     List<List<List<List<double>>>>? reuse,
   }) {
     final List<List<List<List<double>>>> out = reuse ??
-      List.generate(
-        1,
-        (_) => List.generate(
-          height,
+        List.generate(
+          1,
           (_) => List.generate(
-            width,
-            (_) => List<double>.filled(3, 0.0),
+            height,
+            (_) => List.generate(
+              width,
+              (_) => List<double>.filled(3, 0.0),
+              growable: false,
+            ),
             growable: false,
           ),
           growable: false,
-        ),
-        growable: false,
-      );
+        );
 
     for (int y = 0; y < height; y++) {
       for (int x = 0; x < width; x++) {

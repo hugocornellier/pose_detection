@@ -116,8 +116,8 @@ class HomeScreen extends StatelessWidget {
                       Text(
                         description,
                         style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          color: Colors.grey[600],
-                        ),
+                              color: Colors.grey[600],
+                            ),
                       ),
                     ],
                   ),
@@ -262,12 +262,13 @@ class _StillImageScreenState extends State<StillImageScreen> {
         ],
       ),
       body: _buildBody(),
-      floatingActionButton: _isInitialized && !_isProcessing ?
-        FloatingActionButton.extended(
-          onPressed: _showImageSourceDialog,
-          icon: const Icon(Icons.add_photo_alternate),
-          label: const Text('Select Image'),
-        ) : null,
+      floatingActionButton: _isInitialized && !_isProcessing
+          ? FloatingActionButton.extended(
+              onPressed: _showImageSourceDialog,
+              icon: const Icon(Icons.add_photo_alternate),
+              label: const Text('Select Image'),
+            )
+          : null,
     );
   }
 
@@ -314,10 +315,8 @@ class _StillImageScreenState extends State<StillImageScreen> {
           children: [
             Icon(Icons.person_outline, size: 100, color: Colors.grey[400]),
             const SizedBox(height: 24),
-            Text(
-              'Select an image to detect pose',
-              style: TextStyle(fontSize: 18, color: Colors.grey[600])
-            ),
+            Text('Select an image to detect pose',
+                style: TextStyle(fontSize: 18, color: Colors.grey[600])),
             const SizedBox(height: 16),
             ElevatedButton.icon(
               onPressed: _showImageSourceDialog,
@@ -373,10 +372,13 @@ class _StillImageScreenState extends State<StillImageScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        'Detections: ${_results.length} ✓',
-                        style: Theme.of(context).textTheme.titleLarge
-                            ?.copyWith(color: Colors.green, fontWeight: FontWeight.bold)),
+                      Text('Detections: ${_results.length} ✓',
+                          style: Theme.of(context)
+                              .textTheme
+                              .titleLarge
+                              ?.copyWith(
+                                  color: Colors.green,
+                                  fontWeight: FontWeight.bold)),
                     ],
                   ),
                 ),
@@ -415,27 +417,22 @@ class _StillImageScreenState extends State<StillImageScreen> {
   List<Widget> _buildLandmarkListFor(Pose result) {
     final List<PoseLandmark> lm = result.landmarks;
     return lm.map((landmark) {
-      final Point pixel = landmark.toPixel(result.imageWidth, result.imageHeight);
+      final Point pixel =
+          landmark.toPixel(result.imageWidth, result.imageHeight);
       return Card(
         margin: const EdgeInsets.only(bottom: 8),
         child: ListTile(
           leading: CircleAvatar(
-            backgroundColor: landmark.visibility > 0.5
-                ? Colors.green
-                : Colors.orange,
-            child: Text(
-              landmark.type.index.toString(),
-              style: const TextStyle(fontSize: 12)
-            ),
+            backgroundColor:
+                landmark.visibility > 0.5 ? Colors.green : Colors.orange,
+            child: Text(landmark.type.index.toString(),
+                style: const TextStyle(fontSize: 12)),
           ),
-          title: Text(
-            _landmarkName(landmark.type),
-            style: const TextStyle(fontWeight: FontWeight.w500)
-          ),
+          title: Text(_landmarkName(landmark.type),
+              style: const TextStyle(fontWeight: FontWeight.w500)),
           subtitle: Text(''
-            'Position: (${pixel.x}, ${pixel.y})\n'
-            'Visibility: ${(landmark.visibility * 100).toStringAsFixed(0)}%'
-          ),
+              'Position: (${pixel.x}, ${pixel.y})\n'
+              'Visibility: ${(landmark.visibility * 100).toStringAsFixed(0)}%'),
           isThreeLine: true,
         ),
       );
@@ -443,10 +440,15 @@ class _StillImageScreenState extends State<StillImageScreen> {
   }
 
   String _landmarkName(PoseLandmarkType type) {
-    return type.toString().split('.').last.replaceAllMapped(
-      RegExp(r'[A-Z]'),
-      (match) => ' ${match.group(0)}',
-    ).trim();
+    return type
+        .toString()
+        .split('.')
+        .last
+        .replaceAllMapped(
+          RegExp(r'[A-Z]'),
+          (match) => ' ${match.group(0)}',
+        )
+        .trim();
   }
 }
 
@@ -454,7 +456,8 @@ class PoseVisualizerWidget extends StatelessWidget {
   final File imageFile;
   final List<Pose> results;
 
-  const PoseVisualizerWidget({super.key, required this.imageFile, required this.results});
+  const PoseVisualizerWidget(
+      {super.key, required this.imageFile, required this.results});
 
   @override
   Widget build(BuildContext context) {
@@ -462,7 +465,9 @@ class PoseVisualizerWidget extends StatelessWidget {
       return Stack(
         children: [
           Image.file(imageFile, fit: BoxFit.contain),
-          Positioned.fill(child: CustomPaint(painter: MultiOverlayPainter(results: results))),
+          Positioned.fill(
+              child:
+                  CustomPaint(painter: MultiOverlayPainter(results: results))),
         ],
       );
     });
@@ -505,46 +510,21 @@ class MultiOverlayPainter extends CustomPainter {
     }
   }
 
-  void _drawConnections(Canvas canvas, Pose result, double scaleX, double scaleY, double offsetX, double offsetY) {
+  void _drawConnections(Canvas canvas, Pose result, double scaleX,
+      double scaleY, double offsetX, double offsetY) {
     final Paint paint = Paint()
-      ..color = Colors.green.withOpacity(0.8)
+      ..color = Colors.green.withValues(alpha: 0.8)
       ..strokeWidth = 3
       ..strokeCap = StrokeCap.round;
 
-    final connections = [
-      [PoseLandmarkType.leftEye, PoseLandmarkType.nose],
-      [PoseLandmarkType.rightEye, PoseLandmarkType.nose],
-      [PoseLandmarkType.leftEye, PoseLandmarkType.leftEar],
-      [PoseLandmarkType.rightEye, PoseLandmarkType.rightEar],
-      [PoseLandmarkType.mouthLeft, PoseLandmarkType.mouthRight],
-      [PoseLandmarkType.leftShoulder, PoseLandmarkType.rightShoulder],
-      [PoseLandmarkType.leftShoulder, PoseLandmarkType.leftHip],
-      [PoseLandmarkType.rightShoulder, PoseLandmarkType.rightHip],
-      [PoseLandmarkType.leftHip, PoseLandmarkType.rightHip],
-      [PoseLandmarkType.leftShoulder, PoseLandmarkType.leftElbow],
-      [PoseLandmarkType.leftElbow, PoseLandmarkType.leftWrist],
-      [PoseLandmarkType.leftWrist, PoseLandmarkType.leftPinky],
-      [PoseLandmarkType.leftWrist, PoseLandmarkType.leftIndex],
-      [PoseLandmarkType.leftWrist, PoseLandmarkType.leftThumb],
-      [PoseLandmarkType.rightShoulder, PoseLandmarkType.rightElbow],
-      [PoseLandmarkType.rightElbow, PoseLandmarkType.rightWrist],
-      [PoseLandmarkType.rightWrist, PoseLandmarkType.rightPinky],
-      [PoseLandmarkType.rightWrist, PoseLandmarkType.rightIndex],
-      [PoseLandmarkType.rightWrist, PoseLandmarkType.rightThumb],
-      [PoseLandmarkType.leftHip, PoseLandmarkType.leftKnee],
-      [PoseLandmarkType.leftKnee, PoseLandmarkType.leftAnkle],
-      [PoseLandmarkType.leftAnkle, PoseLandmarkType.leftHeel],
-      [PoseLandmarkType.leftAnkle, PoseLandmarkType.leftFootIndex],
-      [PoseLandmarkType.rightHip, PoseLandmarkType.rightKnee],
-      [PoseLandmarkType.rightKnee, PoseLandmarkType.rightAnkle],
-      [PoseLandmarkType.rightAnkle, PoseLandmarkType.rightHeel],
-      [PoseLandmarkType.rightAnkle, PoseLandmarkType.rightFootIndex],
-    ];
-
-    for (final List<PoseLandmarkType> c in connections) {
+    // Use the predefined skeleton connections from the package
+    for (final List<PoseLandmarkType> c in poseLandmarkConnections) {
       final PoseLandmark? start = result.getLandmark(c[0]);
       final PoseLandmark? end = result.getLandmark(c[1]);
-      if (start != null && end != null && start.visibility > 0.5 && end.visibility > 0.5) {
+      if (start != null &&
+          end != null &&
+          start.visibility > 0.5 &&
+          end.visibility > 0.5) {
         canvas.drawLine(
           Offset(start.x * scaleX + offsetX, start.y * scaleY + offsetY),
           Offset(end.x * scaleX + offsetX, end.y * scaleY + offsetY),
@@ -554,18 +534,13 @@ class MultiOverlayPainter extends CustomPainter {
     }
   }
 
-  void _drawLandmarks(
-    Canvas canvas,
-    Pose result,
-    double scaleX,
-    double scaleY,
-    double offsetX,
-    double offsetY
-  ) {
+  void _drawLandmarks(Canvas canvas, Pose result, double scaleX, double scaleY,
+      double offsetX, double offsetY) {
     for (final PoseLandmark l in result.landmarks) {
       if (l.visibility > 0.5) {
-        final Offset center = Offset(l.x * scaleX + offsetX, l.y * scaleY + offsetY);
-        final Paint glow = Paint()..color = Colors.blue.withOpacity(0.3);
+        final Offset center =
+            Offset(l.x * scaleX + offsetX, l.y * scaleY + offsetY);
+        final Paint glow = Paint()..color = Colors.blue.withValues(alpha: 0.3);
         final Paint point = Paint()..color = Colors.red;
         final Paint centerDot = Paint()..color = Colors.white;
         canvas.drawCircle(center, 8, glow);
@@ -575,21 +550,15 @@ class MultiOverlayPainter extends CustomPainter {
     }
   }
 
-  void _drawBbox(
-    Canvas canvas,
-    Pose r,
-    double scaleX,
-    double scaleY,
-    double offsetX,
-    double offsetY
-  ) {
+  void _drawBbox(Canvas canvas, Pose r, double scaleX, double scaleY,
+      double offsetX, double offsetY) {
     final Paint boxPaint = Paint()
-      ..color = Colors.orangeAccent.withOpacity(0.9)
+      ..color = Colors.orangeAccent.withValues(alpha: 0.9)
       ..style = PaintingStyle.stroke
       ..strokeWidth = 3;
 
     final Paint fillPaint = Paint()
-      ..color = Colors.orangeAccent.withOpacity(0.08)
+      ..color = Colors.orangeAccent.withValues(alpha: 0.08)
       ..style = PaintingStyle.fill;
 
     final double x1 = r.boundingBox.left * scaleX + offsetX;
@@ -616,7 +585,8 @@ class _CameraScreenState extends State<CameraScreen> {
   CameraMacOSController? _cameraController;
   final PoseDetector _poseDetector = PoseDetector(
     mode: PoseMode.boxes,
-    landmarkModel: PoseLandmarkModel.lite, // Use lite for better real-time performance
+    landmarkModel:
+        PoseLandmarkModel.lite, // Use lite for better real-time performance
     detectorConf: 0.7,
     detectorIou: 0.4,
     maxDetections: 5,
@@ -685,7 +655,8 @@ class _CameraScreenState extends State<CameraScreen> {
       // Store camera size from image data
       if (_cameraSize == null) {
         setState(() {
-          _cameraSize = Size(imageData.width.toDouble(), imageData.height.toDouble());
+          _cameraSize =
+              Size(imageData.width.toDouble(), imageData.height.toDouble());
         });
       }
 
@@ -875,46 +846,21 @@ class CameraPoseOverlayPainter extends CustomPainter {
     }
   }
 
-  void _drawConnections(Canvas canvas, Pose pose, double scaleX, double scaleY, double offsetX, double offsetY) {
+  void _drawConnections(Canvas canvas, Pose pose, double scaleX, double scaleY,
+      double offsetX, double offsetY) {
     final Paint paint = Paint()
-      ..color = Colors.green.withOpacity(0.8)
+      ..color = Colors.green.withValues(alpha: 0.8)
       ..strokeWidth = 3
       ..strokeCap = StrokeCap.round;
 
-    final connections = [
-      [PoseLandmarkType.leftEye, PoseLandmarkType.nose],
-      [PoseLandmarkType.rightEye, PoseLandmarkType.nose],
-      [PoseLandmarkType.leftEye, PoseLandmarkType.leftEar],
-      [PoseLandmarkType.rightEye, PoseLandmarkType.rightEar],
-      [PoseLandmarkType.mouthLeft, PoseLandmarkType.mouthRight],
-      [PoseLandmarkType.leftShoulder, PoseLandmarkType.rightShoulder],
-      [PoseLandmarkType.leftShoulder, PoseLandmarkType.leftHip],
-      [PoseLandmarkType.rightShoulder, PoseLandmarkType.rightHip],
-      [PoseLandmarkType.leftHip, PoseLandmarkType.rightHip],
-      [PoseLandmarkType.leftShoulder, PoseLandmarkType.leftElbow],
-      [PoseLandmarkType.leftElbow, PoseLandmarkType.leftWrist],
-      [PoseLandmarkType.leftWrist, PoseLandmarkType.leftPinky],
-      [PoseLandmarkType.leftWrist, PoseLandmarkType.leftIndex],
-      [PoseLandmarkType.leftWrist, PoseLandmarkType.leftThumb],
-      [PoseLandmarkType.rightShoulder, PoseLandmarkType.rightElbow],
-      [PoseLandmarkType.rightElbow, PoseLandmarkType.rightWrist],
-      [PoseLandmarkType.rightWrist, PoseLandmarkType.rightPinky],
-      [PoseLandmarkType.rightWrist, PoseLandmarkType.rightIndex],
-      [PoseLandmarkType.rightWrist, PoseLandmarkType.rightThumb],
-      [PoseLandmarkType.leftHip, PoseLandmarkType.leftKnee],
-      [PoseLandmarkType.leftKnee, PoseLandmarkType.leftAnkle],
-      [PoseLandmarkType.leftAnkle, PoseLandmarkType.leftHeel],
-      [PoseLandmarkType.leftAnkle, PoseLandmarkType.leftFootIndex],
-      [PoseLandmarkType.rightHip, PoseLandmarkType.rightKnee],
-      [PoseLandmarkType.rightKnee, PoseLandmarkType.rightAnkle],
-      [PoseLandmarkType.rightAnkle, PoseLandmarkType.rightHeel],
-      [PoseLandmarkType.rightAnkle, PoseLandmarkType.rightFootIndex],
-    ];
-
-    for (final List<PoseLandmarkType> c in connections) {
+    // Use the predefined skeleton connections from the package
+    for (final List<PoseLandmarkType> c in poseLandmarkConnections) {
       final PoseLandmark? start = pose.getLandmark(c[0]);
       final PoseLandmark? end = pose.getLandmark(c[1]);
-      if (start != null && end != null && start.visibility > 0.5 && end.visibility > 0.5) {
+      if (start != null &&
+          end != null &&
+          start.visibility > 0.5 &&
+          end.visibility > 0.5) {
         canvas.drawLine(
           Offset(start.x * scaleX + offsetX, start.y * scaleY + offsetY),
           Offset(end.x * scaleX + offsetX, end.y * scaleY + offsetY),
@@ -924,18 +870,13 @@ class CameraPoseOverlayPainter extends CustomPainter {
     }
   }
 
-  void _drawLandmarks(
-    Canvas canvas,
-    Pose pose,
-    double scaleX,
-    double scaleY,
-    double offsetX,
-    double offsetY
-  ) {
+  void _drawLandmarks(Canvas canvas, Pose pose, double scaleX, double scaleY,
+      double offsetX, double offsetY) {
     for (final PoseLandmark l in pose.landmarks) {
       if (l.visibility > 0.5) {
-        final Offset center = Offset(l.x * scaleX + offsetX, l.y * scaleY + offsetY);
-        final Paint glow = Paint()..color = Colors.blue.withOpacity(0.3);
+        final Offset center =
+            Offset(l.x * scaleX + offsetX, l.y * scaleY + offsetY);
+        final Paint glow = Paint()..color = Colors.blue.withValues(alpha: 0.3);
         final Paint point = Paint()..color = Colors.red;
         final Paint centerDot = Paint()..color = Colors.white;
         canvas.drawCircle(center, 8, glow);
@@ -945,21 +886,15 @@ class CameraPoseOverlayPainter extends CustomPainter {
     }
   }
 
-  void _drawBbox(
-    Canvas canvas,
-    Pose pose,
-    double scaleX,
-    double scaleY,
-    double offsetX,
-    double offsetY
-  ) {
+  void _drawBbox(Canvas canvas, Pose pose, double scaleX, double scaleY,
+      double offsetX, double offsetY) {
     final Paint boxPaint = Paint()
-      ..color = Colors.orangeAccent.withOpacity(0.9)
+      ..color = Colors.orangeAccent.withValues(alpha: 0.9)
       ..style = PaintingStyle.stroke
       ..strokeWidth = 3;
 
     final Paint fillPaint = Paint()
-      ..color = Colors.orangeAccent.withOpacity(0.08)
+      ..color = Colors.orangeAccent.withValues(alpha: 0.08)
       ..style = PaintingStyle.fill;
 
     final double x1 = pose.boundingBox.left * scaleX + offsetX;

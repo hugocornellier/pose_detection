@@ -17,19 +17,25 @@ Future main() async {
   // 3. access results
   for (final Pose pose in results) {
     final BoundingBox bbox = pose.boundingBox;
-    print('Bounding box: (${bbox.left}, ${bbox.top}) → (${bbox.right}, ${bbox.bottom})');
+    stdout.writeln(
+        'Bounding box: (${bbox.left}, ${bbox.top}) → (${bbox.right}, ${bbox.bottom})');
 
     if (pose.hasLandmarks) {
       // iterate through landmarks
       for (final PoseLandmark lm in pose.landmarks) {
-        print('${lm.type}: (${lm.x.toStringAsFixed(1)}, ${lm.y.toStringAsFixed(1)}) vis=${lm.visibility.toStringAsFixed(2)}');
+        stdout.writeln(
+          '${lm.type}: (${lm.x.toStringAsFixed(1)}, ${lm.y.toStringAsFixed(1)}) '
+          'vis=${lm.visibility.toStringAsFixed(2)}',
+        );
       }
 
       // access individual landmarks
       // see "Pose Landmark Types" section in README for full list of landmarks
-      final PoseLandmark? leftKnee = pose.getLandmark(PoseLandmarkType.leftKnee);
+      final PoseLandmark? leftKnee =
+          pose.getLandmark(PoseLandmarkType.leftKnee);
       if (leftKnee != null) {
-        print('Left knee visibility: ${leftKnee.visibility.toStringAsFixed(2)}');
+        stdout.writeln(
+            'Left knee visibility: ${leftKnee.visibility.toStringAsFixed(2)}');
       }
     }
   }

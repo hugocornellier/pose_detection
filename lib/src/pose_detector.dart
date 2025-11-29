@@ -129,7 +129,8 @@ class PoseDetector {
   /// Throws [StateError] if called before [initialize].
   Future<List<Pose>> detect(List<int> imageBytes) async {
     if (!_isInitialized) {
-      throw StateError('PoseDetector not initialized. Call initialize() first.');
+      throw StateError(
+          'PoseDetector not initialized. Call initialize() first.');
     }
     try {
       final img.Image? image = img.decodeImage(Uint8List.fromList(imageBytes));
@@ -159,7 +160,8 @@ class PoseDetector {
   /// Throws [StateError] if called before [initialize].
   Future<List<Pose>> detectOnImage(img.Image image) async {
     if (!_isInitialized) {
-      throw StateError('PoseDetector not initialized. Call initialize() first.');
+      throw StateError(
+          'PoseDetector not initialized. Call initialize() first.');
     }
 
     final List<YoloDetection> dets = await _yolo.detectOnImage(
@@ -201,16 +203,13 @@ class PoseDetector {
       final int cw = (x2 - x1).clamp(1, image.width);
       final int ch = (y2 - y1).clamp(1, image.height);
 
-      final img.Image crop = img.copyCrop(image, x: x1, y: y1, width: cw, height: ch);
+      final img.Image crop =
+          img.copyCrop(image, x: x1, y: y1, width: cw, height: ch);
       final List<double> ratio = <double>[];
       final List<int> dwdh = <int>[];
       _canvasBuffer256 ??= img.Image(width: 256, height: 256);
-      final img.Image letter = ImageUtils.letterbox256(
-        crop,
-        ratio,
-        dwdh,
-        reuseCanvas: _canvasBuffer256
-      );
+      final img.Image letter = ImageUtils.letterbox256(crop, ratio, dwdh,
+          reuseCanvas: _canvasBuffer256);
       final double r = ratio.first;
       final int dw = dwdh[0];
       final int dh = dwdh[1];
@@ -224,10 +223,10 @@ class PoseDetector {
         final double yp = lm.y * 256.0;
         final double xContent = (xp - dw) / r;
         final double yContent = (yp - dh) / r;
-        final double xOrig = (x1.toDouble() + xContent)
-            .clamp(0.0, image.width.toDouble());
-        final double yOrig = (y1.toDouble() + yContent)
-            .clamp(0.0, image.height.toDouble());
+        final double xOrig =
+            (x1.toDouble() + xContent).clamp(0.0, image.width.toDouble());
+        final double yOrig =
+            (y1.toDouble() + yContent).clamp(0.0, image.height.toDouble());
         pts.add(
           PoseLandmark(
             type: lm.type,

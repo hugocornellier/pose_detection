@@ -155,6 +155,62 @@ class BoundingBox {
   });
 }
 
+/// Defines the standard skeleton connections between BlazePose landmarks.
+///
+/// Each connection is a pair of [PoseLandmarkType] values representing
+/// the start and end points of a line segment in the body skeleton.
+///
+/// Use this constant to draw skeleton overlays on detected poses:
+/// ```dart
+/// for (final connection in poseLandmarkConnections) {
+///   final start = pose.getLandmark(connection[0]);
+///   final end = pose.getLandmark(connection[1]);
+///   if (start != null && end != null && start.visibility > 0.5 && end.visibility > 0.5) {
+///     // Draw line from start to end
+///     canvas.drawLine(
+///       Offset(start.x, start.y),
+///       Offset(end.x, end.y),
+///       paint,
+///     );
+///   }
+/// }
+/// ```
+const List<List<PoseLandmarkType>> poseLandmarkConnections = [
+  // Face
+  [PoseLandmarkType.leftEye, PoseLandmarkType.nose],
+  [PoseLandmarkType.rightEye, PoseLandmarkType.nose],
+  [PoseLandmarkType.leftEye, PoseLandmarkType.leftEar],
+  [PoseLandmarkType.rightEye, PoseLandmarkType.rightEar],
+  [PoseLandmarkType.mouthLeft, PoseLandmarkType.mouthRight],
+  // Torso
+  [PoseLandmarkType.leftShoulder, PoseLandmarkType.rightShoulder],
+  [PoseLandmarkType.leftShoulder, PoseLandmarkType.leftHip],
+  [PoseLandmarkType.rightShoulder, PoseLandmarkType.rightHip],
+  [PoseLandmarkType.leftHip, PoseLandmarkType.rightHip],
+  // Left arm
+  [PoseLandmarkType.leftShoulder, PoseLandmarkType.leftElbow],
+  [PoseLandmarkType.leftElbow, PoseLandmarkType.leftWrist],
+  [PoseLandmarkType.leftWrist, PoseLandmarkType.leftPinky],
+  [PoseLandmarkType.leftWrist, PoseLandmarkType.leftIndex],
+  [PoseLandmarkType.leftWrist, PoseLandmarkType.leftThumb],
+  // Right arm
+  [PoseLandmarkType.rightShoulder, PoseLandmarkType.rightElbow],
+  [PoseLandmarkType.rightElbow, PoseLandmarkType.rightWrist],
+  [PoseLandmarkType.rightWrist, PoseLandmarkType.rightPinky],
+  [PoseLandmarkType.rightWrist, PoseLandmarkType.rightIndex],
+  [PoseLandmarkType.rightWrist, PoseLandmarkType.rightThumb],
+  // Left leg
+  [PoseLandmarkType.leftHip, PoseLandmarkType.leftKnee],
+  [PoseLandmarkType.leftKnee, PoseLandmarkType.leftAnkle],
+  [PoseLandmarkType.leftAnkle, PoseLandmarkType.leftHeel],
+  [PoseLandmarkType.leftAnkle, PoseLandmarkType.leftFootIndex],
+  // Right leg
+  [PoseLandmarkType.rightHip, PoseLandmarkType.rightKnee],
+  [PoseLandmarkType.rightKnee, PoseLandmarkType.rightAnkle],
+  [PoseLandmarkType.rightAnkle, PoseLandmarkType.rightHeel],
+  [PoseLandmarkType.rightAnkle, PoseLandmarkType.rightFootIndex],
+];
+
 /// Detected person with bounding box and optional body landmarks.
 ///
 /// This is the main result returned by [PoseDetector.detect()].
@@ -215,7 +271,8 @@ class Pose {
   @override
   String toString() {
     final String landmarksInfo = landmarks
-        .map((l) => '${l.type.name}: (${l.x.toStringAsFixed(2)}, ${l.y.toStringAsFixed(2)}) vis=${l.visibility.toStringAsFixed(2)}')
+        .map((l) =>
+            '${l.type.name}: (${l.x.toStringAsFixed(2)}, ${l.y.toStringAsFixed(2)}) vis=${l.visibility.toStringAsFixed(2)}')
         .join('\n');
     return 'Pose(\n'
         '  score=${score.toStringAsFixed(3)},\n'

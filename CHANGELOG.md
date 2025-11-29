@@ -1,3 +1,13 @@
+## 1.0.0
+
+**This version contains breaking changes:**
+
+- Breaking API changes: `PoseDetector` uses constructor params (no `PoseOptions`), returns `Pose`/`BoundingBox`, and detection methods are async
+- YOLO and BlazePose run via isolates to avoid blocking
+- Expanded DartDoc coverage
+- `poseLandmarkConnections` for drawing skeletons.
+- Example app improvements, sample images added.
+
 ## 0.0.3
 
 * Removed unused dependency `path_provider`

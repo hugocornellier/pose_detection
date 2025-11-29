@@ -100,15 +100,13 @@ class PoseLandmarkModelRunner {
   }
 
   Future<PoseLandmarks> run(img.Image roiImage) async {
-    _inputBuffer = ImageUtils.imageToNHWC4D(
-      roiImage,
-      256,
-      256,
-      reuse: _inputBuffer
-    );
+    _inputBuffer =
+        ImageUtils.imageToNHWC4D(roiImage, 256, 256, reuse: _inputBuffer);
 
     _outputLandmarks ??= [List.filled(195, 0.0)];
-    _outputScore ??= [[0.0]];
+    _outputScore ??= [
+      [0.0]
+    ];
     _outputMask ??= ImageUtils.reshapeToTensor4D(
       List.filled(1 * 256 * 256 * 1, 0.0),
       1,
@@ -158,7 +156,11 @@ class PoseLandmarkModelRunner {
     List<dynamic> worldData,
   ) {
     double sigmoid(double x) => 1.0 / (1.0 + math.exp(-x));
-    double clamp01(double v) => v.isNaN ? 0.0 : v < 0.0 ? 0.0 : (v > 1.0 ? 1.0 : v);
+    double clamp01(double v) => v.isNaN
+        ? 0.0
+        : v < 0.0
+            ? 0.0
+            : (v > 1.0 ? 1.0 : v);
 
     final double score = sigmoid(scoreData[0][0] as double);
     final List<dynamic> raw = landmarksData[0] as List<dynamic>;

@@ -133,11 +133,70 @@ final PoseLandmark? leftHip = pose.getLandmark(PoseLandmarkType.leftHip);
 if (leftHip != null && leftHip.visibility > 0.5) {
     // Pixel coordinates in original image space
     print('Left hip position: (${leftHip.x}, ${leftHip.y})');
-    
+
     // Depth information (relative z-coordinate)
     print('Left hip depth: ${leftHip.z}');
 }
 ```
+
+### Drawing Skeleton Connections
+
+The package provides `poseLandmarkConnections`, a predefined list of landmark pairs that form the body skeleton. Use this to draw skeleton overlays:
+
+```dart
+import 'package:flutter/material.dart';
+import 'package:pose_detection_tflite/pose_detection_tflite.dart';
+
+class PoseOverlayPainter extends CustomPainter {
+  final Pose pose;
+
+  PoseOverlayPainter(this.pose);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final Paint paint = Paint()
+      ..color = Colors.green
+      ..strokeWidth = 3
+      ..strokeCap = StrokeCap.round;
+
+    // Draw all skeleton connections
+    for (final connection in poseLandmarkConnections) {
+      final PoseLandmark? start = pose.getLandmark(connection[0]);
+      final PoseLandmark? end = pose.getLandmark(connection[1]);
+
+      // Only draw if both landmarks are visible
+      if (start != null && end != null &&
+          start.visibility > 0.5 && end.visibility > 0.5) {
+        canvas.drawLine(
+          Offset(start.x, start.y),
+          Offset(end.x, end.y),
+          paint,
+        );
+      }
+    }
+
+    // Draw landmark points
+    for (final landmark in pose.landmarks) {
+      if (landmark.visibility > 0.5) {
+        canvas.drawCircle(
+          Offset(landmark.x, landmark.y),
+          5,
+          Paint()..color = Colors.red,
+        );
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => true;
+}
+```
+
+The `poseLandmarkConnections` constant contains 27 connections organized by body region:
+- **Face**: Eyes to nose, eyes to ears, mouth
+- **Torso**: Shoulders and hips forming the core
+- **Arms**: Shoulders → elbows → wrists → fingers (left and right)
+- **Legs**: Hips → knees → ankles → feet (left and right)
 
 ## Advanced Usage
 
