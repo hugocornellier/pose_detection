@@ -1,3 +1,7 @@
+## 1.0.1
+
+- Improved Dartdoc coverage
+
 ## 1.0.0
 
 **This version contains breaking changes:**

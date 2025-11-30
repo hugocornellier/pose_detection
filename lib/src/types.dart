@@ -4,19 +4,38 @@
 /// - [lite]: Fastest, good accuracy
 /// - [full]: Balanced speed/accuracy
 /// - [heavy]: Slowest, best accuracy
-enum PoseLandmarkModel { lite, full, heavy }
+enum PoseLandmarkModel {
+  /// Fastest model with good accuracy.
+  lite,
+
+  /// Balanced model with medium speed and accuracy.
+  full,
+
+  /// Slowest model with best accuracy.
+  heavy,
+}
 
 /// Detection mode controlling the two-stage pipeline behavior.
 ///
 /// - [boxes]: Fast detection returning only bounding boxes (Stage 1 only)
 /// - [boxesAndLandmarks]: Full pipeline returning boxes + 33 landmarks (both stages)
-enum PoseMode { boxes, boxesAndLandmarks }
+enum PoseMode {
+  /// Fast detection mode returning only bounding boxes (Stage 1 only).
+  boxes,
+
+  /// Full pipeline mode returning bounding boxes and 33 landmarks per person.
+  boxesAndLandmarks,
+}
 
 /// Collection of pose landmarks with confidence score (internal use).
 class PoseLandmarks {
+  /// List of 33 body landmarks extracted from the BlazePose model.
   final List<PoseLandmark> landmarks;
+
+  /// Confidence score for the landmark extraction (0.0 to 1.0).
   final double score;
 
+  /// Creates a collection of pose landmarks with a confidence score.
   PoseLandmarks({
     required this.landmarks,
     required this.score,
@@ -43,6 +62,7 @@ class PoseLandmark {
   /// Visibility/confidence score (0.0 to 1.0). Higher means more confident the landmark is visible.
   final double visibility;
 
+  /// Creates a pose landmark with 3D coordinates and visibility score.
   PoseLandmark({
     required this.type,
     required this.x,
@@ -88,46 +108,115 @@ class PoseLandmark {
 /// }
 /// ```
 enum PoseLandmarkType {
+  /// Nose tip landmark.
   nose,
+
+  /// Left eye inner corner landmark.
   leftEyeInner,
+
+  /// Left eye center landmark.
   leftEye,
+
+  /// Left eye outer corner landmark.
   leftEyeOuter,
+
+  /// Right eye inner corner landmark.
   rightEyeInner,
+
+  /// Right eye center landmark.
   rightEye,
+
+  /// Right eye outer corner landmark.
   rightEyeOuter,
+
+  /// Left ear landmark.
   leftEar,
+
+  /// Right ear landmark.
   rightEar,
+
+  /// Left mouth corner landmark.
   mouthLeft,
+
+  /// Right mouth corner landmark.
   mouthRight,
+
+  /// Left shoulder landmark.
   leftShoulder,
+
+  /// Right shoulder landmark.
   rightShoulder,
+
+  /// Left elbow landmark.
   leftElbow,
+
+  /// Right elbow landmark.
   rightElbow,
+
+  /// Left wrist landmark.
   leftWrist,
+
+  /// Right wrist landmark.
   rightWrist,
+
+  /// Left pinky finger base landmark.
   leftPinky,
+
+  /// Right pinky finger base landmark.
   rightPinky,
+
+  /// Left index finger base landmark.
   leftIndex,
+
+  /// Right index finger base landmark.
   rightIndex,
+
+  /// Left thumb base landmark.
   leftThumb,
+
+  /// Right thumb base landmark.
   rightThumb,
+
+  /// Left hip landmark.
   leftHip,
+
+  /// Right hip landmark.
   rightHip,
+
+  /// Left knee landmark.
   leftKnee,
+
+  /// Right knee landmark.
   rightKnee,
+
+  /// Left ankle landmark.
   leftAnkle,
+
+  /// Right ankle landmark.
   rightAnkle,
+
+  /// Left heel landmark.
   leftHeel,
+
+  /// Right heel landmark.
   rightHeel,
+
+  /// Left foot index toe landmark.
   leftFootIndex,
+
+  /// Right foot index toe landmark.
   rightFootIndex,
 }
 
 /// 2D integer pixel coordinate.
 class Point {
+  /// X coordinate in pixels
   final int x;
+
+  /// Y coordinate in pixels
   final int y;
 
+  /// Creates a 2D pixel coordinate at position ([x], [y]).
   Point(this.x, this.y);
 }
 
@@ -147,6 +236,9 @@ class BoundingBox {
   /// Bottom edge y-coordinate in pixels
   final double bottom;
 
+  /// Creates an axis-aligned bounding box with the specified edges.
+  ///
+  /// All coordinates are in pixels in the original image space.
   const BoundingBox({
     required this.left,
     required this.top,
@@ -248,6 +340,7 @@ class Pose {
   /// Height of the original image in pixels
   final int imageHeight;
 
+  /// Creates a detected pose with bounding box, landmarks, and image dimensions.
   const Pose({
     required this.boundingBox,
     required this.score,

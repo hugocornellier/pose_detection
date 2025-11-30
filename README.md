@@ -1,7 +1,8 @@
 # pose_detection_tflite
 
-A pure Dart/Flutter implementation of Google's MediaPipe pose detection and facial landmark models using TensorFlow Lite. 
-This package provides on-device, multi-person pose detection with minimal dependencies, just TensorFlow Lite and image.
+Flutter implementation of Google's [Pose Landmark Detection](https://ai.google.dev/edge/mediapipe/solutions/vision/pose_landmarker) with bounding boxes. 
+Provides on-device, multi-person pose and landmark detection using TensorFlow Lite. Minimal dependencies, just TensorFlow Lite and image. 
+
 
 ![Example Screenshot](assets/screenshots/ex1.png)
 

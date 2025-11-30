@@ -7,6 +7,11 @@ import 'package:tflite_flutter_custom/tflite_flutter.dart';
 import 'image_utils.dart';
 import 'types.dart';
 
+/// BlazePose landmark extraction model runner for Stage 2 of the pose detection pipeline.
+///
+/// Extracts 33 body landmarks from person crops using the BlazePose model.
+/// Supports three model variants (lite, full, heavy) with different accuracy/performance trade-offs.
+/// Runs synchronously since it processes one detection at a time.
 class PoseLandmarkModelRunner {
   Interpreter? _interpreter;
   IsolateInterpreter? _iso;
@@ -19,6 +24,14 @@ class PoseLandmarkModelRunner {
   List<List<List<List<double>>>>? _outputHeatmap;
   List<List<double>>? _outputWorld;
 
+  /// Ensures TensorFlow Lite native library is loaded for desktop platforms.
+  ///
+  /// On Windows, Linux, and macOS, loads the platform-specific TensorFlow Lite C library
+  /// from bundled assets. On mobile platforms (iOS/Android), uses the system library.
+  ///
+  /// This method is idempotent - subsequent calls do nothing if already loaded.
+  ///
+  /// Throws an exception if the library cannot be found or loaded.
   static Future<void> ensureTFLiteLoaded() async {
     if (_tfliteLib != null) return;
 
@@ -58,6 +71,17 @@ class PoseLandmarkModelRunner {
     }
   }
 
+  /// Initializes the BlazePose landmark model with the specified variant.
+  ///
+  /// Loads the selected model (lite/full/heavy) from assets, resizes input tensor
+  /// to 256x256x3, and creates an IsolateInterpreter for async inference.
+  ///
+  /// Parameters:
+  /// - [model]: Which BlazePose variant to use (lite, full, or heavy)
+  ///
+  /// If already initialized, this will dispose the previous instance first.
+  ///
+  /// Throws an exception if the model fails to load or TFLite library is unavailable.
   Future<void> initialize(PoseLandmarkModel model) async {
     if (_isInitialized) await dispose();
     await ensureTFLiteLoaded();
@@ -83,8 +107,13 @@ class PoseLandmarkModelRunner {
     }
   }
 
+  /// Returns true if the model runner has been initialized and is ready to use.
   bool get isInitialized => _isInitialized;
 
+  /// Disposes the model runner and releases all resources.
+  ///
+  /// Closes the interpreter, isolate interpreter, and clears all tensor buffers.
+  /// After disposal, [initialize] must be called again before using the runner.
   Future<void> dispose() async {
     _iso?.close();
     _iso = null;
@@ -99,6 +128,23 @@ class PoseLandmarkModelRunner {
     _isInitialized = false;
   }
 
+  /// Runs landmark extraction on a person crop image.
+  ///
+  /// Extracts 33 body landmarks from the input person crop using the BlazePose model.
+  /// The input image should be a cropped person region, ideally from the YOLOv8 detector.
+  ///
+  /// The method performs:
+  /// 1. Image to tensor conversion (NHWC format, normalized 0-1)
+  /// 2. Model inference via IsolateInterpreter
+  /// 3. Post-processing: sigmoid activation, coordinate normalization
+  ///
+  /// Parameters:
+  /// - [roiImage]: Cropped person image (will be resized to 256x256 internally)
+  ///
+  /// Returns [PoseLandmarks] containing 33 landmarks with normalized coordinates (0-1 range)
+  /// and a confidence score. Landmarks are in the 256x256 model output space.
+  ///
+  /// Throws [StateError] if the model is not initialized.
   Future<PoseLandmarks> run(img.Image roiImage) async {
     _inputBuffer =
         ImageUtils.imageToNHWC4D(roiImage, 256, 256, reuse: _inputBuffer);

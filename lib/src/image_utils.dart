@@ -1,7 +1,27 @@
 import 'dart:math' as math;
 import 'package:image/image.dart' as img;
 
+/// Utility functions for image preprocessing and transformations.
+///
+/// Provides letterbox preprocessing, coordinate transformations, and tensor
+/// conversion utilities used internally by the pose detection pipeline.
 class ImageUtils {
+  /// Applies letterbox preprocessing to fit an image into target dimensions.
+  ///
+  /// Scales the source image to fit within [tw]x[th] while maintaining aspect ratio,
+  /// then pads with gray (114, 114, 114) to fill the target dimensions.
+  ///
+  /// This is critical for YOLO-style object detection models that expect fixed input sizes.
+  ///
+  /// Parameters:
+  /// - [src]: Source image to preprocess
+  /// - [tw]: Target width in pixels
+  /// - [th]: Target height in pixels
+  /// - [ratioOut]: Output parameter that receives the scale ratio used
+  /// - [dwdhOut]: Output parameter that receives padding [dw, dh] values
+  /// - [reuseCanvas]: Optional canvas to reuse (must be exactly [tw]x[th])
+  ///
+  /// Returns the letterboxed image with dimensions [tw]x[th].
   static img.Image letterbox(
     img.Image src,
     int tw,
@@ -45,6 +65,18 @@ class ImageUtils {
     return canvas;
   }
 
+  /// Applies letterbox preprocessing to 256x256 dimensions.
+  ///
+  /// Convenience method that calls [letterbox] with fixed 256x256 target size.
+  /// Used for BlazePose landmark model preprocessing.
+  ///
+  /// Parameters:
+  /// - [src]: Source image to preprocess
+  /// - [ratioOut]: Output parameter that receives the scale ratio used
+  /// - [dwdhOut]: Output parameter that receives padding [dw, dh] values
+  /// - [reuseCanvas]: Optional 256x256 canvas to reuse
+  ///
+  /// Returns the letterboxed image with dimensions 256x256.
   static img.Image letterbox256(
     img.Image src,
     List<double> ratioOut,
@@ -55,6 +87,17 @@ class ImageUtils {
         reuseCanvas: reuseCanvas);
   }
 
+  /// Transforms bounding box coordinates from letterbox space back to original image space.
+  ///
+  /// Reverses the letterbox transformation by removing padding and unscaling coordinates.
+  ///
+  /// Parameters:
+  /// - [xyxy]: Bounding box in letterbox space as [x1, y1, x2, y2]
+  /// - [ratio]: Scale ratio from letterbox preprocessing
+  /// - [dw]: Horizontal padding from letterbox preprocessing
+  /// - [dh]: Vertical padding from letterbox preprocessing
+  ///
+  /// Returns the bounding box in original image space as [x1, y1, x2, y2].
   static List<double> scaleFromLetterbox(
     List<double> xyxy,
     double ratio,
@@ -68,6 +111,18 @@ class ImageUtils {
     return [x1, y1, x2, y2];
   }
 
+  /// Converts an image to a 4D tensor in NHWC format for TensorFlow Lite.
+  ///
+  /// Converts pixel values from 0-255 range to normalized 0.0-1.0 range.
+  /// The output format is [batch, height, width, channels] where batch=1 and channels=3 (RGB).
+  ///
+  /// Parameters:
+  /// - [image]: Source image to convert
+  /// - [width]: Target width (must match image width)
+  /// - [height]: Target height (must match image height)
+  /// - [reuse]: Optional tensor buffer to reuse (must match dimensions)
+  ///
+  /// Returns a 4D tensor [1, height, width, 3] with normalized pixel values.
   static List<List<List<List<double>>>> imageToNHWC4D(
     img.Image image,
     int width,
@@ -100,6 +155,20 @@ class ImageUtils {
     return out;
   }
 
+  /// Reshapes a flat array into a 4D tensor.
+  ///
+  /// Converts a 1D flattened array into a 4D nested list structure with the
+  /// specified dimensions. Used for converting TensorFlow Lite output buffers
+  /// into the expected tensor shape.
+  ///
+  /// Parameters:
+  /// - [flat]: Flat array of values (length must equal dim1 * dim2 * dim3 * dim4)
+  /// - [dim1]: First dimension size (batch)
+  /// - [dim2]: Second dimension size (height/rows)
+  /// - [dim3]: Third dimension size (width/columns)
+  /// - [dim4]: Fourth dimension size (channels/features)
+  ///
+  /// Returns a 4D tensor [dim1, dim2, dim3, dim4] populated from [flat] in row-major order.
   static List<List<List<List<double>>>> reshapeToTensor4D(
     List<double> flat,
     int dim1,

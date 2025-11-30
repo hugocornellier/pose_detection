@@ -4,11 +4,20 @@ import 'package:image/image.dart' as img;
 import 'package:tflite_flutter_custom/tflite_flutter.dart';
 import 'image_utils.dart';
 
+/// A single object detection result from YOLOv8.
+///
+/// Contains the detected class ID, confidence score, and bounding box coordinates.
 class YoloDetection {
+  /// Detected class ID (0 = person in COCO dataset).
   final int cls;
+
+  /// Confidence score for the detection (0.0 to 1.0).
   final double score;
+
+  /// Bounding box in XYXY format [x1, y1, x2, y2] in pixel coordinates.
   final List<double> bboxXYXY;
 
+  /// Creates a YOLO detection result.
   YoloDetection({
     required this.cls,
     required this.score,
@@ -16,16 +25,31 @@ class YoloDetection {
   });
 }
 
+/// YOLOv8n-based person detector for Stage 1 of the pose detection pipeline.
+///
+/// Detects persons in images and returns bounding boxes. Uses the YOLOv8n model
+/// trained on COCO dataset with 640x640 input resolution. Runs asynchronously
+/// via IsolateInterpreter for better performance.
 class YoloV8PersonDetector {
   IsolateInterpreter? _iso;
   Interpreter? _interpreter;
   bool _isInitialized = false;
   late int _inW;
   late int _inH;
+
+  /// COCO dataset class ID for the "person" class.
   static const int cocoPersonClassId = 0;
   final _outShapes = <List<int>>[];
   img.Image? _canvasBuffer;
 
+  /// Initializes the YOLOv8 person detector by loading the model.
+  ///
+  /// Loads the YOLOv8n model from assets, allocates tensors, and creates
+  /// an IsolateInterpreter for async inference. Must be called before [detectOnImage].
+  ///
+  /// If already initialized, this will dispose the previous instance first.
+  ///
+  /// Throws an exception if the model fails to load.
   Future<void> initialize() async {
     const String assetPath =
         'packages/pose_detection_tflite/assets/models/yolov8n_float32.tflite';
@@ -51,8 +75,13 @@ class YoloV8PersonDetector {
     _isInitialized = true;
   }
 
+  /// Returns true if the detector has been initialized and is ready to use.
   bool get isInitialized => _isInitialized;
 
+  /// Disposes the detector and releases all resources.
+  ///
+  /// Closes the interpreter, isolate interpreter, and clears canvas buffer.
+  /// After disposal, [initialize] must be called again before using the detector.
   Future<void> dispose() async {
     _iso?.close();
     _iso = null;
@@ -226,6 +255,24 @@ class YoloV8PersonDetector {
     return 0.5 * (b[n ~/ 2 - 1] + b[n ~/ 2]);
   }
 
+  /// Detects persons in the given image using YOLOv8.
+  ///
+  /// Performs the following steps:
+  /// 1. Letterbox preprocessing to 640x640
+  /// 2. Model inference via IsolateInterpreter
+  /// 3. Post-processing: confidence filtering, NMS, coordinate transformation
+  ///
+  /// Parameters:
+  /// - [image]: Input image to detect persons in
+  /// - [confThres]: Confidence threshold for detections (default: 0.35)
+  /// - [iouThres]: IoU threshold for Non-Maximum Suppression (default: 0.4)
+  /// - [topkPreNms]: Maximum detections to keep before NMS (default: 100)
+  /// - [maxDet]: Maximum detections to return after NMS (default: 10)
+  /// - [personOnly]: If true, only returns person class (class 0) detections (default: true)
+  ///
+  /// Returns a list of [YoloDetection] objects with bounding boxes in original image coordinates.
+  ///
+  /// Throws [StateError] if the detector is not initialized.
   Future<List<YoloDetection>> detectOnImage(
     img.Image image, {
     double confThres = 0.35,
