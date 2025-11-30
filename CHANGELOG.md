@@ -1,3 +1,9 @@
+## 1.1.0
+
+- Parallel landmark detection in multi person photos, faster processing
+- Improve error handling
+- Add integration tests
+
 ## 1.0.1
 
 - Improved Dartdoc coverage

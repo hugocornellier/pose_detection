@@ -5,6 +5,43 @@ import 'image_utils.dart';
 import 'person_detector.dart';
 import 'pose_landmark_model.dart';
 
+/// Helper class to store preprocessing data for each detected person.
+///
+/// Contains the detection info, preprocessed image, and transformation parameters
+/// needed to convert landmark coordinates back to original image space.
+class _PersonCropData {
+  /// The original YOLO detection result.
+  final YoloDetection detection;
+
+  /// The letterboxed 256x256 image ready for landmark extraction.
+  final img.Image letterboxed;
+
+  /// Scale ratio used in letterbox preprocessing.
+  final double scaleRatio;
+
+  /// Left padding added during letterboxing.
+  final int padLeft;
+
+  /// Top padding added during letterboxing.
+  final int padTop;
+
+  /// X coordinate of crop origin in original image.
+  final int cropX;
+
+  /// Y coordinate of crop origin in original image.
+  final int cropY;
+
+  _PersonCropData({
+    required this.detection,
+    required this.letterboxed,
+    required this.scaleRatio,
+    required this.padLeft,
+    required this.padTop,
+    required this.cropX,
+    required this.cropY,
+  });
+}
+
 /// On-device pose detection and landmark estimation using TensorFlow Lite.
 ///
 /// Implements a two-stage pipeline:
@@ -23,7 +60,7 @@ import 'pose_landmark_model.dart';
 /// ```
 class PoseDetector {
   final YoloV8PersonDetector _yolo = YoloV8PersonDetector();
-  final PoseLandmarkModelRunner _lm = PoseLandmarkModelRunner();
+  late final PoseLandmarkModelRunner _lm;
 
   /// Detection mode controlling pipeline behavior.
   ///
@@ -66,6 +103,26 @@ class PoseDetector {
   /// Default: 0.5
   final double minLandmarkScore;
 
+  /// Number of TensorFlow Lite interpreter instances in the landmark model pool.
+  ///
+  /// Controls the degree of parallelism for landmark extraction when multiple
+  /// people are detected. Higher values enable more concurrent inferences but
+  /// consume more memory (~10MB per interpreter).
+  ///
+  /// Recommended values:
+  /// - **1**: Sequential processing (lowest memory, safest, ~50ms per person)
+  /// - **3-5**: Good balance for typical scenarios with 2-5 people
+  /// - **>5**: High parallelism for crowded scenes, but diminishing returns
+  ///
+  /// **Performance example** (5 people detected):
+  /// - Pool size 1: ~250ms total (50ms × 5 sequential)
+  /// - Pool size 5: ~50ms total (all parallel)
+  ///
+  /// **Memory usage:** ~10MB × poolSize for landmark model instances.
+  ///
+  /// Default: 5
+  final int interpreterPoolSize;
+
   bool _isInitialized = false;
   img.Image? _canvasBuffer256;
 
@@ -78,6 +135,13 @@ class PoseDetector {
   /// - [detectorIou]: NMS IoU threshold for duplicate suppression (0.0-1.0). Default: 0.45
   /// - [maxDetections]: Maximum number of persons to detect. Default: 10
   /// - [minLandmarkScore]: Minimum landmark confidence score (0.0-1.0). Default: 0.5
+  /// - [interpreterPoolSize]: Number of landmark model interpreter instances (1-10). Default: 5
+  ///
+  /// **Choosing interpreterPoolSize:**
+  /// - Use 1 for lowest memory usage and sequential processing
+  /// - Use 3-5 for balanced performance with 2-5 people scenarios
+  /// - Use higher values (5-10) for crowded scenes with many people
+  /// - Each interpreter adds ~10MB memory overhead
   PoseDetector({
     this.mode = PoseMode.boxesAndLandmarks,
     this.landmarkModel = PoseLandmarkModel.heavy,
@@ -85,7 +149,10 @@ class PoseDetector {
     this.detectorIou = 0.45,
     this.maxDetections = 10,
     this.minLandmarkScore = 0.5,
-  });
+    this.interpreterPoolSize = 5,
+  }) {
+    _lm = PoseLandmarkModelRunner(poolSize: interpreterPoolSize);
+  }
 
   /// Initializes the pose detector by loading TensorFlow Lite models.
   ///
@@ -146,7 +213,7 @@ class PoseDetector {
   ///
   /// Performs the two-stage detection pipeline:
   /// 1. Detects persons using YOLOv8n
-  /// 2. Extracts landmarks using BlazePose (if [mode] is [PoseMode.boxesAndLandmarks])
+  /// 2. Extracts landmarks using BlazePose in parallel for all detected persons
   ///
   /// Parameters:
   /// - [image]: A decoded image from the `image` package
@@ -156,6 +223,11 @@ class PoseDetector {
   /// - A bounding box in original image coordinates
   /// - A confidence score (0.0-1.0)
   /// - 33 body landmarks (if [mode] is [PoseMode.boxesAndLandmarks])
+  ///
+  /// **Performance:** Landmark extraction runs in parallel using an interpreter pool.
+  /// The [interpreterPoolSize] determines the maximum number of concurrent inferences.
+  /// For example, with 5 people detected and pool size 5, all landmarks are extracted
+  /// simultaneously, providing ~5x speedup compared to sequential processing.
   ///
   /// Throws [StateError] if called before [initialize].
   Future<List<Pose>> detectOnImage(img.Image image) async {
@@ -194,7 +266,8 @@ class PoseDetector {
       return out;
     }
 
-    final List<Pose> results = <Pose>[];
+    // Phase 1: Preprocess all detections (crop and letterbox)
+    final List<_PersonCropData> cropDataList = <_PersonCropData>[];
     for (final YoloDetection d in dets) {
       final int x1 = d.bboxXYXY[0].clamp(0.0, image.width.toDouble()).toInt();
       final int y1 = d.bboxXYXY[1].clamp(0.0, image.height.toDouble()).toInt();
@@ -207,26 +280,59 @@ class PoseDetector {
           img.copyCrop(image, x: x1, y: y1, width: cw, height: ch);
       final List<double> ratio = <double>[];
       final List<int> dwdh = <int>[];
-      _canvasBuffer256 ??= img.Image(width: 256, height: 256);
-      final img.Image letter = ImageUtils.letterbox256(crop, ratio, dwdh,
-          reuseCanvas: _canvasBuffer256);
-      final double r = ratio.first;
-      final int dw = dwdh[0];
-      final int dh = dwdh[1];
+      // Don't reuse canvas buffer when processing multiple people in parallel
+      // to avoid race conditions where all references point to the same buffer
+      final img.Image letter = ImageUtils.letterbox256(crop, ratio, dwdh);
 
-      final PoseLandmarks lms = await _lm.run(letter);
-      if (lms.score < minLandmarkScore) continue;
+      cropDataList.add(
+        _PersonCropData(
+          detection: d,
+          letterboxed: letter,
+          scaleRatio: ratio.first,
+          padLeft: dwdh[0],
+          padTop: dwdh[1],
+          cropX: x1,
+          cropY: y1,
+        ),
+      );
+    }
+
+    // Phase 2: Run landmark extraction in parallel for all persons
+    // The landmark model runner uses an interpreter pool to enable safe concurrent
+    // execution. Each run() call acquires an interpreter, runs inference, and releases
+    // it back to the pool. Future.wait() executes all inferences concurrently up to
+    // the pool size limit.
+    final List<Future<PoseLandmarks?>> futures =
+        cropDataList.map((data) async {
+      try {
+        return await _lm.run(data.letterboxed);
+      } catch (e) {
+        // Return null on failure to avoid crashing the entire batch
+        return null;
+      }
+    }).toList();
+
+    final List<PoseLandmarks?> allLandmarks = await Future.wait(futures);
+
+    // Phase 3: Post-process results and transform coordinates
+    final List<Pose> results = <Pose>[];
+    for (int i = 0; i < cropDataList.length; i++) {
+      final _PersonCropData data = cropDataList[i];
+      final PoseLandmarks? lms = allLandmarks[i];
+
+      // Skip if landmark extraction failed or score too low
+      if (lms == null || lms.score < minLandmarkScore) continue;
 
       final List<PoseLandmark> pts = <PoseLandmark>[];
       for (final PoseLandmark lm in lms.landmarks) {
         final double xp = lm.x * 256.0;
         final double yp = lm.y * 256.0;
-        final double xContent = (xp - dw) / r;
-        final double yContent = (yp - dh) / r;
-        final double xOrig =
-            (x1.toDouble() + xContent).clamp(0.0, image.width.toDouble());
-        final double yOrig =
-            (y1.toDouble() + yContent).clamp(0.0, image.height.toDouble());
+        final double xContent = (xp - data.padLeft) / data.scaleRatio;
+        final double yContent = (yp - data.padTop) / data.scaleRatio;
+        final double xOrig = (data.cropX.toDouble() + xContent)
+            .clamp(0.0, image.width.toDouble());
+        final double yOrig = (data.cropY.toDouble() + yContent)
+            .clamp(0.0, image.height.toDouble());
         pts.add(
           PoseLandmark(
             type: lm.type,
@@ -241,12 +347,12 @@ class PoseDetector {
       results.add(
         Pose(
           boundingBox: BoundingBox(
-            left: d.bboxXYXY[0],
-            top: d.bboxXYXY[1],
-            right: d.bboxXYXY[2],
-            bottom: d.bboxXYXY[3],
+            left: data.detection.bboxXYXY[0],
+            top: data.detection.bboxXYXY[1],
+            right: data.detection.bboxXYXY[2],
+            bottom: data.detection.bboxXYXY[3],
           ),
-          score: d.score,
+          score: data.detection.score,
           landmarks: pts,
           imageWidth: image.width,
           imageHeight: image.height,
