@@ -81,6 +81,13 @@ class PoseLandmarkModelRunner {
   static Future<void> ensureTFLiteLoaded() async {
     if (_tfliteLib != null) return;
 
+    // Optional override for local testing: set POSE_TFLITE_LIB to an absolute path.
+    final envLibPath = Platform.environment['POSE_TFLITE_LIB'];
+    if (envLibPath != null && envLibPath.isNotEmpty) {
+      _tfliteLib = ffi.DynamicLibrary.open(envLibPath);
+      return;
+    }
+
     final exe = File(Platform.resolvedExecutable);
     final exeDir = exe.parent;
 
@@ -100,6 +107,10 @@ class PoseLandmarkModelRunner {
       final contents = exeDir.parent;
       candidates = [
         p.join(contents.path, 'Resources', 'libtensorflowlite_c-mac.dylib'),
+        // When running `flutter test`, the dylib is not copied into the engine
+        // cache; fall back to the repo / package checkout location.
+        p.join(Directory.current.path, 'macos', 'Frameworks',
+            'libtensorflowlite_c-mac.dylib'),
       ];
     } else {
       _tfliteLib = ffi.DynamicLibrary.process();

@@ -41,6 +41,7 @@ class YoloV8PersonDetector {
   static const int cocoPersonClassId = 0;
   final _outShapes = <List<int>>[];
   img.Image? _canvasBuffer;
+  Float32List? _inputBuffer;
 
   /// Initializes the YOLOv8 person detector by loading the model.
   ///
@@ -140,37 +141,6 @@ class YoloV8PersonDetector {
       }
     }
     return keep;
-  }
-
-  static List<List<List<List<double>>>> _asNHWC4D(
-    Float32List flat,
-    int h,
-    int w,
-  ) {
-    final out = List<List<List<List<double>>>>.filled(
-      1,
-      List.generate(
-        h,
-        (_) => List.generate(
-          w,
-          (_) => List<double>.filled(3, 0.0, growable: false),
-          growable: false,
-        ),
-        growable: false,
-      ),
-      growable: false,
-    );
-
-    int k = 0;
-    for (int y = 0; y < h; y++) {
-      for (int x = 0; x < w; x++) {
-        final List<double> px = out[0][y][x];
-        px[0] = flat[k++];
-        px[1] = flat[k++];
-        px[2] = flat[k++];
-      }
-    }
-    return out;
   }
 
   static List<List<double>> _transpose2D(List<List<double>> a) {
@@ -300,7 +270,11 @@ class YoloV8PersonDetector {
     final int dw = dwdh[0], dh = dwdh[1];
 
     final int inputSize = _inH * _inW * 3;
-    final Float32List flatInput = Float32List(inputSize);
+    _inputBuffer ??= Float32List(inputSize);
+    if (_inputBuffer!.length != inputSize) {
+      _inputBuffer = Float32List(inputSize);
+    }
+    final Float32List flatInput = _inputBuffer!;
     int k = 0;
     for (int y = 0; y < _inH; y++) {
       for (int x = 0; x < _inW; x++) {
@@ -311,16 +285,14 @@ class YoloV8PersonDetector {
       }
     }
 
-    final List<List<List<List<double>>>> input4d =
-        _asNHWC4D(flatInput, _inH, _inW);
-
     final int inputCount = _interpreter!.getInputTensors().length;
     final List<Object> inputs = List<Object>.filled(
       inputCount,
-      input4d,
+      // Pass the raw buffer so tflite_flutter_custom does not try to
+      // auto-resize the input tensor to a 1D shape.
+      flatInput.buffer,
       growable: false,
     );
-    inputs[0] = input4d;
 
     final Map<int, Object> outputs = <int, Object>{};
     for (int i = 0; i < _outShapes.length; i++) {
@@ -360,8 +332,8 @@ class YoloV8PersonDetector {
 
     final List<Map<String, dynamic>> decoded =
         _decodeAnyYoloOutputs(outputs.values.toList());
-    final List<double> scores = <double>[];
     final List<int> clsIds = <int>[];
+    final List<double> scores = <double>[];
     final List<List<double>> xywhs = <List<double>>[];
 
     for (final Map<String, dynamic> row in decoded) {

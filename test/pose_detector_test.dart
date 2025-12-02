@@ -604,6 +604,51 @@ void main() {
     });
   });
 
+  group('PoseDetector - Sample Expected Counts', () {
+    late PoseDetector detector;
+
+    setUp(() async {
+      detector = PoseDetector(
+        landmarkModel: PoseLandmarkModel.heavy,
+        mode: PoseMode.boxesAndLandmarks,
+        detectorConf: 0.6,
+        detectorIou: 0.4,
+        maxDetections: 10,
+        minLandmarkScore: 0.5,
+      );
+      await detector.initialize();
+    });
+
+    tearDown(() async {
+      await detector.dispose();
+    });
+
+    test('sample images yield expected pose counts', () async {
+      final expectedCounts = <String, int>{
+        'assets/samples/multi1.jpg': 3,
+        'assets/samples/pose1.jpg': 1,
+        'assets/samples/pose2.jpg': 1,
+        'assets/samples/pose3.jpg': 1,
+        'assets/samples/pose4.jpg': 1,
+        'assets/samples/pose5.jpg': 1,
+        'assets/samples/pose6.jpg': 1,
+        'assets/samples/pose7.jpg': 1,
+      };
+
+      for (final entry in expectedCounts.entries) {
+        final data = await rootBundle.load(entry.key);
+        final bytes = data.buffer.asUint8List();
+        final results = await detector.detect(bytes);
+
+        expect(
+          results.length,
+          entry.value,
+          reason: 'Unexpected pose count for ${entry.key}',
+        );
+      }
+    });
+  });
+
   group('PoseDetector - Edge Cases', () {
     test('should handle empty landmarks list in boxes mode', () async {
       final detector = PoseDetector(mode: PoseMode.boxes);

@@ -1,3 +1,8 @@
+## 1.1.1
+
+- Cache yolo input buffer and pass flat tensor to avoid reshape overhead
+- Update `tflite_flutter_custom` to 1.1.0
+
 ## 1.1.0
 
 - Parallel landmark detection in multi person photos, faster processing

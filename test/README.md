@@ -158,7 +158,12 @@ When running in a proper environment (device or platform-specific tests):
 ### "Failed to load dynamic library" error
 This error occurs when running `flutter test` without a proper platform environment. The TensorFlow Lite native library is not available to pure Dart tests.
 
-**Solution:** Run tests on a device or use platform-specific test commands.
+**Solutions:**
+- Preferred: Run tests on a device or use platform-specific test commands.
+- Local macOS-only fallback: `lib/src/pose_landmark_model.dart` now checks `POSE_TFLITE_LIB` and the repo path `macos/Frameworks/libtensorflowlite_c-mac.dylib`. On macOS you can point directly to a dylib for host tests:
+  ```bash
+  POSE_TFLITE_LIB=$PWD/macos/Frameworks/libtensorflowlite_c-mac.dylib flutter test test/pose_detector_test.dart
+  ```
 
 ### Tests timing out
 Some tests process multiple images and may take longer on slower devices.
