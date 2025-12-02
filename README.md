@@ -1,5 +1,8 @@
 # pose_detection_tflite
 
+[![pub points](https://img.shields.io/pub/points/pose_detection_tflite?color=2E8B57&label=pub%20points)](https://pub.dev/packages/pose_detection_tflite/score)
+[![pub package](https://img.shields.io/pub/v/pose_detection_tflite.svg)](https://pub.dev/packages/pose_detection_tflite)
+
 Flutter implementation of Google's [Pose Landmark Detection](https://ai.google.dev/edge/mediapipe/solutions/vision/pose_landmarker) with bounding boxes. 
 Provides on-device, multi-person pose and landmark detection using TensorFlow Lite. Minimal dependencies, just TensorFlow Lite and image. 
 
@@ -14,30 +17,30 @@ import 'dart:typed_data';
 import 'package:pose_detection_tflite/pose_detection_tflite.dart';
 
 Future main() async {
-  // 1. initialize
+  // Set mode/model then initialize
   final PoseDetector detector = PoseDetector(
     mode: PoseMode.boxesAndLandmarks,
     landmarkModel: PoseLandmarkModel.heavy,
   );
   await detector.initialize();
 
-  // 2. detect
+  // Detect poses
   final Uint8List imageBytes = await File('image.jpg').readAsBytes();
   final List<Pose> results = await detector.detect(imageBytes);
 
-  // 3. access results
+  // Access results
   for (final Pose pose in results) {
     final BoundingBox bbox = pose.boundingBox;
     print('Bounding box: (${bbox.left}, ${bbox.top}) → (${bbox.right}, ${bbox.bottom})');
 
     if (pose.hasLandmarks) {
-      // iterate through landmarks
+      // Iterate over landmarks
       for (final PoseLandmark lm in pose.landmarks) {
         print('${lm.type}: (${lm.x.toStringAsFixed(1)}, ${lm.y.toStringAsFixed(1)}) vis=${lm.visibility.toStringAsFixed(2)}');
       }
 
-      // access individual landmarks
-      // see "Pose Landmark Types" section in README for full list of landmarks
+      // Access landmarks individually
+      // See "Pose Landmark Types" section in README for full list of landmarks
       final PoseLandmark? leftKnee = pose.getLandmark(PoseLandmarkType.leftKnee);
       if (leftKnee != null) {
         print('Left knee visibility: ${leftKnee.visibility.toStringAsFixed(2)}');

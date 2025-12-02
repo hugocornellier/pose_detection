@@ -124,7 +124,6 @@ class PoseDetector {
   final int interpreterPoolSize;
 
   bool _isInitialized = false;
-  img.Image? _canvasBuffer256;
 
   /// Creates a pose detector with the specified configuration.
   ///
@@ -179,7 +178,6 @@ class PoseDetector {
   Future<void> dispose() async {
     await _yolo.dispose();
     await _lm.dispose();
-    _canvasBuffer256 = null;
     _isInitialized = false;
   }
 
@@ -302,8 +300,7 @@ class PoseDetector {
     // execution. Each run() call acquires an interpreter, runs inference, and releases
     // it back to the pool. Future.wait() executes all inferences concurrently up to
     // the pool size limit.
-    final List<Future<PoseLandmarks?>> futures =
-        cropDataList.map((data) async {
+    final List<Future<PoseLandmarks?>> futures = cropDataList.map((data) async {
       try {
         return await _lm.run(data.letterboxed);
       } catch (e) {

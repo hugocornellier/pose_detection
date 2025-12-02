@@ -185,7 +185,8 @@ class PoseLandmarkModelRunner {
     for (final completer in _waitQueue) {
       if (!completer.isCompleted) {
         completer.completeError(
-          StateError('PoseLandmarkModelRunner disposed while waiting for interpreter'),
+          StateError(
+              'PoseLandmarkModelRunner disposed while waiting for interpreter'),
         );
       }
     }
@@ -269,7 +270,8 @@ class PoseLandmarkModelRunner {
   /// Throws [StateError] if the model is not initialized.
   Future<PoseLandmarks> run(img.Image roiImage) async {
     if (!_isInitialized) {
-      throw StateError('PoseLandmarkModelRunner not initialized. Call initialize() first.');
+      throw StateError(
+          'PoseLandmarkModelRunner not initialized. Call initialize() first.');
     }
 
     // Acquire an interpreter from the pool
