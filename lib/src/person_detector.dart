@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 import 'dart:typed_data';
 import 'package:image/image.dart' as img;
+import 'package:meta/meta.dart';
 import 'package:tflite_flutter_custom/tflite_flutter.dart';
 import 'image_utils.dart';
 
@@ -173,6 +174,36 @@ class YoloV8PersonDetector {
           (e) => (e as List).map((v) => (v as num).toDouble()).toList(),
         )
         .toList();
+  }
+
+  /// Exposes YOLO output decoding for tests.
+  @visibleForTesting
+  List<Map<String, dynamic>> decodeOutputsForTest(List<dynamic> outputs) {
+    return _decodeAnyYoloOutputs(outputs);
+  }
+
+  /// Configures internal state for unit tests without loading native assets.
+  @visibleForTesting
+  void debugConfigureForTest({
+    required int inputWidth,
+    required int inputHeight,
+    required List<List<int>> outputShapes,
+    Interpreter? interpreter,
+    IsolateInterpreter? isolate,
+    img.Image? canvasBuffer,
+    Float32List? inputBuffer,
+    bool initialized = true,
+  }) {
+    _inW = inputWidth;
+    _inH = inputHeight;
+    _outShapes
+      ..clear()
+      ..addAll(outputShapes.map((s) => List<int>.from(s)));
+    _interpreter = interpreter;
+    _iso = isolate;
+    _canvasBuffer = canvasBuffer;
+    _inputBuffer = inputBuffer;
+    _isInitialized = initialized;
   }
 
   List<Map<String, dynamic>> _decodeAnyYoloOutputs(List<dynamic> outputs) {

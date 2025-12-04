@@ -2,6 +2,7 @@
 
 - Cache yolo input buffer and pass flat tensor to avoid reshape overhead
 - Update `tflite_flutter_custom` to 1.1.0
+- 100% test coverage
 
 ## 1.1.0
 

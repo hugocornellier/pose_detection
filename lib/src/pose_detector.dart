@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 import 'package:image/image.dart' as img;
+import 'package:meta/meta.dart';
 import 'types.dart';
 import 'image_utils.dart';
 import 'person_detector.dart';
@@ -61,6 +62,9 @@ class _PersonCropData {
 class PoseDetector {
   final YoloV8PersonDetector _yolo = YoloV8PersonDetector();
   late final PoseLandmarkModelRunner _lm;
+
+  @visibleForTesting
+  static img.Image? Function(Uint8List bytes)? imageDecoderOverride;
 
   /// Detection mode controlling pipeline behavior.
   ///
@@ -198,7 +202,8 @@ class PoseDetector {
           'PoseDetector not initialized. Call initialize() first.');
     }
     try {
-      final img.Image? image = img.decodeImage(Uint8List.fromList(imageBytes));
+      final decoder = imageDecoderOverride ?? img.decodeImage;
+      final img.Image? image = decoder(Uint8List.fromList(imageBytes));
       if (image == null) return <Pose>[];
       return detectOnImage(image);
     } catch (e) {

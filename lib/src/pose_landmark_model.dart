@@ -4,6 +4,7 @@ import 'dart:io';
 import 'dart:math' as math;
 import 'package:image/image.dart' as img;
 import 'package:path/path.dart' as p;
+import 'package:meta/meta.dart';
 import 'package:tflite_flutter_custom/tflite_flutter.dart';
 import 'image_utils.dart';
 import 'types.dart';
@@ -78,11 +79,17 @@ class PoseLandmarkModelRunner {
   /// This method is idempotent - subsequent calls do nothing if already loaded.
   ///
   /// Throws an exception if the library cannot be found or loaded.
-  static Future<void> ensureTFLiteLoaded() async {
+  static Future<void> ensureTFLiteLoaded({
+    Map<String, String>? env,
+    String? platformOverride,
+  }) async {
     if (_tfliteLib != null) return;
 
+    final Map<String, String> environment = env ?? Platform.environment;
+    final String platform = platformOverride ?? _platformString();
+
     // Optional override for local testing: set POSE_TFLITE_LIB to an absolute path.
-    final envLibPath = Platform.environment['POSE_TFLITE_LIB'];
+    final envLibPath = environment['POSE_TFLITE_LIB'];
     if (envLibPath != null && envLibPath.isNotEmpty) {
       _tfliteLib = ffi.DynamicLibrary.open(envLibPath);
       return;
@@ -93,17 +100,17 @@ class PoseLandmarkModelRunner {
 
     late final List<String> candidates;
 
-    if (Platform.isWindows) {
+    if (platform == 'windows') {
       candidates = [
         p.join(exeDir.path, 'libtensorflowlite_c-win.dll'),
         'libtensorflowlite_c-win.dll',
       ];
-    } else if (Platform.isLinux) {
+    } else if (platform == 'linux') {
       candidates = [
         p.join(exeDir.path, 'lib', 'libtensorflowlite_c-linux.so'),
         'libtensorflowlite_c-linux.so',
       ];
-    } else if (Platform.isMacOS) {
+    } else if (platform == 'macos') {
       final contents = exeDir.parent;
       candidates = [
         p.join(contents.path, 'Resources', 'libtensorflowlite_c-mac.dylib'),
@@ -127,6 +134,21 @@ class PoseLandmarkModelRunner {
       } catch (_) {}
     }
   }
+
+  static String _platformString() {
+    if (Platform.isWindows) return 'windows';
+    if (Platform.isLinux) return 'linux';
+    if (Platform.isMacOS) return 'macos';
+    return 'other';
+  }
+
+  @visibleForTesting
+  static void resetNativeLibForTest() {
+    _tfliteLib = null;
+  }
+
+  @visibleForTesting
+  static ffi.DynamicLibrary? nativeLibForTest() => _tfliteLib;
 
   /// Initializes the BlazePose landmark model with the specified variant.
   ///
@@ -185,6 +207,11 @@ class PoseLandmarkModelRunner {
 
   /// Returns the configured pool size.
   int get poolSize => _poolSize;
+
+  @visibleForTesting
+  void debugAddPendingWaiter(Completer<int> completer) {
+    _waitQueue.add(completer);
+  }
 
   /// Disposes the model runner and releases all resources.
   ///
