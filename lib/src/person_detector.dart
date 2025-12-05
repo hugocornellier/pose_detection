@@ -306,13 +306,20 @@ class YoloV8PersonDetector {
       _inputBuffer = Float32List(inputSize);
     }
     final Float32List flatInput = _inputBuffer!;
+
+    // Direct buffer access is ~10-50x faster than getPixel() which creates
+    // a new Pixel object and performs bounds checking on every call.
+    final bytes = letter.buffer.asUint8List();
+    final int numChannels = letter.numChannels;
+    const double scale = 1.0 / 255.0;
     int k = 0;
+    int byteIndex = 0;
     for (int y = 0; y < _inH; y++) {
       for (int x = 0; x < _inW; x++) {
-        final img.Pixel px = letter.getPixel(x, y);
-        flatInput[k++] = px.r / 255.0;
-        flatInput[k++] = px.g / 255.0;
-        flatInput[k++] = px.b / 255.0;
+        flatInput[k++] = bytes[byteIndex] * scale;
+        flatInput[k++] = bytes[byteIndex + 1] * scale;
+        flatInput[k++] = bytes[byteIndex + 2] * scale;
+        byteIndex += numChannels;
       }
     }
 

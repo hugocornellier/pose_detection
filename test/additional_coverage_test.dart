@@ -1,11 +1,9 @@
 import 'dart:async';
 import 'dart:typed_data';
-import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:image/image.dart' as img;
 import 'package:pose_detection_tflite/pose_detection_tflite.dart';
-import 'package:pose_detection_tflite/src/dart_registration.dart';
 import 'package:pose_detection_tflite/src/image_utils.dart';
 import 'package:pose_detection_tflite/src/person_detector.dart';
 import 'package:pose_detection_tflite/src/pose_landmark_model.dart';
@@ -133,7 +131,8 @@ void main() {
       expect(PoseLandmarkModelRunner.nativeLibForTest(), isNotNull);
     });
 
-    test('ensureTFLiteLoaded builds candidate lists for Windows/Linux', () async {
+    test('ensureTFLiteLoaded builds candidate lists for Windows/Linux',
+        () async {
       PoseLandmarkModelRunner.resetNativeLibForTest();
       await PoseLandmarkModelRunner.ensureTFLiteLoaded(
         env: const <String, String>{},
@@ -176,7 +175,9 @@ void main() {
 
     test('runs through interpreter branch and resizes input buffer', () async {
       final _StubInterpreter interpreter = _StubInterpreter(
-        inputTensors: <Tensor>[_StubTensor(<int>[1, 2, 2, 3])],
+        inputTensors: <Tensor>[
+          _StubTensor(<int>[1, 2, 2, 3])
+        ],
       );
       final detector = YoloV8PersonDetector();
       detector.debugConfigureForTest(
@@ -206,7 +207,9 @@ void main() {
 
     test('fails fast on undersized output tensors', () {
       final _StubInterpreter interpreter = _StubInterpreter(
-        inputTensors: <Tensor>[_StubTensor(<int>[1, 1, 1, 3])],
+        inputTensors: <Tensor>[
+          _StubTensor(<int>[1, 1, 1, 3])
+        ],
       );
       final detector = YoloV8PersonDetector();
       detector.debugConfigureForTest(

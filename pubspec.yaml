@@ -21,6 +21,7 @@ dependencies:
   image: ^4.5.4
   tflite_flutter_custom: ^1.1.0
   path: ^1.9.1
+  meta: ^1.15.0
 
 dev_dependencies:
   flutter_test:

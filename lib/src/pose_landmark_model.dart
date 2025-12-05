@@ -142,11 +142,19 @@ class PoseLandmarkModelRunner {
     return 'other';
   }
 
+  /// Resets the TFLite native library cache for testing.
+  ///
+  /// Clears the cached [_tfliteLib] reference, allowing tests to verify
+  /// library loading behavior across different platform configurations.
   @visibleForTesting
   static void resetNativeLibForTest() {
     _tfliteLib = null;
   }
 
+  /// Returns the cached TFLite native library instance for testing.
+  ///
+  /// Provides test access to verify that the correct native library
+  /// was loaded after calling [ensureTFLiteLoaded].
   @visibleForTesting
   static ffi.DynamicLibrary? nativeLibForTest() => _tfliteLib;
 
@@ -208,6 +216,10 @@ class PoseLandmarkModelRunner {
   /// Returns the configured pool size.
   int get poolSize => _poolSize;
 
+  /// Adds a completer to the wait queue for testing disposal behavior.
+  ///
+  /// Used in tests to verify that [dispose] properly cancels pending
+  /// operations and completes all waiting requests with errors.
   @visibleForTesting
   void debugAddPendingWaiter(Completer<int> completer) {
     _waitQueue.add(completer);

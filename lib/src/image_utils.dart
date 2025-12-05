@@ -144,12 +144,20 @@ class ImageUtils {
           growable: false,
         );
 
+    // Direct buffer access is ~10-50x faster than getPixel() which creates
+    // a new Pixel object and performs bounds checking on every call.
+    final bytes = image.buffer.asUint8List();
+    final int numChannels = image.numChannels;
+    const double scale = 1.0 / 255.0;
+    int byteIndex = 0;
     for (int y = 0; y < height; y++) {
+      final List<List<double>> row = out[0][y];
       for (int x = 0; x < width; x++) {
-        final img.Pixel px = image.getPixel(x, y);
-        out[0][y][x][0] = px.r / 255.0;
-        out[0][y][x][1] = px.g / 255.0;
-        out[0][y][x][2] = px.b / 255.0;
+        final List<double> pixel = row[x];
+        pixel[0] = bytes[byteIndex] * scale;
+        pixel[1] = bytes[byteIndex + 1] * scale;
+        pixel[2] = bytes[byteIndex + 2] * scale;
+        byteIndex += numChannels;
       }
     }
     return out;

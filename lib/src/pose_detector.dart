@@ -63,6 +63,10 @@ class PoseDetector {
   final YoloV8PersonDetector _yolo = YoloV8PersonDetector();
   late final PoseLandmarkModelRunner _lm;
 
+  /// Test-only override for image decoding behavior.
+  ///
+  /// When set, replaces the default image decoder with a custom function.
+  /// Used in tests to simulate decoding failures or unusual image conditions.
   @visibleForTesting
   static img.Image? Function(Uint8List bytes)? imageDecoderOverride;
 
