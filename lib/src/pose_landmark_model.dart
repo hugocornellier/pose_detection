@@ -22,7 +22,7 @@ class _InterpreterInstance {
     required this.isolateInterpreter,
   });
 
-  /// Disposes both the interpreter and its isolate wrapper.
+  /// Disposes interpreter and isolate wrapper.
   Future<void> dispose() async {
     isolateInterpreter.close();
     interpreter.close();
@@ -58,6 +58,9 @@ class PoseLandmarkModelRunner {
 
   /// Maximum number of concurrent inferences.
   final int _poolSize;
+
+  /// Delegate instances - one per interpreter (XNNPACK is NOT thread-safe for sharing).
+  final List<Delegate> _delegates = [];
 
   bool _isInitialized = false;
   static ffi.DynamicLibrary? _tfliteLib;
@@ -162,9 +165,13 @@ class PoseLandmarkModelRunner {
   ///
   /// Creates a pool of interpreter instances based on the configured [_poolSize].
   /// Each interpreter is loaded independently, allowing for parallel inference execution.
+  /// All interpreters in the pool will use the same performance configuration.
   ///
   /// Parameters:
   /// - [model]: Which BlazePose variant to use (lite, full, or heavy)
+  /// - [performanceConfig]: Optional performance configuration for TFLite delegates.
+  ///   Defaults to no delegates (backward compatible). Use [PerformanceConfig.xnnpack()]
+  ///   for CPU optimization.
   ///
   /// If already initialized, this will dispose all previous instances first.
   ///
@@ -172,15 +179,24 @@ class PoseLandmarkModelRunner {
   /// For example, a pool size of 5 will consume ~50MB for the model pool.
   ///
   /// Throws an exception if the model fails to load or TFLite library is unavailable.
-  Future<void> initialize(PoseLandmarkModel model) async {
+  Future<void> initialize(
+    PoseLandmarkModel model, {
+    PerformanceConfig? performanceConfig,
+  }) async {
     if (_isInitialized) await dispose();
     await ensureTFLiteLoaded();
 
     final String path = _getModelPath(model);
 
-    // Create pool of interpreter instances
+    // Create pool of interpreter instances - each with its OWN delegate
+    // XNNPACK delegates are NOT thread-safe for sharing across interpreters
     for (int i = 0; i < _poolSize; i++) {
-      final interpreter = await Interpreter.fromAsset(path);
+      final (options, delegate) = _createInterpreterOptions(performanceConfig);
+      if (delegate != null) {
+        _delegates.add(delegate);
+      }
+
+      final interpreter = await Interpreter.fromAsset(path, options: options);
       interpreter.resizeInputTensor(0, [1, 256, 256, 3]);
       interpreter.allocateTensors();
 
@@ -197,6 +213,47 @@ class PoseLandmarkModelRunner {
     }
 
     _isInitialized = true;
+  }
+
+  /// Creates interpreter options with delegates based on performance configuration.
+  ///
+  /// Returns a tuple of (options, delegate) where delegate may be null.
+  /// Each call creates a NEW delegate instance - do NOT share delegates across interpreters.
+  (InterpreterOptions, Delegate?) _createInterpreterOptions(
+      PerformanceConfig? config) {
+    final options = InterpreterOptions();
+
+    // If no config or disabled mode, return default options (backward compatible)
+    if (config == null || config.mode == PerformanceMode.disabled) {
+      return (options, null);
+    }
+
+    // Get effective thread count
+    final threadCount = config.numThreads?.clamp(0, 8) ??
+        math.min(4, Platform.numberOfProcessors);
+
+    // Set CPU threads
+    options.threads = threadCount;
+
+    // Add XNNPACK delegate (for xnnpack or auto mode)
+    if (config.mode == PerformanceMode.xnnpack ||
+        config.mode == PerformanceMode.auto) {
+      try {
+        final xnnpackDelegate = XNNPackDelegate(
+          options: XNNPackDelegateOptions(numThreads: threadCount),
+        );
+        options.addDelegate(xnnpackDelegate);
+        return (options, xnnpackDelegate);
+      } catch (e) {
+        // Graceful fallback: if delegate creation fails, continue with CPU
+        // ignore: avoid_print
+        print('[BlazePose] Warning: Failed to create XNNPACK delegate: $e');
+        // ignore: avoid_print
+        print('[BlazePose] Falling back to default CPU execution');
+      }
+    }
+
+    return (options, null);
   }
 
   String _getModelPath(PoseLandmarkModel model) {
@@ -248,6 +305,12 @@ class PoseLandmarkModelRunner {
     }
     _interpreterPool.clear();
     _availableInterpreters.clear();
+
+    // Clean up all delegates (one per interpreter)
+    for (final delegate in _delegates) {
+      delegate.delete();
+    }
+    _delegates.clear();
 
     _isInitialized = false;
   }

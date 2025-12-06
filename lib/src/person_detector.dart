@@ -1,9 +1,11 @@
+import 'dart:io';
 import 'dart:math' as math;
 import 'dart:typed_data';
 import 'package:image/image.dart' as img;
 import 'package:meta/meta.dart';
 import 'package:tflite_flutter_custom/tflite_flutter.dart';
 import 'image_utils.dart';
+import 'types.dart';
 
 /// A single object detection result from YOLOv8.
 ///
@@ -43,8 +45,14 @@ class YoloV8PersonDetector {
   final _outShapes = <List<int>>[];
   img.Image? _canvasBuffer;
   Float32List? _inputBuffer;
+  Delegate? _delegate; // Store delegate reference for cleanup
 
   /// Initializes the YOLOv8 person detector by loading the model.
+  ///
+  /// Parameters:
+  /// - [performanceConfig]: Optional performance configuration for TFLite delegates.
+  ///   Defaults to no delegates (backward compatible). Use [PerformanceConfig.xnnpack()]
+  ///   for CPU optimization.
   ///
   /// Loads the YOLOv8n model from assets, allocates tensors, and creates
   /// an IsolateInterpreter for async inference. Must be called before [detectOnImage].
@@ -52,12 +60,18 @@ class YoloV8PersonDetector {
   /// If already initialized, this will dispose the previous instance first.
   ///
   /// Throws an exception if the model fails to load.
-  Future<void> initialize() async {
+  Future<void> initialize({
+    PerformanceConfig? performanceConfig,
+  }) async {
     const String assetPath =
         'packages/pose_detection_tflite/assets/models/yolov8n_float32.tflite';
     if (_isInitialized) await dispose();
-    final Interpreter itp =
-        await Interpreter.fromAsset(assetPath, options: InterpreterOptions());
+
+    // Create interpreter options with optional XNNPACK delegate
+    final InterpreterOptions options =
+        _createInterpreterOptions(performanceConfig);
+
+    final Interpreter itp = await Interpreter.fromAsset(assetPath, options: options);
     _interpreter = itp;
     itp.allocateTensors();
 
@@ -77,18 +91,62 @@ class YoloV8PersonDetector {
     _isInitialized = true;
   }
 
+  /// Creates interpreter options with delegates based on performance configuration.
+  InterpreterOptions _createInterpreterOptions(PerformanceConfig? config) {
+    final options = InterpreterOptions();
+
+    // Clean up any existing delegate before creating a new one
+    _delegate?.delete();
+    _delegate = null;
+
+    // If no config or disabled mode, return default options (backward compatible)
+    if (config == null || config.mode == PerformanceMode.disabled) {
+      return options;
+    }
+
+    // Get effective thread count
+    final threadCount = config.numThreads?.clamp(0, 8) ??
+        math.min(4, Platform.numberOfProcessors);
+
+    // Set CPU threads
+    options.threads = threadCount;
+
+    // Add XNNPACK delegate (for xnnpack or auto mode)
+    if (config.mode == PerformanceMode.xnnpack ||
+        config.mode == PerformanceMode.auto) {
+      try {
+        final xnnpackDelegate = XNNPackDelegate(
+          options: XNNPackDelegateOptions(numThreads: threadCount),
+        );
+        options.addDelegate(xnnpackDelegate);
+        _delegate = xnnpackDelegate; // Store for cleanup
+      } catch (e) {
+        // Graceful fallback: if delegate creation fails, continue with CPU
+        // ignore: avoid_print
+        print('[YOLO] Warning: Failed to create XNNPACK delegate: $e');
+        // ignore: avoid_print
+        print('[YOLO] Falling back to default CPU execution');
+      }
+    }
+
+    return options;
+  }
+
   /// Returns true if the detector has been initialized and is ready to use.
   bool get isInitialized => _isInitialized;
 
   /// Disposes the detector and releases all resources.
   ///
-  /// Closes the interpreter, isolate interpreter, and clears canvas buffer.
+  /// Closes the interpreter, isolate interpreter, clears canvas buffer,
+  /// and deletes any allocated delegates.
   /// After disposal, [initialize] must be called again before using the detector.
   Future<void> dispose() async {
     _iso?.close();
     _iso = null;
     _interpreter?.close();
     _interpreter = null;
+    _delegate?.delete();
+    _delegate = null;
     _canvasBuffer = null;
     _isInitialized = false;
   }

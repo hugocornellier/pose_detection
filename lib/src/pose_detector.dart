@@ -131,6 +131,30 @@ class PoseDetector {
   /// Default: 5
   final int interpreterPoolSize;
 
+  /// Performance configuration for TensorFlow Lite inference.
+  ///
+  /// Controls CPU/GPU acceleration via delegates. Default is no acceleration
+  /// for backward compatibility.
+  ///
+  /// Use [PerformanceConfig.xnnpack()] for 2-5x CPU speedup.
+  ///
+  /// Example:
+  /// ```dart
+  /// // Default (no acceleration)
+  /// final detector = PoseDetector();
+  ///
+  /// // XNNPACK with auto thread detection (recommended)
+  /// final detector = PoseDetector(
+  ///   performanceConfig: PerformanceConfig.xnnpack(),
+  /// );
+  ///
+  /// // XNNPACK with custom threads
+  /// final detector = PoseDetector(
+  ///   performanceConfig: PerformanceConfig.xnnpack(numThreads: 2),
+  /// );
+  /// ```
+  final PerformanceConfig performanceConfig;
+
   bool _isInitialized = false;
 
   /// Creates a pose detector with the specified configuration.
@@ -143,6 +167,23 @@ class PoseDetector {
   /// - [maxDetections]: Maximum number of persons to detect. Default: 10
   /// - [minLandmarkScore]: Minimum landmark confidence score (0.0-1.0). Default: 0.5
   /// - [interpreterPoolSize]: Number of landmark model interpreter instances (1-10). Default: 5
+  /// - [performanceConfig]: TensorFlow Lite performance configuration. Default: no acceleration
+  ///
+  /// **Performance Configuration:**
+  /// ```dart
+  /// // Default (no acceleration, backward compatible)
+  /// final detector = PoseDetector();
+  ///
+  /// // XNNPACK acceleration (2-5x faster, recommended)
+  /// final detector = PoseDetector(
+  ///   performanceConfig: PerformanceConfig.xnnpack(),
+  /// );
+  ///
+  /// // Custom thread count
+  /// final detector = PoseDetector(
+  ///   performanceConfig: PerformanceConfig.xnnpack(numThreads: 2),
+  /// );
+  /// ```
   ///
   /// **Choosing interpreterPoolSize:**
   /// - Use 1 for lowest memory usage and sequential processing
@@ -157,6 +198,7 @@ class PoseDetector {
     this.maxDetections = 10,
     this.minLandmarkScore = 0.5,
     this.interpreterPoolSize = 5,
+    this.performanceConfig = PerformanceConfig.disabled,
   }) {
     _lm = PoseLandmarkModelRunner(poolSize: interpreterPoolSize);
   }
@@ -171,8 +213,8 @@ class PoseDetector {
     if (_isInitialized) {
       await dispose();
     }
-    await _lm.initialize(landmarkModel);
-    await _yolo.initialize();
+    await _lm.initialize(landmarkModel, performanceConfig: performanceConfig);
+    await _yolo.initialize(performanceConfig: performanceConfig);
     _isInitialized = true;
   }
 

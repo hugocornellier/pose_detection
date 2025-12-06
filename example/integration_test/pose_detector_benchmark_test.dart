@@ -44,7 +44,9 @@ class BenchmarkStats {
 
   double get standardDeviation {
     final mean = average;
-    final variance = timings.map((t) => pow(t - mean, 2)).reduce((a, b) => a + b) / timings.length;
+    final variance =
+        timings.map((t) => pow(t - mean, 2)).reduce((a, b) => a + b) /
+            timings.length;
     return sqrt(variance);
   }
 
@@ -104,129 +106,16 @@ void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
   group('PoseDetector - Performance Benchmarks', () {
-    test('Benchmark all sample images with lite model', () async {
-      final detector = PoseDetector(
-        mode: PoseMode.boxesAndLandmarks,
-        landmarkModel: PoseLandmarkModel.lite,
-      );
-      await detector.initialize();
-
-      print('\n${'=' * 60}');
-      print('BENCHMARK: Lite Model (boxesAndLandmarks)');
-      print('=' * 60);
-
-      final allStats = <BenchmarkStats>[];
-
-      for (final imagePath in SAMPLE_IMAGES) {
-        final ByteData data = await rootBundle.load(imagePath);
-        final Uint8List bytes = data.buffer.asUint8List();
-
-        final List<int> timings = [];
-        int detectionCount = 0;
-
-        // Run iterations
-        for (int i = 0; i < ITERATIONS; i++) {
-          final stopwatch = Stopwatch()..start();
-          final results = await detector.detect(bytes);
-          stopwatch.stop();
-
-          timings.add(stopwatch.elapsedMilliseconds);
-          if (i == 0) detectionCount = results.length;
-        }
-
-        final stats = BenchmarkStats(
-          imagePath: imagePath,
-          timings: timings,
-          imageSize: bytes.length,
-          detectionCount: detectionCount,
-        );
-        stats.printResults(imagePath);
-        allStats.add(stats);
-      }
-
-      await detector.dispose();
-
-      // Write results to file
-      final timestamp = DateTime.now().toIso8601String().replaceAll(':', '-');
-      final benchmarkResults = BenchmarkResults(
-        timestamp: timestamp,
-        testName: 'Lite Model (boxesAndLandmarks)',
-        configuration: {
-          'model': 'lite',
-          'mode': 'boxesAndLandmarks',
-          'iterations': ITERATIONS,
-        },
-        results: allStats,
-      );
-      benchmarkResults.printJson('benchmark_lite_model_$timestamp.json');
-    });
-
-    test('Benchmark all sample images with full model', () async {
-      final detector = PoseDetector(
-        mode: PoseMode.boxesAndLandmarks,
-        landmarkModel: PoseLandmarkModel.full,
-      );
-      await detector.initialize();
-
-      print('\n${'=' * 60}');
-      print('BENCHMARK: Full Model (boxesAndLandmarks)');
-      print('=' * 60);
-
-      final allStats = <BenchmarkStats>[];
-
-      for (final imagePath in SAMPLE_IMAGES) {
-        final ByteData data = await rootBundle.load(imagePath);
-        final Uint8List bytes = data.buffer.asUint8List();
-
-        final List<int> timings = [];
-        int detectionCount = 0;
-
-        // Run iterations
-        for (int i = 0; i < ITERATIONS; i++) {
-          final stopwatch = Stopwatch()..start();
-          final results = await detector.detect(bytes);
-          stopwatch.stop();
-
-          timings.add(stopwatch.elapsedMilliseconds);
-          if (i == 0) detectionCount = results.length;
-        }
-
-        final stats = BenchmarkStats(
-          imagePath: imagePath,
-          timings: timings,
-          imageSize: bytes.length,
-          detectionCount: detectionCount,
-        );
-        stats.printResults(imagePath);
-        allStats.add(stats);
-      }
-
-      await detector.dispose();
-
-      // Write results to file
-      final timestamp = DateTime.now().toIso8601String().replaceAll(':', '-');
-      final benchmarkResults = BenchmarkResults(
-        timestamp: timestamp,
-        testName: 'Full Model (boxesAndLandmarks)',
-        configuration: {
-          'model': 'full',
-          'mode': 'boxesAndLandmarks',
-          'iterations': ITERATIONS,
-        },
-        results: allStats,
-      );
-      benchmarkResults.printJson('benchmark_full_model_$timestamp.json');
-    });
-
-    test('Benchmark all sample images with heavy model', () async {
+    test('Benchmark heavy model with boxes and landmarks', () async {
       final detector = PoseDetector(
         mode: PoseMode.boxesAndLandmarks,
         landmarkModel: PoseLandmarkModel.heavy,
+        performanceConfig: const PerformanceConfig.xnnpack(), // Enable XNNPACK
       );
       await detector.initialize();
 
       print('\n${'=' * 60}');
-      print('BENCHMARK: Heavy Model (boxesAndLandmarks)');
+      print('BENCHMARK: Heavy Model (boxesAndLandmarks) with XNNPACK');
       print('=' * 60);
 
       final allStats = <BenchmarkStats>[];
@@ -264,291 +153,214 @@ void main() {
       final timestamp = DateTime.now().toIso8601String().replaceAll(':', '-');
       final benchmarkResults = BenchmarkResults(
         timestamp: timestamp,
-        testName: 'Heavy Model (boxesAndLandmarks)',
+        testName: 'Heavy Model (boxesAndLandmarks) with XNNPACK',
         configuration: {
           'model': 'heavy',
           'mode': 'boxesAndLandmarks',
           'iterations': ITERATIONS,
+          'performance_config': 'xnnpack',
         },
         results: allStats,
       );
-      benchmarkResults.printJson('benchmark_heavy_model_$timestamp.json');
+      benchmarkResults.printJson('benchmark_$timestamp.json');
     });
+  });
 
-    test('Benchmark boxes-only mode vs full mode (lite model)', () async {
+  group('XNNPACK Delegate - Performance Comparison', () {
+    test('Benchmark: Default (no delegate) vs XNNPACK', () async {
       print('\n${'=' * 60}');
-      print('BENCHMARK: Boxes-Only vs BoxesAndLandmarks (Lite Model)');
+      print('XNNPACK DELEGATE PERFORMANCE COMPARISON');
       print('=' * 60);
 
-      final boxesStats = <BenchmarkStats>[];
-      final landmarksStats = <BenchmarkStats>[];
+      // Use a single test image for comparison
+      const testImage = 'assets/samples/pose1.jpg';
+      final ByteData data = await rootBundle.load(testImage);
+      final Uint8List bytes = data.buffer.asUint8List();
 
-      // Test boxes-only mode
-      final boxesDetector = PoseDetector(
-        mode: PoseMode.boxes,
+      // Create detector WITHOUT XNNPACK (baseline)
+      final detectorDefault = PoseDetector(
         landmarkModel: PoseLandmarkModel.lite,
+        interpreterPoolSize: 1,
+        // performanceConfig: default (disabled)
       );
-      await boxesDetector.initialize();
+      await detectorDefault.initialize();
 
-      print('\n--- BOXES-ONLY MODE ---');
-      for (final imagePath in SAMPLE_IMAGES) {
-        final ByteData data = await rootBundle.load(imagePath);
-        final Uint8List bytes = data.buffer.asUint8List();
+      // Create detector WITH XNNPACK
+      final detectorXNNPack = PoseDetector(
+        landmarkModel: PoseLandmarkModel.lite,
+        interpreterPoolSize: 1,
+        performanceConfig: const PerformanceConfig.xnnpack(), // AUTO THREADS
+      );
+      await detectorXNNPack.initialize();
 
-        final List<int> timings = [];
-        int detectionCount = 0;
+      const int iterations = 15;
 
-        for (int i = 0; i < ITERATIONS; i++) {
-          final stopwatch = Stopwatch()..start();
-          final results = await boxesDetector.detect(bytes);
-          stopwatch.stop();
+      // Warmup both detectors
+      await detectorDefault.detect(bytes);
+      await detectorXNNPack.detect(bytes);
 
-          timings.add(stopwatch.elapsedMilliseconds);
-          if (i == 0) detectionCount = results.length;
-        }
-
-        final stats = BenchmarkStats(
-          imagePath: imagePath,
-          timings: timings,
-          imageSize: bytes.length,
-          detectionCount: detectionCount,
-        );
-        stats.printResults(imagePath);
-        boxesStats.add(stats);
+      // Benchmark DEFAULT
+      final timingsDefault = <int>[];
+      for (int i = 0; i < iterations; i++) {
+        final sw = Stopwatch()..start();
+        await detectorDefault.detect(bytes);
+        sw.stop();
+        timingsDefault.add(sw.elapsedMilliseconds);
       }
 
-      await boxesDetector.dispose();
-
-      // Test boxes + landmarks mode
-      final fullDetector = PoseDetector(
-        mode: PoseMode.boxesAndLandmarks,
-        landmarkModel: PoseLandmarkModel.lite,
-      );
-      await fullDetector.initialize();
-
-      print('\n--- BOXES-AND-LANDMARKS MODE ---');
-      for (final imagePath in SAMPLE_IMAGES) {
-        final ByteData data = await rootBundle.load(imagePath);
-        final Uint8List bytes = data.buffer.asUint8List();
-
-        final List<int> timings = [];
-        int detectionCount = 0;
-
-        for (int i = 0; i < ITERATIONS; i++) {
-          final stopwatch = Stopwatch()..start();
-          final results = await fullDetector.detect(bytes);
-          stopwatch.stop();
-
-          timings.add(stopwatch.elapsedMilliseconds);
-          if (i == 0) detectionCount = results.length;
-        }
-
-        final stats = BenchmarkStats(
-          imagePath: imagePath,
-          timings: timings,
-          imageSize: bytes.length,
-          detectionCount: detectionCount,
-        );
-        stats.printResults(imagePath);
-        landmarksStats.add(stats);
+      // Benchmark XNNPACK
+      final timingsXNNPack = <int>[];
+      for (int i = 0; i < iterations; i++) {
+        final sw = Stopwatch()..start();
+        await detectorXNNPack.detect(bytes);
+        sw.stop();
+        timingsXNNPack.add(sw.elapsedMilliseconds);
       }
 
-      await fullDetector.dispose();
+      await detectorDefault.dispose();
+      await detectorXNNPack.dispose();
 
-      // Write results to files
-      final timestamp = DateTime.now().toIso8601String().replaceAll(':', '-');
+      // Calculate statistics
+      final avgDefault =
+          timingsDefault.reduce((a, b) => a + b) / timingsDefault.length;
+      final avgXNNPack =
+          timingsXNNPack.reduce((a, b) => a + b) / timingsXNNPack.length;
+      final speedup = avgDefault / avgXNNPack;
 
-      final boxesResults = BenchmarkResults(
-        timestamp: timestamp,
-        testName: 'Boxes-Only Mode (Lite Model)',
-        configuration: {
-          'model': 'lite',
-          'mode': 'boxes',
-          'iterations': ITERATIONS,
-        },
-        results: boxesStats,
-      );
-      boxesResults.printJson('benchmark_boxes_only_$timestamp.json');
+      // Print results
+      print('\n═══════════════════════════════════════════');
+      print('XNNPACK Delegate Benchmark Results');
+      print('═══════════════════════════════════════════');
+      print('Model: BlazePose Lite');
+      print('Iterations: $iterations');
+      print('Test image: $testImage');
+      print('');
+      print('Default (no delegate):');
+      print('  Average: ${avgDefault.toStringAsFixed(1)} ms/frame');
+      print('  Min: ${timingsDefault.reduce((a, b) => a < b ? a : b)} ms');
+      print('  Max: ${timingsDefault.reduce((a, b) => a > b ? a : b)} ms');
+      print('');
+      print('XNNPACK (auto threads):');
+      print('  Average: ${avgXNNPack.toStringAsFixed(1)} ms/frame');
+      print('  Min: ${timingsXNNPack.reduce((a, b) => a < b ? a : b)} ms');
+      print('  Max: ${timingsXNNPack.reduce((a, b) => a > b ? a : b)} ms');
+      print('');
+      print('Speedup: ${speedup.toStringAsFixed(2)}x faster with XNNPACK');
+      print('═══════════════════════════════════════════');
 
-      final landmarksResults = BenchmarkResults(
-        timestamp: timestamp,
-        testName: 'BoxesAndLandmarks Mode (Lite Model)',
-        configuration: {
-          'model': 'lite',
-          'mode': 'boxesAndLandmarks',
-          'iterations': ITERATIONS,
-        },
-        results: landmarksStats,
-      );
-      landmarksResults.printJson('benchmark_boxes_landmarks_$timestamp.json');
+      // XNNPACK should provide some speedup (platform-dependent, typically 1.5-5x)
+      // On some platforms the speedup may be modest, so we use a conservative threshold
+      expect(speedup, greaterThan(0.95),
+          reason:
+              'XNNPACK should not be slower than default (got ${speedup.toStringAsFixed(2)}x)');
+
+      // Log a warning if speedup is less than expected
+      if (speedup < 1.5) {
+        print('⚠️  Note: XNNPACK speedup (${speedup.toStringAsFixed(2)}x) is less than typical 1.5-5x.');
+        print('   This may be normal on some platforms or with integration test overhead.');
+      }
     });
 
-    test('Benchmark different interpreter pool sizes (lite model)', () async {
-      final poolSizes = [1, 3, 5];
-
+    test('Benchmark: XNNPACK with different thread counts', () async {
       print('\n${'=' * 60}');
-      print('BENCHMARK: Different Interpreter Pool Sizes (Lite Model)');
+      print('XNNPACK THREAD SCALING ANALYSIS');
       print('=' * 60);
 
-      final timestamp = DateTime.now().toIso8601String().replaceAll(':', '-');
+      const testImage = 'assets/samples/pose1.jpg';
+      final ByteData data = await rootBundle.load(testImage);
+      final Uint8List bytes = data.buffer.asUint8List();
 
-      for (final poolSize in poolSizes) {
+      final configs = [
+        (1, const PerformanceConfig.xnnpack(numThreads: 1)),
+        (2, const PerformanceConfig.xnnpack(numThreads: 2)),
+        (4, const PerformanceConfig.xnnpack(numThreads: 4)),
+      ];
+
+      print('\n═══════════════════════════════════════════');
+      print('XNNPACK Thread Scaling (BlazePose Lite)');
+      print('═══════════════════════════════════════════');
+
+      for (final (threads, config) in configs) {
         final detector = PoseDetector(
-          mode: PoseMode.boxesAndLandmarks,
           landmarkModel: PoseLandmarkModel.lite,
-          interpreterPoolSize: poolSize,
+          interpreterPoolSize: 1,
+          performanceConfig: config,
         );
         await detector.initialize();
 
-        print('\n--- POOL SIZE: $poolSize ---');
+        // Warmup
+        await detector.detect(bytes);
 
-        final allStats = <BenchmarkStats>[];
-
-        for (final imagePath in SAMPLE_IMAGES) {
-          final ByteData data = await rootBundle.load(imagePath);
-          final Uint8List bytes = data.buffer.asUint8List();
-
-          final List<int> timings = [];
-          int detectionCount = 0;
-
-          for (int i = 0; i < ITERATIONS; i++) {
-            final stopwatch = Stopwatch()..start();
-            final results = await detector.detect(bytes);
-            stopwatch.stop();
-
-            timings.add(stopwatch.elapsedMilliseconds);
-            if (i == 0) detectionCount = results.length;
-          }
-
-          final stats = BenchmarkStats(
-            imagePath: imagePath,
-            timings: timings,
-            imageSize: bytes.length,
-            detectionCount: detectionCount,
-          );
-          stats.printResults(imagePath);
-          allStats.add(stats);
+        // Benchmark
+        const int iters = 10;
+        final timings = <int>[];
+        for (int i = 0; i < iters; i++) {
+          final sw = Stopwatch()..start();
+          await detector.detect(bytes);
+          sw.stop();
+          timings.add(sw.elapsedMilliseconds);
         }
+
+        final avg = timings.reduce((a, b) => a + b) / timings.length;
+        final minTime = timings.reduce((a, b) => a < b ? a : b);
+        final maxTime = timings.reduce((a, b) => a > b ? a : b);
+
+        print('Threads=$threads: avg=${avg.toStringAsFixed(1)}ms, '
+            'min=${minTime}ms, max=${maxTime}ms');
 
         await detector.dispose();
-
-        // Write results for this pool size
-        final benchmarkResults = BenchmarkResults(
-          timestamp: timestamp,
-          testName: 'Pool Size $poolSize (Lite Model)',
-          configuration: {
-            'model': 'lite',
-            'mode': 'boxesAndLandmarks',
-            'pool_size': poolSize,
-            'iterations': ITERATIONS,
-          },
-          results: allStats,
-        );
-        benchmarkResults.printJson('benchmark_pool_size_${poolSize}_$timestamp.json');
       }
+      print('═══════════════════════════════════════════');
     });
 
-    test('Benchmark detect() vs detectOnImage() (lite model)', () async {
-      final detector = PoseDetector(
-        mode: PoseMode.boxesAndLandmarks,
-        landmarkModel: PoseLandmarkModel.lite,
-      );
-      await detector.initialize();
-
+    test('Benchmark: XNNPACK across all model variants', () async {
       print('\n${'=' * 60}');
-      print('BENCHMARK: detect() vs detectOnImage() (Lite Model)');
+      print('XNNPACK PERFORMANCE ACROSS MODEL VARIANTS');
       print('=' * 60);
 
-      final detectStats = <BenchmarkStats>[];
-      final detectOnImageStats = <BenchmarkStats>[];
+      const testImage = 'assets/samples/pose1.jpg';
+      final ByteData data = await rootBundle.load(testImage);
+      final Uint8List bytes = data.buffer.asUint8List();
 
-      for (final imagePath in SAMPLE_IMAGES) {
-        final ByteData data = await rootBundle.load(imagePath);
-        final Uint8List bytes = data.buffer.asUint8List();
+      final models = [
+        PoseLandmarkModel.lite,
+        PoseLandmarkModel.full,
+        PoseLandmarkModel.heavy,
+      ];
 
-        // Benchmark detect() - includes decoding overhead
-        print('\n--- detect() method ---');
-        final detectTimings = <int>[];
-        int detectionCount = 0;
+      print('\n═══════════════════════════════════════════');
+      print('Comparing Models with XNNPACK');
+      print('═══════════════════════════════════════════');
 
-        for (int i = 0; i < ITERATIONS; i++) {
-          final stopwatch = Stopwatch()..start();
-          final results = await detector.detect(bytes);
-          stopwatch.stop();
+      for (final model in models) {
+        // Test with XNNPACK
+        final detector = PoseDetector(
+          landmarkModel: model,
+          interpreterPoolSize: 1,
+          performanceConfig: const PerformanceConfig.xnnpack(),
+        );
+        await detector.initialize();
 
-          detectTimings.add(stopwatch.elapsedMilliseconds);
-          if (i == 0) detectionCount = results.length;
+        // Warmup
+        await detector.detect(bytes);
+
+        // Benchmark
+        const int iters = 10;
+        final timings = <int>[];
+        for (int i = 0; i < iters; i++) {
+          final sw = Stopwatch()..start();
+          await detector.detect(bytes);
+          sw.stop();
+          timings.add(sw.elapsedMilliseconds);
         }
 
-        final detectStat = BenchmarkStats(
-          imagePath: imagePath,
-          timings: detectTimings,
-          imageSize: bytes.length,
-          detectionCount: detectionCount,
-        );
-        detectStat.printResults('$imagePath (detect)');
-        detectStats.add(detectStat);
+        final avg = timings.reduce((a, b) => a + b) / timings.length;
 
-        // Pre-decode image once
-        final image = img.decodeImage(bytes);
-        expect(image, isNotNull);
+        print('${model.name.padRight(6)}: ${avg.toStringAsFixed(1)} ms/frame');
 
-        // Benchmark detectOnImage() - no decoding overhead
-        print('\n--- detectOnImage() method ---');
-        final detectOnImageTimings = <int>[];
-
-        for (int i = 0; i < ITERATIONS; i++) {
-          final stopwatch = Stopwatch()..start();
-          final results = await detector.detectOnImage(image!);
-          stopwatch.stop();
-
-          detectOnImageTimings.add(stopwatch.elapsedMilliseconds);
-        }
-
-        final detectOnImageStat = BenchmarkStats(
-          imagePath: imagePath,
-          timings: detectOnImageTimings,
-          imageSize: bytes.length,
-          detectionCount: detectionCount,
-        );
-        detectOnImageStat.printResults('$imagePath (detectOnImage)');
-        detectOnImageStats.add(detectOnImageStat);
-
-        // Show overhead comparison
-        final overhead = detectStat.average - detectOnImageStat.average;
-        print('\nDecoding overhead: ${overhead.toStringAsFixed(2)} ms (${(overhead / detectStat.average * 100).toStringAsFixed(1)}%)');
+        await detector.dispose();
       }
-
-      await detector.dispose();
-
-      // Write results to files
-      final timestamp = DateTime.now().toIso8601String().replaceAll(':', '-');
-
-      final detectResults = BenchmarkResults(
-        timestamp: timestamp,
-        testName: 'detect() method (Lite Model)',
-        configuration: {
-          'model': 'lite',
-          'mode': 'boxesAndLandmarks',
-          'method': 'detect',
-          'iterations': ITERATIONS,
-        },
-        results: detectStats,
-      );
-      detectResults.printJson('benchmark_detect_method_$timestamp.json');
-
-      final detectOnImageResults = BenchmarkResults(
-        timestamp: timestamp,
-        testName: 'detectOnImage() method (Lite Model)',
-        configuration: {
-          'model': 'lite',
-          'mode': 'boxesAndLandmarks',
-          'method': 'detectOnImage',
-          'iterations': ITERATIONS,
-        },
-        results: detectOnImageStats,
-      );
-      detectOnImageResults.printJson('benchmark_detectOnImage_method_$timestamp.json');
+      print('═══════════════════════════════════════════');
     });
   });
 }

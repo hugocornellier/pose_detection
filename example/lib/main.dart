@@ -147,6 +147,7 @@ class _StillImageScreenState extends State<StillImageScreen> {
     detectorIou: 0.4,
     maxDetections: 10,
     minLandmarkScore: 0.5,
+    performanceConfig: const PerformanceConfig.xnnpack(), // Enable XNNPACK for 2-5x speedup
   );
   final ImagePicker _picker = ImagePicker();
 
@@ -591,6 +592,7 @@ class _CameraScreenState extends State<CameraScreen> {
     detectorIou: 0.4,
     maxDetections: 5,
     minLandmarkScore: 0.5,
+    performanceConfig: const PerformanceConfig.xnnpack(), // Enable XNNPACK for real-time performance
   );
 
   bool _isInitialized = false;

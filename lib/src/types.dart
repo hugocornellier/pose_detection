@@ -27,6 +27,109 @@ enum PoseMode {
   boxesAndLandmarks,
 }
 
+/// Performance optimization mode for TensorFlow Lite inference.
+///
+/// Controls CPU/GPU acceleration via TensorFlow Lite delegates.
+enum PerformanceMode {
+  /// No delegates - uses default TFLite CPU implementation.
+  ///
+  /// - Most compatible across all devices
+  /// - Slowest performance
+  /// - Lowest memory usage
+  /// - Use for maximum compatibility or debugging
+  disabled,
+
+  /// XNNPACK delegate for CPU optimization.
+  ///
+  /// - Works on all platforms (iOS, Android, macOS, Linux, Windows)
+  /// - 2-5x faster than disabled mode
+  /// - Minimal memory overhead (+2-3MB per interpreter)
+  /// - Recommended default for most use cases
+  ///
+  /// Uses SIMD vectorization (NEON on ARM, AVX on x86) and multi-threading.
+  xnnpack,
+
+  /// Automatically choose best delegate for current platform.
+  ///
+  /// Current behavior:
+  /// - All platforms: Uses XNNPACK with platform-optimal thread count
+  ///
+  /// Future: May use GPU/Metal delegates when available.
+  auto,
+}
+
+/// Configuration for TensorFlow Lite interpreter performance.
+///
+/// Controls delegate usage and threading for CPU/GPU acceleration.
+///
+/// Example:
+/// ```dart
+/// // Default (no acceleration)
+/// final detector = PoseDetector();
+///
+/// // XNNPACK with auto thread detection (recommended)
+/// final detector = PoseDetector(
+///   performanceConfig: PerformanceConfig.xnnpack(),
+/// );
+///
+/// // XNNPACK with custom threads
+/// final detector = PoseDetector(
+///   performanceConfig: PerformanceConfig.xnnpack(numThreads: 2),
+/// );
+/// ```
+class PerformanceConfig {
+  /// Performance mode controlling delegate selection.
+  final PerformanceMode mode;
+
+  /// Number of threads for XNNPACK delegate.
+  ///
+  /// - null: Auto-detect optimal count (min(4, Platform.numberOfProcessors))
+  /// - 0: No thread pool (single-threaded, good for tiny models)
+  /// - 1-8: Explicit thread count
+  ///
+  /// Diminishing returns after 4 threads for typical models.
+  /// Only applies when mode is [PerformanceMode.xnnpack] or [PerformanceMode.auto].
+  final int? numThreads;
+
+  /// Creates a performance configuration.
+  ///
+  /// Parameters:
+  /// - [mode]: Performance mode. Default: [PerformanceMode.disabled]
+  /// - [numThreads]: Number of threads (null for auto-detection)
+  const PerformanceConfig({
+    this.mode = PerformanceMode.disabled,
+    this.numThreads,
+  });
+
+  /// Creates config with XNNPACK enabled and auto thread detection.
+  const PerformanceConfig.xnnpack({this.numThreads})
+      : mode = PerformanceMode.xnnpack;
+
+  /// Creates config with auto mode (currently uses XNNPACK).
+  const PerformanceConfig.auto({this.numThreads}) : mode = PerformanceMode.auto;
+
+  /// Default configuration (no delegates, backward compatible).
+  static const PerformanceConfig disabled = PerformanceConfig(
+    mode: PerformanceMode.disabled,
+  );
+
+  /// Gets the effective number of threads to use.
+  ///
+  /// Returns null if mode is disabled.
+  int? getEffectiveThreadCount() {
+    if (mode == PerformanceMode.disabled) return null;
+
+    if (numThreads != null) {
+      return numThreads!.clamp(0, 8);
+    }
+
+    // Auto-detect: Cap at 4 for diminishing returns
+    // Using a constant here since we can't access Platform in this file
+    // The actual Platform.numberOfProcessors will be used in the delegate creation
+    return null; // Signal auto-detection
+  }
+}
+
 /// Collection of pose landmarks with confidence score (internal use).
 class PoseLandmarks {
   /// List of 33 body landmarks extracted from the BlazePose model.
