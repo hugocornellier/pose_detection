@@ -113,22 +113,19 @@ class PoseDetector {
 
   /// Number of TensorFlow Lite interpreter instances in the landmark model pool.
   ///
+  /// **IMPORTANT:** When XNNPACK is enabled (via [performanceConfig]), this is
+  /// automatically forced to 1 to prevent thread contention and performance spikes.
+  ///
   /// Controls the degree of parallelism for landmark extraction when multiple
-  /// people are detected. Higher values enable more concurrent inferences but
-  /// consume more memory (~10MB per interpreter).
+  /// people are detected. Only relevant when XNNPACK is disabled.
   ///
-  /// Recommended values:
-  /// - **1**: Sequential processing (lowest memory, safest, ~50ms per person)
-  /// - **3-5**: Good balance for typical scenarios with 2-5 people
-  /// - **>5**: High parallelism for crowded scenes, but diminishing returns
-  ///
-  /// **Performance example** (5 people detected):
-  /// - Pool size 1: ~250ms total (50ms × 5 sequential)
-  /// - Pool size 5: ~50ms total (all parallel)
+  /// **Performance characteristics:**
+  /// - With XNNPACK enabled: Always pool=1 (forced for stability)
+  /// - With XNNPACK disabled: Can use higher pool sizes for parallelism
   ///
   /// **Memory usage:** ~10MB × poolSize for landmark model instances.
   ///
-  /// Default: 5
+  /// Default: 1 (optimal for XNNPACK stability)
   final int interpreterPoolSize;
 
   /// Performance configuration for TensorFlow Lite inference.
@@ -186,10 +183,12 @@ class PoseDetector {
   /// ```
   ///
   /// **Choosing interpreterPoolSize:**
-  /// - Use 1 for lowest memory usage and sequential processing
-  /// - Use 3-5 for balanced performance with 2-5 people scenarios
-  /// - Use higher values (5-10) for crowded scenes with many people
+  /// - When XNNPACK is enabled, pool size is always forced to 1 for stable performance
+  /// - When XNNPACK is disabled, you can use higher pool sizes for parallelism
   /// - Each interpreter adds ~10MB memory overhead
+  ///
+  /// **IMPORTANT:** XNNPACK with multiple interpreters causes thread contention and
+  /// performance spikes. The pool size is automatically set to 1 when XNNPACK is enabled.
   PoseDetector({
     this.mode = PoseMode.boxesAndLandmarks,
     this.landmarkModel = PoseLandmarkModel.heavy,
@@ -197,10 +196,12 @@ class PoseDetector {
     this.detectorIou = 0.45,
     this.maxDetections = 10,
     this.minLandmarkScore = 0.5,
-    this.interpreterPoolSize = 5,
+    int interpreterPoolSize = 1,
     this.performanceConfig = PerformanceConfig.disabled,
-  }) {
-    _lm = PoseLandmarkModelRunner(poolSize: interpreterPoolSize);
+  }) : interpreterPoolSize = performanceConfig.mode == PerformanceMode.disabled
+            ? interpreterPoolSize
+            : 1 {
+    _lm = PoseLandmarkModelRunner(poolSize: this.interpreterPoolSize);
   }
 
   /// Initializes the pose detector by loading TensorFlow Lite models.
@@ -289,7 +290,7 @@ class PoseDetector {
       image,
       confThres: detectorConf,
       iouThres: detectorIou,
-      topkPreNms: 100,
+      // Use dynamic topkPreNms (0) - scales based on image size
       maxDet: maxDetections,
       personOnly: true,
     );
@@ -315,9 +316,8 @@ class PoseDetector {
       return out;
     }
 
-    // Phase 1: Preprocess all detections (crop and letterbox)
-    final List<_PersonCropData> cropDataList = <_PersonCropData>[];
-    for (final YoloDetection d in dets) {
+    // Phase 1: Preprocess all detections (crop and letterbox) in parallel
+    final List<Future<_PersonCropData>> cropFutures = dets.map((d) async {
       final int x1 = d.bboxXYXY[0].clamp(0.0, image.width.toDouble()).toInt();
       final int y1 = d.bboxXYXY[1].clamp(0.0, image.height.toDouble()).toInt();
       final int x2 = d.bboxXYXY[2].clamp(0.0, image.width.toDouble()).toInt();
@@ -333,18 +333,18 @@ class PoseDetector {
       // to avoid race conditions where all references point to the same buffer
       final img.Image letter = ImageUtils.letterbox256(crop, ratio, dwdh);
 
-      cropDataList.add(
-        _PersonCropData(
-          detection: d,
-          letterboxed: letter,
-          scaleRatio: ratio.first,
-          padLeft: dwdh[0],
-          padTop: dwdh[1],
-          cropX: x1,
-          cropY: y1,
-        ),
+      return _PersonCropData(
+        detection: d,
+        letterboxed: letter,
+        scaleRatio: ratio.first,
+        padLeft: dwdh[0],
+        padTop: dwdh[1],
+        cropX: x1,
+        cropY: y1,
       );
-    }
+    }).toList();
+
+    final List<_PersonCropData> cropDataList = await Future.wait(cropFutures);
 
     // Phase 2: Run landmark extraction in parallel for all persons
     // The landmark model runner uses an interpreter pool to enable safe concurrent

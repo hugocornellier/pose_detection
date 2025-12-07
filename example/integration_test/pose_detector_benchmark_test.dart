@@ -15,6 +15,7 @@ import 'package:image/image.dart' as img;
 import 'package:pose_detection_tflite/pose_detection_tflite.dart';
 
 const int ITERATIONS = 20;
+const int WARMUP_ITERATIONS = 3;
 const List<String> SAMPLE_IMAGES = [
   'assets/samples/pose1.jpg',
   'assets/samples/pose2.jpg',
@@ -50,6 +51,16 @@ class BenchmarkStats {
     return sqrt(variance);
   }
 
+  double _percentile(double p) {
+    final sorted = List<int>.from(timings)..sort();
+    final index = ((sorted.length - 1) * p).floor();
+    return sorted[index].toDouble();
+  }
+
+  double get p50 => _percentile(0.50);
+  double get p95 => _percentile(0.95);
+  double get p99 => _percentile(0.99);
+
   void printResults(String testName) {
     print('\n=== $testName ===');
     print('Iterations: ${timings.length}');
@@ -58,6 +69,9 @@ class BenchmarkStats {
     print('Average: ${average.toStringAsFixed(2)} ms');
     print('Min: $min ms');
     print('Max: $max ms');
+    print('P50: ${p50.toStringAsFixed(2)} ms');
+    print('P95: ${p95.toStringAsFixed(2)} ms');
+    print('P99: ${p99.toStringAsFixed(2)} ms');
     print('Std Dev: ${standardDeviation.toStringAsFixed(2)} ms');
     print('All times (ms): $timings');
   }
@@ -70,6 +84,9 @@ class BenchmarkStats {
     'average_ms': double.parse(average.toStringAsFixed(2)),
     'min_ms': min,
     'max_ms': max,
+    'p50_ms': double.parse(p50.toStringAsFixed(2)),
+    'p95_ms': double.parse(p95.toStringAsFixed(2)),
+    'p99_ms': double.parse(p99.toStringAsFixed(2)),
     'std_dev_ms': double.parse(standardDeviation.toStringAsFixed(2)),
     'all_timings_ms': timings,
   };
@@ -106,16 +123,16 @@ void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
   group('PoseDetector - Performance Benchmarks', () {
-    test('Benchmark heavy model with boxes and landmarks', () async {
+    test('Benchmark heavy model with XNNPACK', timeout: const Timeout(Duration(minutes: 10)), () async {
       final detector = PoseDetector(
         mode: PoseMode.boxesAndLandmarks,
         landmarkModel: PoseLandmarkModel.heavy,
-        performanceConfig: const PerformanceConfig.xnnpack(), // Enable XNNPACK
+        performanceConfig: const PerformanceConfig.xnnpack(),
       );
       await detector.initialize();
 
       print('\n${'=' * 60}');
-      print('BENCHMARK: Heavy Model (boxesAndLandmarks) with XNNPACK');
+      print('BENCHMARK: Heavy Model (XNNPACK, pool=1 forced)');
       print('=' * 60);
 
       final allStats = <BenchmarkStats>[];
@@ -124,7 +141,6 @@ void main() {
         final ByteData data = await rootBundle.load(imagePath);
         final Uint8List bytes = data.buffer.asUint8List();
 
-        // Pre-decode image once to eliminate decoding variance from benchmark
         final img.Image? preDecodedImage = img.decodeImage(bytes);
         if (preDecodedImage == null) {
           print('Failed to decode $imagePath');
@@ -134,14 +150,18 @@ void main() {
         final List<int> timings = [];
         int detectionCount = 0;
 
-        // Run iterations using pre-decoded image
+        // Warmup
+        for (int i = 0; i < WARMUP_ITERATIONS; i++) {
+          final results = await detector.detectOnImage(preDecodedImage);
+          if (i == 0) detectionCount = results.length;
+        }
+
+        // Timed iterations
         for (int i = 0; i < ITERATIONS; i++) {
           final stopwatch = Stopwatch()..start();
-          final results = await detector.detectOnImage(preDecodedImage);
+          await detector.detectOnImage(preDecodedImage);
           stopwatch.stop();
-
           timings.add(stopwatch.elapsedMilliseconds);
-          if (i == 0) detectionCount = results.length;
         }
 
         final stats = BenchmarkStats(
@@ -156,20 +176,21 @@ void main() {
 
       await detector.dispose();
 
-      // Write results to file
       final timestamp = DateTime.now().toIso8601String().replaceAll(':', '-');
       final benchmarkResults = BenchmarkResults(
         timestamp: timestamp,
-        testName: 'Heavy Model (boxesAndLandmarks) with XNNPACK',
+        testName: 'Heavy Model (XNNPACK)',
         configuration: {
           'model': 'heavy',
           'mode': 'boxesAndLandmarks',
-          'iterations': ITERATIONS,
-          'performance_config': 'xnnpack',
+          'warmup_iterations': WARMUP_ITERATIONS,
+          'timed_iterations': ITERATIONS,
+          'interpreter_pool_size': 1,
+          'xnnpack_threads': 'auto',
         },
         results: allStats,
       );
-      benchmarkResults.printJson('benchmark_$timestamp.json');
+      benchmarkResults.printJson('benchmark_xnnpack_$timestamp.json');
     });
   });
 }

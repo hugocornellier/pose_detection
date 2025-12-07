@@ -13,13 +13,30 @@ import 'types.dart';
 ///
 /// Encapsulates a TensorFlow Lite interpreter and its isolate wrapper,
 /// allowing for clean resource management in the interpreter pool.
+/// Also holds pre-allocated input/output buffers to avoid GC pressure.
 class _InterpreterInstance {
   final Interpreter interpreter;
   final IsolateInterpreter isolateInterpreter;
 
+  // Pre-allocated input buffer [1, 256, 256, 3] - reused across calls
+  final List<List<List<List<double>>>> inputBuffer;
+
+  // Pre-allocated output buffers - reused across calls
+  final List<List<double>> outputLandmarks; // [1, 195]
+  final List<List<double>> outputScore; // [1, 1]
+  final List<List<List<List<double>>>> outputMask; // [1, 256, 256, 1]
+  final List<List<List<List<double>>>> outputHeatmap; // [1, 64, 64, 39]
+  final List<List<double>> outputWorld; // [1, 117]
+
   _InterpreterInstance({
     required this.interpreter,
     required this.isolateInterpreter,
+    required this.inputBuffer,
+    required this.outputLandmarks,
+    required this.outputScore,
+    required this.outputMask,
+    required this.outputHeatmap,
+    required this.outputWorld,
   });
 
   /// Disposes interpreter and isolate wrapper.
@@ -36,31 +53,39 @@ class _InterpreterInstance {
 ///
 /// **Interpreter Pool Architecture:**
 /// To enable parallel processing of multiple people, this runner maintains a pool of
-/// TensorFlow Lite interpreter instances. Each interpreter can run inference independently,
-/// allowing concurrent landmark extraction for different detected persons.
+/// TensorFlow Lite interpreter instances using a **round-robin selection pattern**
+/// (identical to face_detection_tflite). Each interpreter uses serialization locks
+/// to prevent concurrent inference, avoiding XNNPACK thread contention.
 ///
-/// The pool size determines the maximum number of concurrent inferences:
-/// - Pool size 1: Sequential processing (safest, lowest memory)
-/// - Pool size 3-5: Good balance for multi-person scenarios
-/// - Pool size > 5: Diminishing returns, high memory usage (~10MB per interpreter)
+/// The pool size determines the maximum number of interpreter instances:
+/// - Pool size 1: Sequential processing (stable, predictable performance)
+/// - Pool size 3: Good balance for typical multi-person scenarios (default)
+/// - Pool size 5+: Best for crowded scenes (6+ people)
 ///
-/// Thread-safe semaphore-based resource management ensures interpreters are properly
-/// acquired and released, preventing race conditions.
+/// **How it works:**
+/// - Interpreters are selected using round-robin (person 1 → interpreter 0,
+///   person 2 → interpreter 1, person 3 → interpreter 2, person 4 → interpreter 0, etc.)
+/// - Each interpreter is locked during inference to prevent thread contention
+/// - Multiple people can be processed in parallel using different interpreters
+/// - Simple, predictable behavior with stable performance (no queue complexity)
 class PoseLandmarkModelRunner {
   /// Pool of interpreter instances for parallel processing.
   final List<_InterpreterInstance> _interpreterPool = [];
-
-  /// Queue of available interpreters (indices into _interpreterPool).
-  final List<int> _availableInterpreters = [];
-
-  /// Pending requests waiting for an available interpreter.
-  final List<Completer<int>> _waitQueue = [];
 
   /// Maximum number of concurrent inferences.
   final int _poolSize;
 
   /// Delegate instances - one per interpreter (XNNPACK is NOT thread-safe for sharing).
   final List<Delegate> _delegates = [];
+
+  /// Serialization locks to prevent concurrent inference on the same interpreter.
+  /// Each interpreter has its own lock to avoid XNNPACK thread contention.
+  /// This mirrors the _meshInferenceLocks pattern from face_detection_tflite.
+  final List<Future<void>> _interpreterLocks = [];
+
+  /// Round-robin counter for interpreter selection.
+  /// Distributes load evenly across the interpreter pool.
+  int _poolCounter = 0;
 
   bool _isInitialized = false;
   static ffi.DynamicLibrary? _tfliteLib;
@@ -203,13 +228,41 @@ class PoseLandmarkModelRunner {
       final isolateInterpreter =
           await IsolateInterpreter.create(address: interpreter.address);
 
+      // Pre-allocate input buffer [1, 256, 256, 3]
+      final inputBuffer = List.generate(
+        1,
+        (_) => List.generate(
+          256,
+          (_) => List.generate(
+            256,
+            (_) => List<double>.filled(3, 0.0, growable: false),
+            growable: false,
+          ),
+          growable: false,
+        ),
+        growable: false,
+      );
+
+      // Pre-allocate output buffers
+      final outputLandmarks = [List<double>.filled(195, 0.0, growable: false)];
+      final outputScore = [List<double>.filled(1, 0.0, growable: false)];
+      final outputMask = _createTensor4D(1, 256, 256, 1);
+      final outputHeatmap = _createTensor4D(1, 64, 64, 39);
+      final outputWorld = [List<double>.filled(117, 0.0, growable: false)];
+
       _interpreterPool.add(_InterpreterInstance(
         interpreter: interpreter,
         isolateInterpreter: isolateInterpreter,
+        inputBuffer: inputBuffer,
+        outputLandmarks: outputLandmarks,
+        outputScore: outputScore,
+        outputMask: outputMask,
+        outputHeatmap: outputHeatmap,
+        outputWorld: outputWorld,
       ));
 
-      // Mark interpreter as available
-      _availableInterpreters.add(i);
+      // Initialize serialization lock for this interpreter
+      _interpreterLocks.add(Future.value());
     }
 
     _isInitialized = true;
@@ -256,6 +309,28 @@ class PoseLandmarkModelRunner {
     return (options, null);
   }
 
+  /// Creates a pre-allocated 4D tensor with the specified dimensions.
+  static List<List<List<List<double>>>> _createTensor4D(
+    int dim1,
+    int dim2,
+    int dim3,
+    int dim4,
+  ) {
+    return List.generate(
+      dim1,
+      (_) => List.generate(
+        dim2,
+        (_) => List.generate(
+          dim3,
+          (_) => List<double>.filled(dim4, 0.0, growable: false),
+          growable: false,
+        ),
+        growable: false,
+      ),
+      growable: false,
+    );
+  }
+
   String _getModelPath(PoseLandmarkModel model) {
     switch (model) {
       case PoseLandmarkModel.lite:
@@ -273,38 +348,16 @@ class PoseLandmarkModelRunner {
   /// Returns the configured pool size.
   int get poolSize => _poolSize;
 
-  /// Adds a completer to the wait queue for testing disposal behavior.
-  ///
-  /// Used in tests to verify that [dispose] properly cancels pending
-  /// operations and completes all waiting requests with errors.
-  @visibleForTesting
-  void debugAddPendingWaiter(Completer<int> completer) {
-    _waitQueue.add(completer);
-  }
-
   /// Disposes the model runner and releases all resources.
   ///
   /// Closes all interpreter instances in the pool and clears all state.
-  /// Any pending wait queue requests will be cancelled.
   /// After disposal, [initialize] must be called again before using the runner.
   Future<void> dispose() async {
-    // Cancel any pending requests
-    for (final completer in _waitQueue) {
-      if (!completer.isCompleted) {
-        completer.completeError(
-          StateError(
-              'PoseLandmarkModelRunner disposed while waiting for interpreter'),
-        );
-      }
-    }
-    _waitQueue.clear();
-
     // Dispose all interpreter instances
     for (final instance in _interpreterPool) {
       await instance.dispose();
     }
     _interpreterPool.clear();
-    _availableInterpreters.clear();
 
     // Clean up all delegates (one per interpreter)
     for (final delegate in _delegates) {
@@ -312,48 +365,43 @@ class PoseLandmarkModelRunner {
     }
     _delegates.clear();
 
+    // Clear serialization locks
+    _interpreterLocks.clear();
+
     _isInitialized = false;
   }
 
-  /// Acquires an available interpreter from the pool.
+  /// Serializes inference calls on a specific interpreter to prevent race conditions.
   ///
-  /// If all interpreters are currently in use, this method will wait until
-  /// one becomes available. Uses a FIFO queue to ensure fair resource allocation.
+  /// This method ensures only one inference runs at a time per interpreter instance,
+  /// preventing XNNPACK thread contention when multiple people are being processed.
+  /// It chains futures similar to FaceDetector's _withMeshLock pattern.
   ///
-  /// Returns the index of the acquired interpreter in [_interpreterPool].
-  ///
-  /// This is an internal method - callers should use [run] which handles
-  /// acquisition and release automatically.
-  Future<int> _acquireInterpreter() async {
-    // Fast path: interpreter immediately available
-    if (_availableInterpreters.isNotEmpty) {
-      return _availableInterpreters.removeLast();
-    }
-
-    // Slow path: must wait for an interpreter to be released
-    final completer = Completer<int>();
-    _waitQueue.add(completer);
-    return completer.future;
-  }
-
-  /// Releases an interpreter back to the pool.
-  ///
-  /// If there are pending requests in the wait queue, the interpreter is
-  /// immediately assigned to the next waiting request. Otherwise, it's
-  /// returned to the available pool.
+  /// Uses round-robin selection to distribute load evenly across the pool.
   ///
   /// Parameters:
-  /// - [index]: The interpreter index to release (obtained from [_acquireInterpreter])
-  void _releaseInterpreter(int index) {
-    // If someone is waiting, give them this interpreter immediately
-    if (_waitQueue.isNotEmpty) {
-      final completer = _waitQueue.removeAt(0);
-      if (!completer.isCompleted) {
-        completer.complete(index);
-      }
-    } else {
-      // Return to available pool
-      _availableInterpreters.add(index);
+  /// - [fn]: The function to execute with exclusive access to an interpreter
+  ///
+  /// Returns the result of [fn]
+  Future<T> _withInterpreterLock<T>(
+      Future<T> Function(_InterpreterInstance) fn) async {
+    if (_interpreterPool.isEmpty) {
+      throw StateError('Interpreter pool is empty. Call initialize() first.');
+    }
+
+    // Round-robin selection to distribute load evenly
+    final int poolIndex = _poolCounter % _interpreterPool.length;
+    _poolCounter = (_poolCounter + 1) % _interpreterPool.length;
+
+    final previous = _interpreterLocks[poolIndex];
+    final completer = Completer<void>();
+    _interpreterLocks[poolIndex] = completer.future;
+
+    try {
+      await previous;
+      return await fn(_interpreterPool[poolIndex]);
+    } finally {
+      completer.complete();
     }
   }
 
@@ -362,17 +410,18 @@ class PoseLandmarkModelRunner {
   /// Extracts 33 body landmarks from the input person crop using the BlazePose model.
   /// The input image should be a cropped person region, ideally from the YOLOv8 detector.
   ///
-  /// **Thread-safety:** This method is safe to call concurrently. It automatically
-  /// acquires an available interpreter from the pool, runs inference, and releases
-  /// the interpreter back to the pool. If all interpreters are busy, the call will
-  /// wait until one becomes available.
+  /// **Thread-safety:** This method is safe to call concurrently. It uses round-robin
+  /// selection to distribute load across the interpreter pool, with per-interpreter
+  /// serialization locks to prevent XNNPACK thread contention. Multiple people can be
+  /// processed in parallel using different interpreters, but each interpreter only
+  /// runs one inference at a time.
   ///
   /// The method performs:
-  /// 1. Acquires an interpreter from the pool (waits if all are busy)
-  /// 2. Converts image to tensor (NHWC format, normalized 0-1)
-  /// 3. Runs model inference via IsolateInterpreter
-  /// 4. Post-processes results: sigmoid activation, coordinate normalization
-  /// 5. Releases interpreter back to pool
+  /// 1. Selects an interpreter using round-robin (distributes load evenly)
+  /// 2. Serializes access to the interpreter (waits for previous inference to complete)
+  /// 3. Converts image to tensor (NHWC format, normalized 0-1)
+  /// 4. Runs model inference via IsolateInterpreter
+  /// 5. Post-processes results: sigmoid activation, coordinate normalization
   ///
   /// Parameters:
   /// - [roiImage]: Cropped person image (will be resized to 256x256 internally)
@@ -387,51 +436,30 @@ class PoseLandmarkModelRunner {
           'PoseLandmarkModelRunner not initialized. Call initialize() first.');
     }
 
-    // Acquire an interpreter from the pool
-    final interpreterIndex = await _acquireInterpreter();
+    // Use round-robin selection with serialization lock (mirrors face detection pattern)
+    return await _withInterpreterLock((instance) async {
+      // Reuse pre-allocated input buffer (ImageUtils.imageToNHWC4D fills it in-place)
+      ImageUtils.imageToNHWC4D(roiImage, 256, 256, reuse: instance.inputBuffer);
 
-    try {
-      // Allocate fresh buffers for this inference call
-      final inputBuffer = ImageUtils.imageToNHWC4D(roiImage, 256, 256);
-
-      final outputLandmarks = [List.filled(195, 0.0)];
-      final outputScore = [
-        [0.0]
-      ];
-      final outputMask = ImageUtils.reshapeToTensor4D(
-        List.filled(1 * 256 * 256 * 1, 0.0),
-        1,
-        256,
-        256,
-        1,
-      );
-      final outputHeatmap = ImageUtils.reshapeToTensor4D(
-        List.filled(1 * 64 * 64 * 39, 0.0),
-        1,
-        64,
-        64,
-        39,
-      );
-      final outputWorld = [List.filled(117, 0.0)];
-
-      // Run inference on the acquired interpreter
-      final instance = _interpreterPool[interpreterIndex];
+      // Run inference using pre-allocated output buffers
+      // Note: TFLite overwrites the buffer contents, no need to zero first
       await instance.isolateInterpreter.runForMultipleInputs(
-        [inputBuffer],
+        [instance.inputBuffer],
         {
-          0: outputLandmarks,
-          1: outputScore,
-          2: outputMask,
-          3: outputHeatmap,
-          4: outputWorld,
+          0: instance.outputLandmarks,
+          1: instance.outputScore,
+          2: instance.outputMask,
+          3: instance.outputHeatmap,
+          4: instance.outputWorld,
         },
       );
 
-      return _parseLandmarks(outputLandmarks, outputScore, outputWorld);
-    } finally {
-      // Always release the interpreter, even if inference fails
-      _releaseInterpreter(interpreterIndex);
-    }
+      return _parseLandmarks(
+        instance.outputLandmarks,
+        instance.outputScore,
+        instance.outputWorld,
+      );
+    });
   }
 
   PoseLandmarks _parseLandmarks(

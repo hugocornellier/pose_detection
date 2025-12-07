@@ -147,19 +147,6 @@ void main() {
       );
       expect(PoseLandmarkModelRunner.nativeLibForTest(), isNull);
     });
-
-    test('dispose completes queued waiters with error', () async {
-      final runner = PoseLandmarkModelRunner();
-      final Completer<int> pending = Completer<int>();
-
-      runner.debugAddPendingWaiter(pending);
-      final Future<void> expectation =
-          expectLater(pending.future, throwsA(isA<StateError>()));
-      await runner.dispose();
-
-      await expectation;
-      expect(runner.isInitialized, isFalse);
-    });
   });
 
   group('YoloV8PersonDetector', () {

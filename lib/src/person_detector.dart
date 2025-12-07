@@ -46,6 +46,7 @@ class YoloV8PersonDetector {
   img.Image? _canvasBuffer;
   Float32List? _inputBuffer;
   Delegate? _delegate; // Store delegate reference for cleanup
+  Map<int, Object>? _cachedOutputs; // Pre-allocated output buffers
 
   /// Initializes the YOLOv8 person detector by loading the model.
   ///
@@ -148,7 +149,66 @@ class YoloV8PersonDetector {
     _delegate?.delete();
     _delegate = null;
     _canvasBuffer = null;
+    _cachedOutputs = null;
     _isInitialized = false;
+  }
+
+  /// Creates pre-allocated output buffers based on cached output shapes.
+  Map<int, Object> _createOutputBuffers() {
+    final Map<int, Object> outputs = <int, Object>{};
+    for (int i = 0; i < _outShapes.length; i++) {
+      final List<int> shape = _outShapes[i];
+      Object buf;
+      if (shape.length == 3) {
+        buf = List.generate(
+          shape[0],
+          (_) => List.generate(
+            shape[1],
+            (_) => List<double>.filled(shape[2], 0.0, growable: false),
+            growable: false,
+          ),
+          growable: false,
+        );
+      } else if (shape.length == 2) {
+        buf = List.generate(
+          shape[0],
+          (_) => List<double>.filled(shape[1], 0.0, growable: false),
+          growable: false,
+        );
+      } else {
+        buf = List<double>.filled(
+          shape.reduce((a, b) => a * b),
+          0.0,
+          growable: false,
+        );
+      }
+      outputs[i] = buf;
+    }
+    return outputs;
+  }
+
+  /// Zeros out pre-allocated output buffers for reuse.
+  void _zeroOutputBuffers(Map<int, Object> outputs) {
+    for (int i = 0; i < _outShapes.length; i++) {
+      final List<int> shape = _outShapes[i];
+      final Object buf = outputs[i]!;
+      if (shape.length == 3) {
+        final list3d = buf as List<List<List<double>>>;
+        for (int j = 0; j < shape[0]; j++) {
+          for (int k = 0; k < shape[1]; k++) {
+            list3d[j][k].fillRange(0, shape[2], 0.0);
+          }
+        }
+      } else if (shape.length == 2) {
+        final list2d = buf as List<List<double>>;
+        for (int j = 0; j < shape[0]; j++) {
+          list2d[j].fillRange(0, shape[1], 0.0);
+        }
+      } else {
+        final list1d = buf as List<double>;
+        list1d.fillRange(0, list1d.length, 0.0);
+      }
+    }
   }
 
   static double _sigmoid(double x) => 1.0 / (1.0 + math.exp(-x));
@@ -325,7 +385,8 @@ class YoloV8PersonDetector {
   /// - [image]: Input image to detect persons in
   /// - [confThres]: Confidence threshold for detections (default: 0.35)
   /// - [iouThres]: IoU threshold for Non-Maximum Suppression (default: 0.4)
-  /// - [topkPreNms]: Maximum detections to keep before NMS (default: 100)
+  /// - [topkPreNms]: Maximum detections to keep before NMS. If <= 0, uses dynamic
+  ///   scaling based on image size (default: 0 for dynamic)
   /// - [maxDet]: Maximum detections to return after NMS (default: 10)
   /// - [personOnly]: If true, only returns person class (class 0) detections (default: true)
   ///
@@ -336,7 +397,7 @@ class YoloV8PersonDetector {
     img.Image image, {
     double confThres = 0.35,
     double iouThres = 0.4,
-    int topkPreNms = 100,
+    int topkPreNms = 0,
     int maxDet = 10,
     bool personOnly = true,
   }) async {
@@ -390,44 +451,18 @@ class YoloV8PersonDetector {
       growable: false,
     );
 
-    final Map<int, Object> outputs = <int, Object>{};
-    for (int i = 0; i < _outShapes.length; i++) {
-      final List<int> shape = _outShapes[i];
-      Object buf;
-      if (shape.length == 3) {
-        buf = List.generate(
-          shape[0],
-          (_) => List.generate(
-            shape[1],
-            (_) => List<double>.filled(shape[2], 0.0, growable: false),
-            growable: false,
-          ),
-          growable: false,
-        );
-      } else if (shape.length == 2) {
-        buf = List.generate(
-          shape[0],
-          (_) => List<double>.filled(shape[1], 0.0, growable: false),
-          growable: false,
-        );
-      } else {
-        buf = List.filled(
-          shape.reduce((a, b) => a * b),
-          0.0,
-          growable: false,
-        );
-      }
-      outputs[i] = buf;
-    }
+    // Lazy-initialize and reuse output buffers to reduce GC pressure
+    _cachedOutputs ??= _createOutputBuffers();
+    _zeroOutputBuffers(_cachedOutputs!);
 
     if (_iso != null) {
-      await _iso!.runForMultipleInputs(inputs, outputs);
+      await _iso!.runForMultipleInputs(inputs, _cachedOutputs!);
     } else {
-      _interpreter!.runForMultipleInputs(inputs, outputs);
+      _interpreter!.runForMultipleInputs(inputs, _cachedOutputs!);
     }
 
     final List<Map<String, dynamic>> decoded =
-        _decodeAnyYoloOutputs(outputs.values.toList());
+        _decodeAnyYoloOutputs(_cachedOutputs!.values.toList());
     final List<int> clsIds = <int>[];
     final List<double> scores = <double>[];
     final List<List<double>> xywhs = <List<double>>[];
@@ -506,8 +541,23 @@ class YoloV8PersonDetector {
       b[3] = b[3].clamp(0.0, ih);
     }
 
-    if (topkPreNms > 0 && keptScore.length > topkPreNms) {
-      final List<int> ord = _argSortDesc(keptScore).take(topkPreNms).toList();
+    // Dynamic topkPreNms: scale based on image area relative to 640x640 baseline
+    // Smaller images need fewer candidates, larger images may need more
+    final int effectiveTopk;
+    if (topkPreNms > 0) {
+      effectiveTopk = topkPreNms;
+    } else {
+      // Scale: 100 candidates for 640x640 (409600 pixels)
+      // Minimum 20, maximum 200
+      const int basePixels = 640 * 640;
+      const int baseCandidates = 100;
+      final int imagePixels = image.width * image.height;
+      final double scale = imagePixels / basePixels;
+      effectiveTopk = (baseCandidates * scale).round().clamp(20, 200);
+    }
+
+    if (effectiveTopk > 0 && keptScore.length > effectiveTopk) {
+      final List<int> ord = _argSortDesc(keptScore).take(effectiveTopk).toList();
       final List<List<double>> sortedBoxes = <List<double>>[];
       final List<double> sortedScores = <double>[];
       final List<int> sortedCls = <int>[];
