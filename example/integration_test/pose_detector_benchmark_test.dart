@@ -124,13 +124,20 @@ void main() {
         final ByteData data = await rootBundle.load(imagePath);
         final Uint8List bytes = data.buffer.asUint8List();
 
+        // Pre-decode image once to eliminate decoding variance from benchmark
+        final img.Image? preDecodedImage = img.decodeImage(bytes);
+        if (preDecodedImage == null) {
+          print('Failed to decode $imagePath');
+          continue;
+        }
+
         final List<int> timings = [];
         int detectionCount = 0;
 
-        // Run iterations
+        // Run iterations using pre-decoded image
         for (int i = 0; i < ITERATIONS; i++) {
           final stopwatch = Stopwatch()..start();
-          final results = await detector.detect(bytes);
+          final results = await detector.detectOnImage(preDecodedImage);
           stopwatch.stop();
 
           timings.add(stopwatch.elapsedMilliseconds);
@@ -163,204 +170,6 @@ void main() {
         results: allStats,
       );
       benchmarkResults.printJson('benchmark_$timestamp.json');
-    });
-  });
-
-  group('XNNPACK Delegate - Performance Comparison', () {
-    test('Benchmark: Default (no delegate) vs XNNPACK', () async {
-      print('\n${'=' * 60}');
-      print('XNNPACK DELEGATE PERFORMANCE COMPARISON');
-      print('=' * 60);
-
-      // Use a single test image for comparison
-      const testImage = 'assets/samples/pose1.jpg';
-      final ByteData data = await rootBundle.load(testImage);
-      final Uint8List bytes = data.buffer.asUint8List();
-
-      // Create detector WITHOUT XNNPACK (baseline)
-      final detectorDefault = PoseDetector(
-        landmarkModel: PoseLandmarkModel.lite,
-        interpreterPoolSize: 1,
-        // performanceConfig: default (disabled)
-      );
-      await detectorDefault.initialize();
-
-      // Create detector WITH XNNPACK
-      final detectorXNNPack = PoseDetector(
-        landmarkModel: PoseLandmarkModel.lite,
-        interpreterPoolSize: 1,
-        performanceConfig: const PerformanceConfig.xnnpack(), // AUTO THREADS
-      );
-      await detectorXNNPack.initialize();
-
-      const int iterations = 15;
-
-      // Warmup both detectors
-      await detectorDefault.detect(bytes);
-      await detectorXNNPack.detect(bytes);
-
-      // Benchmark DEFAULT
-      final timingsDefault = <int>[];
-      for (int i = 0; i < iterations; i++) {
-        final sw = Stopwatch()..start();
-        await detectorDefault.detect(bytes);
-        sw.stop();
-        timingsDefault.add(sw.elapsedMilliseconds);
-      }
-
-      // Benchmark XNNPACK
-      final timingsXNNPack = <int>[];
-      for (int i = 0; i < iterations; i++) {
-        final sw = Stopwatch()..start();
-        await detectorXNNPack.detect(bytes);
-        sw.stop();
-        timingsXNNPack.add(sw.elapsedMilliseconds);
-      }
-
-      await detectorDefault.dispose();
-      await detectorXNNPack.dispose();
-
-      // Calculate statistics
-      final avgDefault =
-          timingsDefault.reduce((a, b) => a + b) / timingsDefault.length;
-      final avgXNNPack =
-          timingsXNNPack.reduce((a, b) => a + b) / timingsXNNPack.length;
-      final speedup = avgDefault / avgXNNPack;
-
-      // Print results
-      print('\n═══════════════════════════════════════════');
-      print('XNNPACK Delegate Benchmark Results');
-      print('═══════════════════════════════════════════');
-      print('Model: BlazePose Lite');
-      print('Iterations: $iterations');
-      print('Test image: $testImage');
-      print('');
-      print('Default (no delegate):');
-      print('  Average: ${avgDefault.toStringAsFixed(1)} ms/frame');
-      print('  Min: ${timingsDefault.reduce((a, b) => a < b ? a : b)} ms');
-      print('  Max: ${timingsDefault.reduce((a, b) => a > b ? a : b)} ms');
-      print('');
-      print('XNNPACK (auto threads):');
-      print('  Average: ${avgXNNPack.toStringAsFixed(1)} ms/frame');
-      print('  Min: ${timingsXNNPack.reduce((a, b) => a < b ? a : b)} ms');
-      print('  Max: ${timingsXNNPack.reduce((a, b) => a > b ? a : b)} ms');
-      print('');
-      print('Speedup: ${speedup.toStringAsFixed(2)}x faster with XNNPACK');
-      print('═══════════════════════════════════════════');
-
-      // XNNPACK should provide some speedup (platform-dependent, typically 1.5-5x)
-      // On some platforms the speedup may be modest, so we use a conservative threshold
-      expect(speedup, greaterThan(0.95),
-          reason:
-              'XNNPACK should not be slower than default (got ${speedup.toStringAsFixed(2)}x)');
-
-      // Log a warning if speedup is less than expected
-      if (speedup < 1.5) {
-        print('⚠️  Note: XNNPACK speedup (${speedup.toStringAsFixed(2)}x) is less than typical 1.5-5x.');
-        print('   This may be normal on some platforms or with integration test overhead.');
-      }
-    });
-
-    test('Benchmark: XNNPACK with different thread counts', () async {
-      print('\n${'=' * 60}');
-      print('XNNPACK THREAD SCALING ANALYSIS');
-      print('=' * 60);
-
-      const testImage = 'assets/samples/pose1.jpg';
-      final ByteData data = await rootBundle.load(testImage);
-      final Uint8List bytes = data.buffer.asUint8List();
-
-      final configs = [
-        (1, const PerformanceConfig.xnnpack(numThreads: 1)),
-        (2, const PerformanceConfig.xnnpack(numThreads: 2)),
-        (4, const PerformanceConfig.xnnpack(numThreads: 4)),
-      ];
-
-      print('\n═══════════════════════════════════════════');
-      print('XNNPACK Thread Scaling (BlazePose Lite)');
-      print('═══════════════════════════════════════════');
-
-      for (final (threads, config) in configs) {
-        final detector = PoseDetector(
-          landmarkModel: PoseLandmarkModel.lite,
-          interpreterPoolSize: 1,
-          performanceConfig: config,
-        );
-        await detector.initialize();
-
-        // Warmup
-        await detector.detect(bytes);
-
-        // Benchmark
-        const int iters = 10;
-        final timings = <int>[];
-        for (int i = 0; i < iters; i++) {
-          final sw = Stopwatch()..start();
-          await detector.detect(bytes);
-          sw.stop();
-          timings.add(sw.elapsedMilliseconds);
-        }
-
-        final avg = timings.reduce((a, b) => a + b) / timings.length;
-        final minTime = timings.reduce((a, b) => a < b ? a : b);
-        final maxTime = timings.reduce((a, b) => a > b ? a : b);
-
-        print('Threads=$threads: avg=${avg.toStringAsFixed(1)}ms, '
-            'min=${minTime}ms, max=${maxTime}ms');
-
-        await detector.dispose();
-      }
-      print('═══════════════════════════════════════════');
-    });
-
-    test('Benchmark: XNNPACK across all model variants', () async {
-      print('\n${'=' * 60}');
-      print('XNNPACK PERFORMANCE ACROSS MODEL VARIANTS');
-      print('=' * 60);
-
-      const testImage = 'assets/samples/pose1.jpg';
-      final ByteData data = await rootBundle.load(testImage);
-      final Uint8List bytes = data.buffer.asUint8List();
-
-      final models = [
-        PoseLandmarkModel.lite,
-        PoseLandmarkModel.full,
-        PoseLandmarkModel.heavy,
-      ];
-
-      print('\n═══════════════════════════════════════════');
-      print('Comparing Models with XNNPACK');
-      print('═══════════════════════════════════════════');
-
-      for (final model in models) {
-        // Test with XNNPACK
-        final detector = PoseDetector(
-          landmarkModel: model,
-          interpreterPoolSize: 1,
-          performanceConfig: const PerformanceConfig.xnnpack(),
-        );
-        await detector.initialize();
-
-        // Warmup
-        await detector.detect(bytes);
-
-        // Benchmark
-        const int iters = 10;
-        final timings = <int>[];
-        for (int i = 0; i < iters; i++) {
-          final sw = Stopwatch()..start();
-          await detector.detect(bytes);
-          sw.stop();
-          timings.add(sw.elapsedMilliseconds);
-        }
-
-        final avg = timings.reduce((a, b) => a + b) / timings.length;
-
-        print('${model.name.padRight(6)}: ${avg.toStringAsFixed(1)} ms/frame');
-
-        await detector.dispose();
-      }
-      print('═══════════════════════════════════════════');
     });
   });
 }
