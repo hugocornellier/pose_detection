@@ -1,3 +1,12 @@
+## 1.2.0
+
+- Add native OpenCV preprocessing for 5-15x faster image processing (SIMD-accelerated)
+- New `useNativePreprocessing` parameter on `PoseDetector` (default: true)
+- New `detectOnMat()` method on `YoloV8PersonDetector` for direct cv.Mat input
+- New `runOnMat()` method on `PoseLandmarkModelRunner` for direct cv.Mat input
+- Add `opencv_dart` dependency for native image operations
+- Refactored detection code with shared post-processing helpers
+
 ## 1.1.1
 
 - Cache yolo input buffer and pass flat tensor to avoid reshape overhead

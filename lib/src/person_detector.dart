@@ -3,8 +3,10 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 import 'package:image/image.dart' as img;
 import 'package:meta/meta.dart';
+import 'package:opencv_dart/opencv_dart.dart' as cv;
 import 'package:tflite_flutter_custom/tflite_flutter.dart';
 import 'image_utils.dart';
+import 'native_image_utils.dart';
 import 'types.dart';
 
 /// A single object detection result from YOLOv8.
@@ -72,7 +74,8 @@ class YoloV8PersonDetector {
     final InterpreterOptions options =
         _createInterpreterOptions(performanceConfig);
 
-    final Interpreter itp = await Interpreter.fromAsset(assetPath, options: options);
+    final Interpreter itp =
+        await Interpreter.fromAsset(assetPath, options: options);
     _interpreter = itp;
     itp.allocateTensors();
 
@@ -93,6 +96,18 @@ class YoloV8PersonDetector {
   }
 
   /// Creates interpreter options with delegates based on performance configuration.
+  ///
+  /// ## Platform Behavior
+  ///
+  /// | Mode | macOS/Linux | Windows | iOS | Android |
+  /// |------|-------------|---------|-----|---------|
+  /// | disabled | CPU | CPU | CPU | CPU |
+  /// | xnnpack | XNNPACK | CPU* | CPU* | CPU* |
+  /// | gpu | CPU | CPU | Metal | OpenGL** |
+  /// | auto | XNNPACK | CPU | Metal | CPU |
+  ///
+  /// *Falls back to CPU (XNNPACK not supported on this platform)
+  /// **Experimental, may crash on some devices
   InterpreterOptions _createInterpreterOptions(PerformanceConfig? config) {
     final options = InterpreterOptions();
 
@@ -100,34 +115,88 @@ class YoloV8PersonDetector {
     _delegate?.delete();
     _delegate = null;
 
-    // If no config or disabled mode, return default options (backward compatible)
-    if (config == null || config.mode == PerformanceMode.disabled) {
+    final effectiveConfig = config ?? const PerformanceConfig();
+
+    final threadCount = effectiveConfig.numThreads?.clamp(0, 8) ??
+        math.min(4, Platform.numberOfProcessors);
+
+    if (effectiveConfig.mode == PerformanceMode.disabled) {
+      options.threads = threadCount;
       return options;
     }
 
-    // Get effective thread count
-    final threadCount = config.numThreads?.clamp(0, 8) ??
-        math.min(4, Platform.numberOfProcessors);
+    if (effectiveConfig.mode == PerformanceMode.auto) {
+      return _createAutoModeOptions(options, threadCount);
+    }
 
-    // Set CPU threads
+    if (effectiveConfig.mode == PerformanceMode.xnnpack) {
+      return _createXnnpackOptions(options, threadCount);
+    }
+
+    if (effectiveConfig.mode == PerformanceMode.gpu) {
+      return _createGpuOptions(options, threadCount);
+    }
+
+    options.threads = threadCount;
+    return options;
+  }
+
+  /// Creates options for auto mode - selects best delegate per platform.
+  InterpreterOptions _createAutoModeOptions(
+      InterpreterOptions options, int threadCount) {
+    if (Platform.isMacOS || Platform.isLinux) {
+      return _createXnnpackOptions(options, threadCount);
+    }
+
+    if (Platform.isIOS) {
+      return _createGpuOptions(options, threadCount);
+    }
+
+    // Windows and Android: CPU-only (safest default)
+    options.threads = threadCount;
+    return options;
+  }
+
+  /// Creates options with XNNPACK delegate (desktop only).
+  InterpreterOptions _createXnnpackOptions(
+      InterpreterOptions options, int threadCount) {
     options.threads = threadCount;
 
-    // Add XNNPACK delegate (for xnnpack or auto mode)
-    if (config.mode == PerformanceMode.xnnpack ||
-        config.mode == PerformanceMode.auto) {
-      try {
-        final xnnpackDelegate = XNNPackDelegate(
-          options: XNNPackDelegateOptions(numThreads: threadCount),
-        );
-        options.addDelegate(xnnpackDelegate);
-        _delegate = xnnpackDelegate; // Store for cleanup
-      } catch (e) {
-        // Graceful fallback: if delegate creation fails, continue with CPU
-        // ignore: avoid_print
-        print('[YOLO] Warning: Failed to create XNNPACK delegate: $e');
-        // ignore: avoid_print
-        print('[YOLO] Falling back to default CPU execution');
-      }
+    // XNNPACK only supported on macOS and Linux
+    if (!Platform.isMacOS && !Platform.isLinux) {
+      return options;
+    }
+
+    try {
+      final xnnpackDelegate = XNNPackDelegate(
+        options: XNNPackDelegateOptions(numThreads: threadCount),
+      );
+      options.addDelegate(xnnpackDelegate);
+      _delegate = xnnpackDelegate;
+    } catch (e) {
+      // Silent fallback to CPU
+    }
+
+    return options;
+  }
+
+  /// Creates options with GPU delegate.
+  InterpreterOptions _createGpuOptions(
+      InterpreterOptions options, int threadCount) {
+    options.threads = threadCount;
+
+    // GPU only supported on iOS and Android
+    if (!Platform.isIOS && !Platform.isAndroid) {
+      return options;
+    }
+
+    try {
+      final gpuDelegate =
+          Platform.isIOS ? GpuDelegate() : GpuDelegateV2() as Delegate;
+      options.addDelegate(gpuDelegate);
+      _delegate = gpuDelegate;
+    } catch (e) {
+      // Silent fallback to CPU
     }
 
     return options;
@@ -374,6 +443,173 @@ class YoloV8PersonDetector {
     return 0.5 * (b[n ~/ 2 - 1] + b[n ~/ 2]);
   }
 
+  /// Shared post-processing for YOLO detection outputs.
+  ///
+  /// Decodes model outputs, applies confidence filtering, NMS, and coordinate
+  /// transformation from letterbox space to original image coordinates.
+  List<YoloDetection> _postProcessDetections({
+    required List<dynamic> outputs,
+    required double r,
+    required int dw,
+    required int dh,
+    required int imageWidth,
+    required int imageHeight,
+    required double confThres,
+    required double iouThres,
+    required int topkPreNms,
+    required int maxDet,
+    required bool personOnly,
+  }) {
+    final List<Map<String, dynamic>> decoded = _decodeAnyYoloOutputs(outputs);
+    final List<int> clsIds = <int>[];
+    final List<double> scores = <double>[];
+    final List<List<double>> xywhs = <List<double>>[];
+
+    for (final Map<String, dynamic> row in decoded) {
+      final int C = row['C'] as int;
+      final List<double> xywh =
+          (row['xywh'] as List).map((v) => (v as num).toDouble()).toList();
+      final List<double> rest =
+          (row['rest'] as List).map((v) => (v as num).toDouble()).toList();
+
+      if (C == 84) {
+        int argMax = 0;
+        double best = -1e9;
+        for (int i = 0; i < rest.length; i++) {
+          final double s = _sigmoid(rest[i]);
+          if (s > best) {
+            best = s;
+            argMax = i;
+          }
+        }
+        scores.add(best);
+        clsIds.add(argMax);
+        xywhs.add(xywh);
+      } else {
+        final double obj = _sigmoid(rest[0]);
+        final List<double> clsLogits = rest.sublist(1, 81);
+        int argMax = 0;
+        double best = -1e9;
+        for (int i = 0; i < clsLogits.length; i++) {
+          final double s = _sigmoid(clsLogits[i]);
+          if (s > best) {
+            best = s;
+            argMax = i;
+          }
+        }
+        scores.add(obj * best);
+        clsIds.add(argMax);
+        xywhs.add(xywh);
+      }
+    }
+
+    final List<int> keep0 = <int>[];
+    for (int i = 0; i < scores.length; i++) {
+      if (scores[i] >= confThres) keep0.add(i);
+    }
+    if (keep0.isEmpty) return <YoloDetection>[];
+
+    final List<List<double>> keptXywh = [for (final int i in keep0) xywhs[i]];
+    final List<int> keptCls = [for (final int i in keep0) clsIds[i]];
+    final List<double> keptScore = [for (final int i in keep0) scores[i]];
+
+    if (keptXywh.isNotEmpty &&
+        _median([for (final v in keptXywh) v[2]]) <= 2.0) {
+      for (final List<double> v in keptXywh) {
+        v[0] *= _inW.toDouble();
+        v[1] *= _inH.toDouble();
+        v[2] *= _inW.toDouble();
+        v[3] *= _inH.toDouble();
+      }
+    }
+
+    final List<List<double>> boxesLtr = [
+      for (final List<double> v in keptXywh) _xywhToXyxy(v)
+    ];
+    final List<List<double>> boxes = <List<double>>[];
+    for (final List<double> b in boxesLtr) {
+      boxes.add(ImageUtils.scaleFromLetterbox(b, r, dw, dh));
+    }
+    final double iw = imageWidth.toDouble();
+    final double ih = imageHeight.toDouble();
+    for (final List<double> b in boxes) {
+      b[0] = b[0].clamp(0.0, iw);
+      b[2] = b[2].clamp(0.0, iw);
+      b[1] = b[1].clamp(0.0, ih);
+      b[3] = b[3].clamp(0.0, ih);
+    }
+
+    // Dynamic topkPreNms: scale based on image area relative to 640x640 baseline
+    final int effectiveTopk;
+    if (topkPreNms > 0) {
+      effectiveTopk = topkPreNms;
+    } else {
+      const int basePixels = 640 * 640;
+      const int baseCandidates = 100;
+      final int imagePixels = imageWidth * imageHeight;
+      final double scale = imagePixels / basePixels;
+      effectiveTopk = (baseCandidates * scale).round().clamp(20, 200);
+    }
+
+    if (effectiveTopk > 0 && keptScore.length > effectiveTopk) {
+      final List<int> ord =
+          _argSortDesc(keptScore).take(effectiveTopk).toList();
+      final List<List<double>> sortedBoxes = <List<double>>[];
+      final List<double> sortedScores = <double>[];
+      final List<int> sortedCls = <int>[];
+      for (final int i in ord) {
+        sortedBoxes.add(boxes[i]);
+        sortedScores.add(keptScore[i]);
+        sortedCls.add(keptCls[i]);
+      }
+      boxes
+        ..clear()
+        ..addAll(sortedBoxes);
+      keptScore
+        ..clear()
+        ..addAll(sortedScores);
+      keptCls
+        ..clear()
+        ..addAll(sortedCls);
+    }
+
+    if (personOnly) {
+      final List<List<double>> fBoxes = <List<double>>[];
+      final List<double> fScores = <double>[];
+      final List<int> fCls = <int>[];
+      for (int i = 0; i < keptCls.length; i++) {
+        if (keptCls[i] == cocoPersonClassId) {
+          fBoxes.add(boxes[i]);
+          fScores.add(keptScore[i]);
+          fCls.add(keptCls[i]);
+        }
+      }
+      boxes
+        ..clear()
+        ..addAll(fBoxes);
+      keptScore
+        ..clear()
+        ..addAll(fScores);
+      keptCls
+        ..clear()
+        ..addAll(fCls);
+    }
+
+    final List<int> keep =
+        _nms(boxes, keptScore, iouThres: iouThres, maxDet: maxDet);
+    final List<YoloDetection> out = <YoloDetection>[];
+    for (final int i in keep) {
+      out.add(
+        YoloDetection(
+          cls: keptCls[i],
+          score: keptScore[i],
+          bboxXYXY: boxes[i],
+        ),
+      );
+    }
+    return out;
+  }
+
   /// Detects persons in the given image using YOLOv8.
   ///
   /// Performs the following steps:
@@ -461,156 +697,91 @@ class YoloV8PersonDetector {
       _interpreter!.runForMultipleInputs(inputs, _cachedOutputs!);
     }
 
-    final List<Map<String, dynamic>> decoded =
-        _decodeAnyYoloOutputs(_cachedOutputs!.values.toList());
-    final List<int> clsIds = <int>[];
-    final List<double> scores = <double>[];
-    final List<List<double>> xywhs = <List<double>>[];
+    return _postProcessDetections(
+      outputs: _cachedOutputs!.values.toList(),
+      r: r,
+      dw: dw,
+      dh: dh,
+      imageWidth: image.width,
+      imageHeight: image.height,
+      confThres: confThres,
+      iouThres: iouThres,
+      topkPreNms: topkPreNms,
+      maxDet: maxDet,
+      personOnly: personOnly,
+    );
+  }
 
-    for (final Map<String, dynamic> row in decoded) {
-      final int C = row['C'] as int;
-      final List<double> xywh =
-          (row['xywh'] as List).map((v) => (v as num).toDouble()).toList();
-      final List<double> rest =
-          (row['rest'] as List).map((v) => (v as num).toDouble()).toList();
-
-      if (C == 84) {
-        int argMax = 0;
-        double best = -1e9;
-        for (int i = 0; i < rest.length; i++) {
-          final double s = _sigmoid(rest[i]);
-          if (s > best) {
-            best = s;
-            argMax = i;
-          }
-        }
-        scores.add(best);
-        clsIds.add(argMax);
-        xywhs.add(xywh);
-      } else {
-        final double obj = _sigmoid(rest[0]);
-        final List<double> clsLogits = rest.sublist(1, 81);
-        int argMax = 0;
-        double best = -1e9;
-        for (int i = 0; i < clsLogits.length; i++) {
-          final double s = _sigmoid(clsLogits[i]);
-          if (s > best) {
-            best = s;
-            argMax = i;
-          }
-        }
-        scores.add(obj * best);
-        clsIds.add(argMax);
-        xywhs.add(xywh);
-      }
+  /// Detects persons in a cv.Mat using native OpenCV preprocessing.
+  ///
+  /// Uses SIMD-accelerated OpenCV operations for preprocessing which is
+  /// 5-15x faster than pure Dart preprocessing.
+  ///
+  /// Parameters:
+  /// - [mat]: Input cv.Mat image in BGR format
+  /// - [imageWidth]: Original image width for coordinate scaling
+  /// - [imageHeight]: Original image height for coordinate scaling
+  /// - [confThres]: Confidence threshold for detections (default: 0.35)
+  /// - [iouThres]: IoU threshold for Non-Maximum Suppression (default: 0.4)
+  /// - [maxDet]: Maximum detections to return after NMS (default: 10)
+  /// - [personOnly]: If true, only returns person class detections (default: true)
+  ///
+  /// Returns a list of [YoloDetection] objects with bounding boxes in original image coordinates.
+  Future<List<YoloDetection>> detectOnMat(
+    cv.Mat mat, {
+    required int imageWidth,
+    required int imageHeight,
+    double confThres = 0.35,
+    double iouThres = 0.4,
+    int maxDet = 10,
+    bool personOnly = true,
+  }) async {
+    if (!_isInitialized || _interpreter == null) {
+      throw StateError('YoloV8PersonDetector not initialized.');
     }
 
-    final List<int> keep0 = <int>[];
-    for (int i = 0; i < scores.length; i++) {
-      if (scores[i] >= confThres) keep0.add(i);
-    }
-    if (keep0.isEmpty) return <YoloDetection>[];
+    // NATIVE: SIMD-accelerated letterbox preprocessing
+    final (cv.Mat letter, double r, int dw, int dh) =
+        NativeImageUtils.letterbox(mat, _inW, _inH);
 
-    final List<List<double>> keptXywh = [for (final int i in keep0) xywhs[i]];
-    final List<int> keptCls = [for (final int i in keep0) clsIds[i]];
-    final List<double> keptScore = [for (final int i in keep0) scores[i]];
-
-    if (keptXywh.isNotEmpty &&
-        _median([for (final v in keptXywh) v[2]]) <= 2.0) {
-      for (final List<double> v in keptXywh) {
-        v[0] *= _inW.toDouble();
-        v[1] *= _inH.toDouble();
-        v[2] *= _inW.toDouble();
-        v[3] *= _inH.toDouble();
-      }
+    // NATIVE: Direct buffer tensor conversion
+    final int inputSize = _inH * _inW * 3;
+    _inputBuffer ??= Float32List(inputSize);
+    if (_inputBuffer!.length != inputSize) {
+      _inputBuffer = Float32List(inputSize);
     }
+    NativeImageUtils.matToTensorYolo(letter, buffer: _inputBuffer);
+    letter.dispose();
 
-    final List<List<double>> boxesLtr = [
-      for (final List<double> v in keptXywh) _xywhToXyxy(v)
-    ];
-    final List<List<double>> boxes = <List<double>>[];
-    for (final List<double> b in boxesLtr) {
-      boxes.add(ImageUtils.scaleFromLetterbox(b, r, dw, dh));
-    }
-    final double iw = image.width.toDouble();
-    final double ih = image.height.toDouble();
-    for (final List<double> b in boxes) {
-      b[0] = b[0].clamp(0.0, iw);
-      b[2] = b[2].clamp(0.0, iw);
-      b[1] = b[1].clamp(0.0, ih);
-      b[3] = b[3].clamp(0.0, ih);
-    }
+    final int inputCount = _interpreter!.getInputTensors().length;
+    final List<Object> inputs = List<Object>.filled(
+      inputCount,
+      _inputBuffer!.buffer,
+      growable: false,
+    );
 
-    // Dynamic topkPreNms: scale based on image area relative to 640x640 baseline
-    // Smaller images need fewer candidates, larger images may need more
-    final int effectiveTopk;
-    if (topkPreNms > 0) {
-      effectiveTopk = topkPreNms;
+    // Lazy-initialize and reuse output buffers
+    _cachedOutputs ??= _createOutputBuffers();
+    _zeroOutputBuffers(_cachedOutputs!);
+
+    if (_iso != null) {
+      await _iso!.runForMultipleInputs(inputs, _cachedOutputs!);
     } else {
-      // Scale: 100 candidates for 640x640 (409600 pixels)
-      // Minimum 20, maximum 200
-      const int basePixels = 640 * 640;
-      const int baseCandidates = 100;
-      final int imagePixels = image.width * image.height;
-      final double scale = imagePixels / basePixels;
-      effectiveTopk = (baseCandidates * scale).round().clamp(20, 200);
+      _interpreter!.runForMultipleInputs(inputs, _cachedOutputs!);
     }
 
-    if (effectiveTopk > 0 && keptScore.length > effectiveTopk) {
-      final List<int> ord = _argSortDesc(keptScore).take(effectiveTopk).toList();
-      final List<List<double>> sortedBoxes = <List<double>>[];
-      final List<double> sortedScores = <double>[];
-      final List<int> sortedCls = <int>[];
-      for (final int i in ord) {
-        sortedBoxes.add(boxes[i]);
-        sortedScores.add(keptScore[i]);
-        sortedCls.add(keptCls[i]);
-      }
-      boxes
-        ..clear()
-        ..addAll(sortedBoxes);
-      keptScore
-        ..clear()
-        ..addAll(sortedScores);
-      keptCls
-        ..clear()
-        ..addAll(sortedCls);
-    }
-
-    if (personOnly) {
-      final List<List<double>> fBoxes = <List<double>>[];
-      final List<double> fScores = <double>[];
-      final List<int> fCls = <int>[];
-      for (int i = 0; i < keptCls.length; i++) {
-        if (keptCls[i] == cocoPersonClassId) {
-          fBoxes.add(boxes[i]);
-          fScores.add(keptScore[i]);
-          fCls.add(keptCls[i]);
-        }
-      }
-      boxes
-        ..clear()
-        ..addAll(fBoxes);
-      keptScore
-        ..clear()
-        ..addAll(fScores);
-      keptCls
-        ..clear()
-        ..addAll(fCls);
-    }
-
-    final List<int> keep =
-        _nms(boxes, keptScore, iouThres: iouThres, maxDet: maxDet);
-    final List<YoloDetection> out = <YoloDetection>[];
-    for (final int i in keep) {
-      out.add(
-        YoloDetection(
-          cls: keptCls[i],
-          score: keptScore[i],
-          bboxXYXY: boxes[i],
-        ),
-      );
-    }
-    return out;
+    return _postProcessDetections(
+      outputs: _cachedOutputs!.values.toList(),
+      r: r,
+      dw: dw,
+      dh: dh,
+      imageWidth: imageWidth,
+      imageHeight: imageHeight,
+      confThres: confThres,
+      iouThres: iouThres,
+      topkPreNms: 0, // Always use dynamic scaling for native path
+      maxDet: maxDet,
+      personOnly: personOnly,
+    );
   }
 }

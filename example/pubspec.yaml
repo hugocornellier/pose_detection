@@ -20,6 +20,7 @@ dependencies:
   path_provider: ^2.1.5
   camera: ^0.11.0+2
   camera_macos: ^0.0.9
+  opencv_dart: ^2.1.0
 
 dev_dependencies:
   flutter_test:

@@ -1,3 +1,5 @@
+// ignore_for_file: avoid_print
+
 // Performance benchmark tests for PoseDetector.
 //
 // This test suite measures inference performance by running multiple iterations
@@ -14,9 +16,9 @@ import 'package:integration_test/integration_test.dart';
 import 'package:image/image.dart' as img;
 import 'package:pose_detection_tflite/pose_detection_tflite.dart';
 
-const int ITERATIONS = 20;
-const int WARMUP_ITERATIONS = 3;
-const List<String> SAMPLE_IMAGES = [
+const int iterations = 20;
+const int warmupIterations = 3;
+const List<String> sampleImages = [
   'assets/samples/pose1.jpg',
   'assets/samples/pose2.jpg',
   'assets/samples/pose3.jpg',
@@ -77,19 +79,19 @@ class BenchmarkStats {
   }
 
   Map<String, dynamic> toJson() => {
-    'image_path': imagePath,
-    'iterations': timings.length,
-    'image_size_bytes': imageSize,
-    'detections_per_frame': detectionCount,
-    'average_ms': double.parse(average.toStringAsFixed(2)),
-    'min_ms': min,
-    'max_ms': max,
-    'p50_ms': double.parse(p50.toStringAsFixed(2)),
-    'p95_ms': double.parse(p95.toStringAsFixed(2)),
-    'p99_ms': double.parse(p99.toStringAsFixed(2)),
-    'std_dev_ms': double.parse(standardDeviation.toStringAsFixed(2)),
-    'all_timings_ms': timings,
-  };
+        'image_path': imagePath,
+        'iterations': timings.length,
+        'image_size_bytes': imageSize,
+        'detections_per_frame': detectionCount,
+        'average_ms': double.parse(average.toStringAsFixed(2)),
+        'min_ms': min,
+        'max_ms': max,
+        'p50_ms': double.parse(p50.toStringAsFixed(2)),
+        'p95_ms': double.parse(p95.toStringAsFixed(2)),
+        'p99_ms': double.parse(p99.toStringAsFixed(2)),
+        'std_dev_ms': double.parse(standardDeviation.toStringAsFixed(2)),
+        'all_timings_ms': timings,
+      };
 }
 
 class BenchmarkResults {
@@ -106,11 +108,11 @@ class BenchmarkResults {
   });
 
   Map<String, dynamic> toJson() => {
-    'timestamp': timestamp,
-    'test_name': testName,
-    'configuration': configuration,
-    'results': results.map((r) => r.toJson()).toList(),
-  };
+        'timestamp': timestamp,
+        'test_name': testName,
+        'configuration': configuration,
+        'results': results.map((r) => r.toJson()).toList(),
+      };
 
   void printJson(String filename) {
     print('\n📊 BENCHMARK_JSON_START:$filename');
@@ -123,7 +125,8 @@ void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
   group('PoseDetector - Performance Benchmarks', () {
-    test('Benchmark heavy model with XNNPACK', timeout: const Timeout(Duration(minutes: 10)), () async {
+    test('Benchmark heavy model with XNNPACK',
+        timeout: const Timeout(Duration(minutes: 10)), () async {
       final detector = PoseDetector(
         mode: PoseMode.boxesAndLandmarks,
         landmarkModel: PoseLandmarkModel.heavy,
@@ -137,7 +140,7 @@ void main() {
 
       final allStats = <BenchmarkStats>[];
 
-      for (final imagePath in SAMPLE_IMAGES) {
+      for (final imagePath in sampleImages) {
         final ByteData data = await rootBundle.load(imagePath);
         final Uint8List bytes = data.buffer.asUint8List();
 
@@ -151,13 +154,13 @@ void main() {
         int detectionCount = 0;
 
         // Warmup
-        for (int i = 0; i < WARMUP_ITERATIONS; i++) {
+        for (int i = 0; i < warmupIterations; i++) {
           final results = await detector.detectOnImage(preDecodedImage);
           if (i == 0) detectionCount = results.length;
         }
 
         // Timed iterations
-        for (int i = 0; i < ITERATIONS; i++) {
+        for (int i = 0; i < iterations; i++) {
           final stopwatch = Stopwatch()..start();
           await detector.detectOnImage(preDecodedImage);
           stopwatch.stop();
@@ -183,8 +186,8 @@ void main() {
         configuration: {
           'model': 'heavy',
           'mode': 'boxesAndLandmarks',
-          'warmup_iterations': WARMUP_ITERATIONS,
-          'timed_iterations': ITERATIONS,
+          'warmup_iterations': warmupIterations,
+          'timed_iterations': iterations,
           'interpreter_pool_size': 1,
           'xnnpack_threads': 'auto',
         },

@@ -2,7 +2,9 @@ import 'dart:async';
 import 'dart:ffi' as ffi;
 import 'dart:io';
 import 'dart:math' as math;
+import 'dart:typed_data';
 import 'package:image/image.dart' as img;
+import 'package:opencv_dart/opencv_dart.dart' as cv;
 import 'package:path/path.dart' as p;
 import 'package:meta/meta.dart';
 import 'package:tflite_flutter_custom/tflite_flutter.dart';
@@ -21,6 +23,9 @@ class _InterpreterInstance {
   // Pre-allocated input buffer [1, 256, 256, 3] - reused across calls
   final List<List<List<List<double>>>> inputBuffer;
 
+  // Pre-allocated flat input buffer for native preprocessing
+  final Float32List flatInputBuffer;
+
   // Pre-allocated output buffers - reused across calls
   final List<List<double>> outputLandmarks; // [1, 195]
   final List<List<double>> outputScore; // [1, 1]
@@ -32,6 +37,7 @@ class _InterpreterInstance {
     required this.interpreter,
     required this.isolateInterpreter,
     required this.inputBuffer,
+    required this.flatInputBuffer,
     required this.outputLandmarks,
     required this.outputScore,
     required this.outputMask,
@@ -243,6 +249,9 @@ class PoseLandmarkModelRunner {
         growable: false,
       );
 
+      // Pre-allocate flat input buffer for native preprocessing (256*256*3)
+      final flatInputBuffer = Float32List(256 * 256 * 3);
+
       // Pre-allocate output buffers
       final outputLandmarks = [List<double>.filled(195, 0.0, growable: false)];
       final outputScore = [List<double>.filled(1, 0.0, growable: false)];
@@ -254,6 +263,7 @@ class PoseLandmarkModelRunner {
         interpreter: interpreter,
         isolateInterpreter: isolateInterpreter,
         inputBuffer: inputBuffer,
+        flatInputBuffer: flatInputBuffer,
         outputLandmarks: outputLandmarks,
         outputScore: outputScore,
         outputMask: outputMask,
@@ -272,41 +282,104 @@ class PoseLandmarkModelRunner {
   ///
   /// Returns a tuple of (options, delegate) where delegate may be null.
   /// Each call creates a NEW delegate instance - do NOT share delegates across interpreters.
+  ///
+  /// ## Platform Behavior
+  ///
+  /// | Mode | macOS/Linux | Windows | iOS | Android |
+  /// |------|-------------|---------|-----|---------|
+  /// | disabled | CPU | CPU | CPU | CPU |
+  /// | xnnpack | XNNPACK | CPU* | CPU* | CPU* |
+  /// | gpu | CPU | CPU | Metal | OpenGL** |
+  /// | auto | XNNPACK | CPU | Metal | CPU |
+  ///
+  /// *Falls back to CPU (XNNPACK not supported on this platform)
+  /// **Experimental, may crash on some devices
   (InterpreterOptions, Delegate?) _createInterpreterOptions(
       PerformanceConfig? config) {
     final options = InterpreterOptions();
+    final effectiveConfig = config ?? const PerformanceConfig();
 
-    // If no config or disabled mode, return default options (backward compatible)
-    if (config == null || config.mode == PerformanceMode.disabled) {
+    final threadCount = effectiveConfig.numThreads?.clamp(0, 8) ??
+        math.min(4, Platform.numberOfProcessors);
+
+    if (effectiveConfig.mode == PerformanceMode.disabled) {
+      options.threads = threadCount;
       return (options, null);
     }
 
-    // Get effective thread count
-    final threadCount = config.numThreads?.clamp(0, 8) ??
-        math.min(4, Platform.numberOfProcessors);
-
-    // Set CPU threads
-    options.threads = threadCount;
-
-    // Add XNNPACK delegate (for xnnpack or auto mode)
-    if (config.mode == PerformanceMode.xnnpack ||
-        config.mode == PerformanceMode.auto) {
-      try {
-        final xnnpackDelegate = XNNPackDelegate(
-          options: XNNPackDelegateOptions(numThreads: threadCount),
-        );
-        options.addDelegate(xnnpackDelegate);
-        return (options, xnnpackDelegate);
-      } catch (e) {
-        // Graceful fallback: if delegate creation fails, continue with CPU
-        // ignore: avoid_print
-        print('[BlazePose] Warning: Failed to create XNNPACK delegate: $e');
-        // ignore: avoid_print
-        print('[BlazePose] Falling back to default CPU execution');
-      }
+    if (effectiveConfig.mode == PerformanceMode.auto) {
+      return _createAutoModeOptions(options, threadCount);
     }
 
+    if (effectiveConfig.mode == PerformanceMode.xnnpack) {
+      return _createXnnpackOptions(options, threadCount);
+    }
+
+    if (effectiveConfig.mode == PerformanceMode.gpu) {
+      return _createGpuOptions(options, threadCount);
+    }
+
+    options.threads = threadCount;
     return (options, null);
+  }
+
+  /// Creates options for auto mode - selects best delegate per platform.
+  (InterpreterOptions, Delegate?) _createAutoModeOptions(
+      InterpreterOptions options, int threadCount) {
+    if (Platform.isMacOS || Platform.isLinux) {
+      return _createXnnpackOptions(options, threadCount);
+    }
+
+    if (Platform.isIOS) {
+      return _createGpuOptions(options, threadCount);
+    }
+
+    // Windows and Android: CPU-only (safest default)
+    options.threads = threadCount;
+    return (options, null);
+  }
+
+  /// Creates options with XNNPACK delegate (desktop only).
+  (InterpreterOptions, Delegate?) _createXnnpackOptions(
+      InterpreterOptions options, int threadCount) {
+    options.threads = threadCount;
+
+    // XNNPACK only supported on macOS and Linux
+    if (!Platform.isMacOS && !Platform.isLinux) {
+      return (options, null);
+    }
+
+    try {
+      final xnnpackDelegate = XNNPackDelegate(
+        options: XNNPackDelegateOptions(numThreads: threadCount),
+      );
+      options.addDelegate(xnnpackDelegate);
+      return (options, xnnpackDelegate);
+    } catch (e) {
+      // Silent fallback to CPU
+      return (options, null);
+    }
+  }
+
+  /// Creates options with GPU delegate.
+  (InterpreterOptions, Delegate?) _createGpuOptions(
+      InterpreterOptions options, int threadCount) {
+    options.threads = threadCount;
+
+    // GPU only supported on iOS and Android
+    if (!Platform.isIOS && !Platform.isAndroid) {
+      return (options, null);
+    }
+
+    try {
+      final gpuDelegate =
+          Platform.isIOS ? GpuDelegate() : GpuDelegateV2() as Delegate;
+      options.addDelegate(gpuDelegate);
+      return (options, gpuDelegate);
+    } catch (e) {
+      // Silent fallback to CPU
+      return (options, null);
+    }
   }
 
   /// Creates a pre-allocated 4D tensor with the specified dimensions.
@@ -460,6 +533,70 @@ class PoseLandmarkModelRunner {
         instance.outputWorld,
       );
     });
+  }
+
+  /// Runs landmark extraction on a pre-letterboxed 256x256 cv.Mat.
+  ///
+  /// This method expects the input to already be letterboxed to 256x256.
+  /// The caller (typically [PoseDetector.detectOnMat]) handles cropping and
+  /// letterboxing, storing the transformation parameters for coordinate mapping.
+  ///
+  /// **Thread-safety:** Same as [run] - safe to call concurrently.
+  ///
+  /// Parameters:
+  /// - [mat]: Letterboxed 256x256 cv.Mat in BGR format
+  ///
+  /// Returns [PoseLandmarks] containing 33 landmarks with normalized coordinates.
+  ///
+  /// Throws [StateError] if the model is not initialized.
+  Future<PoseLandmarks> runOnMat(cv.Mat mat) async {
+    if (!_isInitialized) {
+      throw StateError(
+          'PoseLandmarkModelRunner not initialized. Call initialize() first.');
+    }
+
+    return await _withInterpreterLock((instance) async {
+      // Input mat is already letterboxed to 256x256 by the caller (detectOnMat).
+      // Convert directly to tensor with [0, 1] normalization (BlazePose format).
+      _matToInputBuffer(mat, instance.flatInputBuffer);
+
+      // Run inference using flat buffer
+      await instance.isolateInterpreter.runForMultipleInputs(
+        [instance.flatInputBuffer.buffer],
+        {
+          0: instance.outputLandmarks,
+          1: instance.outputScore,
+          2: instance.outputMask,
+          3: instance.outputHeatmap,
+          4: instance.outputWorld,
+        },
+      );
+
+      return _parseLandmarks(
+        instance.outputLandmarks,
+        instance.outputScore,
+        instance.outputWorld,
+      );
+    });
+  }
+
+  /// Converts a cv.Mat to a Float32List tensor for BlazePose input.
+  ///
+  /// Normalizes pixel values to [0.0, 1.0] range (BlazePose uses 0-1, not -1 to 1).
+  /// Handles BGR to RGB conversion.
+  void _matToInputBuffer(cv.Mat mat, Float32List buffer) {
+    final int h = mat.rows;
+    final int w = mat.cols;
+    final int totalPixels = h * w;
+    final Uint8List data = mat.data;
+
+    // BGR to RGB conversion + normalize to [0, 1]
+    const double scale = 1.0 / 255.0;
+    for (int i = 0, j = 0; i < totalPixels * 3; i += 3, j += 3) {
+      buffer[j] = data[i + 2] * scale; // B -> R
+      buffer[j + 1] = data[i + 1] * scale; // G -> G
+      buffer[j + 2] = data[i] * scale; // R -> B
+    }
   }
 
   PoseLandmarks _parseLandmarks(

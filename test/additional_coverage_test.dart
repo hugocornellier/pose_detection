@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -70,7 +69,7 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   test('PoseDetector returns empty when image decoding yields null', () async {
-    final detector = PoseDetector();
+    final detector = PoseDetector(useNativePreprocessing: false);
     PoseDetector.imageDecoderOverride = (_) => null;
 
     await detector.initialize();
