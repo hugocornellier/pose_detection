@@ -1,3 +1,7 @@
+## 1.2.1
+
+- Improved auto .dylib bundling on MacOS
+
 ## 1.2.0
 
 - Add native OpenCV preprocessing for 5-15x faster image processing (SIMD-accelerated)

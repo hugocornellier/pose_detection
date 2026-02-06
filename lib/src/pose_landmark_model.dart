@@ -3,10 +3,10 @@ import 'dart:ffi' as ffi;
 import 'dart:io';
 import 'dart:math' as math;
 import 'dart:typed_data';
+
 import 'package:image/image.dart' as img;
 import 'package:opencv_dart/opencv_dart.dart' as cv;
 import 'package:path/path.dart' as p;
-import 'package:meta/meta.dart';
 import 'package:tflite_flutter_custom/tflite_flutter.dart';
 import 'image_utils.dart';
 import 'types.dart';
@@ -105,92 +105,55 @@ class PoseLandmarkModelRunner {
   PoseLandmarkModelRunner({int poolSize = 1})
       : _poolSize = poolSize.clamp(1, 10);
 
-  /// Ensures TensorFlow Lite native library is loaded for desktop platforms.
-  ///
-  /// On Windows, Linux, and macOS, loads the platform-specific TensorFlow Lite C library
-  /// from bundled assets. On mobile platforms (iOS/Android), uses the system library.
-  ///
-  /// This method is idempotent - subsequent calls do nothing if already loaded.
-  ///
-  /// Throws an exception if the library cannot be found or loaded.
-  static Future<void> ensureTFLiteLoaded({
-    Map<String, String>? env,
-    String? platformOverride,
-  }) async {
+  static Future<void> _ensureTFLiteLoaded() async {
     if (_tfliteLib != null) return;
 
-    final Map<String, String> environment = env ?? Platform.environment;
-    final String platform = platformOverride ?? _platformString();
+    if (!Platform.isWindows && !Platform.isLinux) return;
 
-    // Optional override for local testing: set POSE_TFLITE_LIB to an absolute path.
-    final envLibPath = environment['POSE_TFLITE_LIB'];
-    if (envLibPath != null && envLibPath.isNotEmpty) {
-      _tfliteLib = ffi.DynamicLibrary.open(envLibPath);
-      return;
-    }
-
-    final exe = File(Platform.resolvedExecutable);
-    final exeDir = exe.parent;
-
+    final File exe = File(Platform.resolvedExecutable);
+    final Directory exeDir = exe.parent;
     late final List<String> candidates;
+    late final String hint;
 
-    if (platform == 'windows') {
+    if (Platform.isWindows) {
       candidates = [
         p.join(exeDir.path, 'libtensorflowlite_c-win.dll'),
         'libtensorflowlite_c-win.dll',
       ];
-    } else if (platform == 'linux') {
+      hint = 'Make sure your Windows plugin CMakeLists.txt sets:\n'
+          '  set(PLUGIN_NAME_bundled_libraries ".../libtensorflowlite_c-win.dll" PARENT_SCOPE)\n'
+          'so Flutter copies it next to the app EXE.';
+    } else {
       candidates = [
         p.join(exeDir.path, 'lib', 'libtensorflowlite_c-linux.so'),
         'libtensorflowlite_c-linux.so',
       ];
-    } else if (platform == 'macos') {
-      final contents = exeDir.parent;
-      candidates = [
-        p.join(contents.path, 'Resources', 'libtensorflowlite_c-mac.dylib'),
-        // When running `flutter test`, the dylib is not copied into the engine
-        // cache; fall back to the repo / package checkout location.
-        p.join(Directory.current.path, 'macos', 'Frameworks',
-            'libtensorflowlite_c-mac.dylib'),
-      ];
-    } else {
-      _tfliteLib = ffi.DynamicLibrary.process();
-      return;
+      hint = 'Ensure linux/CMakeLists.txt sets:\n'
+          '  set(PLUGIN_NAME_bundled_libraries "../assets/bin/libtensorflowlite_c-linux.so" PARENT_SCOPE)\n'
+          'so Flutter copies it into bundle/lib/.';
     }
 
+    final List<String> tried = <String>[];
     for (final String c in candidates) {
       try {
         if (c.contains(p.separator)) {
-          if (!File(c).existsSync()) continue;
+          if (!File(c).existsSync()) {
+            tried.add(c);
+            continue;
+          }
         }
         _tfliteLib = ffi.DynamicLibrary.open(c);
         return;
-      } catch (_) {}
+      } catch (_) {
+        tried.add(c);
+      }
     }
-  }
 
-  static String _platformString() {
-    if (Platform.isWindows) return 'windows';
-    if (Platform.isLinux) return 'linux';
-    if (Platform.isMacOS) return 'macos';
-    return 'other';
+    throw ArgumentError(
+      'Failed to locate TensorFlow Lite C library.\n'
+      'Tried:\n - ${tried.join('\n - ')}\n\n$hint',
+    );
   }
-
-  /// Resets the TFLite native library cache for testing.
-  ///
-  /// Clears the cached [_tfliteLib] reference, allowing tests to verify
-  /// library loading behavior across different platform configurations.
-  @visibleForTesting
-  static void resetNativeLibForTest() {
-    _tfliteLib = null;
-  }
-
-  /// Returns the cached TFLite native library instance for testing.
-  ///
-  /// Provides test access to verify that the correct native library
-  /// was loaded after calling [ensureTFLiteLoaded].
-  @visibleForTesting
-  static ffi.DynamicLibrary? nativeLibForTest() => _tfliteLib;
 
   /// Initializes the BlazePose landmark model with the specified variant.
   ///
@@ -215,7 +178,7 @@ class PoseLandmarkModelRunner {
     PerformanceConfig? performanceConfig,
   }) async {
     if (_isInitialized) await dispose();
-    await ensureTFLiteLoaded();
+    await _ensureTFLiteLoaded();
 
     final String path = _getModelPath(model);
 

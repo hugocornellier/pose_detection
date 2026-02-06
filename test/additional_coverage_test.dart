@@ -111,41 +111,6 @@ void main() {
         throwsA(isA<StateError>()),
       );
     });
-
-    test('ensureTFLiteLoaded honors env override', () async {
-      PoseLandmarkModelRunner.resetNativeLibForTest();
-      await PoseLandmarkModelRunner.ensureTFLiteLoaded(
-        env: <String, String>{'POSE_TFLITE_LIB': '/usr/lib/libSystem.B.dylib'},
-        platformOverride: 'macos',
-      );
-      expect(PoseLandmarkModelRunner.nativeLibForTest(), isNotNull);
-    });
-
-    test('ensureTFLiteLoaded falls back for other platforms', () async {
-      PoseLandmarkModelRunner.resetNativeLibForTest();
-      await PoseLandmarkModelRunner.ensureTFLiteLoaded(
-        env: const <String, String>{},
-        platformOverride: 'other',
-      );
-      expect(PoseLandmarkModelRunner.nativeLibForTest(), isNotNull);
-    });
-
-    test('ensureTFLiteLoaded builds candidate lists for Windows/Linux',
-        () async {
-      PoseLandmarkModelRunner.resetNativeLibForTest();
-      await PoseLandmarkModelRunner.ensureTFLiteLoaded(
-        env: const <String, String>{},
-        platformOverride: 'windows',
-      );
-      expect(PoseLandmarkModelRunner.nativeLibForTest(), isNull);
-
-      PoseLandmarkModelRunner.resetNativeLibForTest();
-      await PoseLandmarkModelRunner.ensureTFLiteLoaded(
-        env: const <String, String>{},
-        platformOverride: 'linux',
-      );
-      expect(PoseLandmarkModelRunner.nativeLibForTest(), isNull);
-    });
   });
 
   group('YoloV8PersonDetector', () {

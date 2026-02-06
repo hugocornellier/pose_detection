@@ -10,15 +10,15 @@ dependencies:
   flutter:
     sdk: flutter
   cupertino_icons: ^1.0.8
-  image: ^4.5.4
-  image_picker: ^1.2.0
-  file_selector: ^1.0.3
-  file_selector_macos: ^0.9.4+2
+  image: ^4.7.2
+  image_picker: ^1.2.1
+  file_selector: ^1.1.0
+  file_selector_macos: ^0.9.5
   pose_detection_tflite:
     path: ../
   flutter_colorpicker: ^1.1.0
   path_provider: ^2.1.5
-  camera: ^0.11.0+2
+  camera: ^0.11.3
   camera_macos: ^0.0.9
   opencv_dart: ^2.1.0
 
@@ -28,6 +28,7 @@ dev_dependencies:
   integration_test:
     sdk: flutter
   flutter_lints: ^6.0.0
+  tflite_flutter_custom: ^1.2.4
 
 flutter:
   uses-material-design: true
