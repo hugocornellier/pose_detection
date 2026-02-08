@@ -1,6 +1,11 @@
+## 1.2.2
+
+- Fix Android build: bump tflite_flutter_custom to 1.2.5 (fixes undefined symbol TfLiteIntArrayCreate linker error)
+- Add missing MainActivity.kt for Android example app
+
 ## 1.2.1
 
-- Improved auto .dylib bundling on MacOS
+- Improved auto .dylib bundling on MacOS 
 
 ## 1.2.0
 
