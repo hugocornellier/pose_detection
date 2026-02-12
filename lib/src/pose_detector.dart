@@ -92,6 +92,8 @@ class PoseDetector {
   /// When set, replaces the default image decoder with a custom function.
   /// Used in tests to simulate decoding failures or unusual image conditions.
   @visibleForTesting
+  @Deprecated(
+      'Will be removed in 2.0.0. Use detectOnMat with cv.imdecode instead.')
   static img.Image? Function(Uint8List bytes)? imageDecoderOverride;
 
   /// Detection mode controlling pipeline behavior.
@@ -279,6 +281,7 @@ class PoseDetector {
   /// Returns an empty list if image decoding fails or no persons are detected.
   ///
   /// Throws [StateError] if called before [initialize].
+  @Deprecated('Will be removed in 2.0.0. Use detectOnMat instead.')
   Future<List<Pose>> detect(List<int> imageBytes) async {
     if (!_isInitialized) {
       throw StateError(
@@ -434,6 +437,7 @@ class PoseDetector {
   /// operations for 5-15x faster preprocessing.
   ///
   /// Throws [StateError] if called before [initialize].
+  @Deprecated('Will be removed in 2.0.0. Use detectOnMat instead.')
   Future<List<Pose>> detectOnImage(img.Image image) async {
     if (!_isInitialized) {
       throw StateError(

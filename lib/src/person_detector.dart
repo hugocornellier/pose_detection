@@ -4,7 +4,7 @@ import 'dart:typed_data';
 import 'package:image/image.dart' as img;
 import 'package:meta/meta.dart';
 import 'package:opencv_dart/opencv_dart.dart' as cv;
-import 'package:tflite_flutter_custom/tflite_flutter.dart';
+import 'package:flutter_litert/flutter_litert.dart';
 import 'image_utils.dart';
 import 'native_image_utils.dart';
 import 'types.dart';
@@ -39,6 +39,7 @@ class YoloV8PersonDetector {
   IsolateInterpreter? _iso;
   Interpreter? _interpreter;
   bool _isInitialized = false;
+  bool _useIsolateInterpreter = true;
   late int _inW;
   late int _inH;
 
@@ -90,7 +91,14 @@ class YoloV8PersonDetector {
       _outShapes.add(List<int>.from(t.shape));
     }
 
-    _iso = await IsolateInterpreter.create(address: itp.address);
+    // Skip IsolateInterpreter when delegates are active — the delegate
+    // already provides multi-threaded inference internally and
+    // IsolateInterpreter's Interpreter.fromAddress() re-calls
+    // allocateTensors() from a different OS thread which can crash XNNPACK.
+    _useIsolateInterpreter = _delegate == null;
+    if (_useIsolateInterpreter) {
+      _iso = await IsolateInterpreter.create(address: itp.address);
+    }
 
     _isInitialized = true;
   }
@@ -629,6 +637,7 @@ class YoloV8PersonDetector {
   /// Returns a list of [YoloDetection] objects with bounding boxes in original image coordinates.
   ///
   /// Throws [StateError] if the detector is not initialized.
+  @Deprecated('Will be removed in 2.0.0. Use detectOnMat instead.')
   Future<List<YoloDetection>> detectOnImage(
     img.Image image, {
     double confThres = 0.35,
@@ -681,7 +690,7 @@ class YoloV8PersonDetector {
     final int inputCount = _interpreter!.getInputTensors().length;
     final List<Object> inputs = List<Object>.filled(
       inputCount,
-      // Pass the raw buffer so tflite_flutter_custom does not try to
+      // Pass the raw buffer so flutter_litert does not try to
       // auto-resize the input tensor to a 1D shape.
       flatInput.buffer,
       growable: false,

@@ -197,7 +197,13 @@ class _StillImageScreenState extends State<StillImageScreen> {
       });
 
       final Uint8List bytes = await _imageFile!.readAsBytes();
-      final List<Pose> results = await _poseDetector.detect(bytes);
+      final cv.Mat mat = cv.imdecode(bytes, cv.IMREAD_COLOR);
+      final List<Pose> results = await _poseDetector.detectOnMat(
+        mat,
+        imageWidth: mat.cols,
+        imageHeight: mat.rows,
+      );
+      mat.dispose();
 
       setState(() {
         _results = results;

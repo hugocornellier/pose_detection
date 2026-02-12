@@ -13,7 +13,7 @@ import 'dart:math';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
-import 'package:image/image.dart' as img;
+import 'package:opencv_dart/opencv_dart.dart' as cv;
 import 'package:pose_detection_tflite/pose_detection_tflite.dart';
 
 const int iterations = 20;
@@ -115,9 +115,9 @@ class BenchmarkResults {
       };
 
   void printJson(String filename) {
-    print('\n📊 BENCHMARK_JSON_START:$filename');
+    print('\n BENCHMARK_JSON_START:$filename');
     print(const JsonEncoder.withIndent('  ').convert(toJson()));
-    print('📊 BENCHMARK_JSON_END:$filename');
+    print(' BENCHMARK_JSON_END:$filename');
   }
 }
 
@@ -144,28 +144,36 @@ void main() {
         final ByteData data = await rootBundle.load(imagePath);
         final Uint8List bytes = data.buffer.asUint8List();
 
-        final img.Image? preDecodedImage = img.decodeImage(bytes);
-        if (preDecodedImage == null) {
-          print('Failed to decode $imagePath');
-          continue;
-        }
+        final cv.Mat mat = cv.imdecode(bytes, cv.IMREAD_COLOR);
+        final int imageWidth = mat.cols;
+        final int imageHeight = mat.rows;
 
         final List<int> timings = [];
         int detectionCount = 0;
 
         // Warmup
         for (int i = 0; i < warmupIterations; i++) {
-          final results = await detector.detectOnImage(preDecodedImage);
+          final results = await detector.detectOnMat(
+            mat,
+            imageWidth: imageWidth,
+            imageHeight: imageHeight,
+          );
           if (i == 0) detectionCount = results.length;
         }
 
         // Timed iterations
         for (int i = 0; i < iterations; i++) {
           final stopwatch = Stopwatch()..start();
-          await detector.detectOnImage(preDecodedImage);
+          await detector.detectOnMat(
+            mat,
+            imageWidth: imageWidth,
+            imageHeight: imageHeight,
+          );
           stopwatch.stop();
           timings.add(stopwatch.elapsedMilliseconds);
         }
+
+        mat.dispose();
 
         final stats = BenchmarkStats(
           imagePath: imagePath,

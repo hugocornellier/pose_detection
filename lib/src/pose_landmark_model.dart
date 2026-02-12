@@ -1,24 +1,22 @@
 import 'dart:async';
-import 'dart:ffi' as ffi;
 import 'dart:io';
 import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:image/image.dart' as img;
 import 'package:opencv_dart/opencv_dart.dart' as cv;
-import 'package:path/path.dart' as p;
-import 'package:tflite_flutter_custom/tflite_flutter.dart';
+import 'package:flutter_litert/flutter_litert.dart';
 import 'image_utils.dart';
 import 'types.dart';
 
 /// A single interpreter instance with its associated resources.
 ///
-/// Encapsulates a TensorFlow Lite interpreter and its isolate wrapper,
+/// Encapsulates a TensorFlow Lite interpreter and its optional isolate wrapper,
 /// allowing for clean resource management in the interpreter pool.
 /// Also holds pre-allocated input/output buffers to avoid GC pressure.
 class _InterpreterInstance {
   final Interpreter interpreter;
-  final IsolateInterpreter isolateInterpreter;
+  final IsolateInterpreter? isolateInterpreter;
 
   // Pre-allocated input buffer [1, 256, 256, 3] - reused across calls
   final List<List<List<List<double>>>> inputBuffer;
@@ -35,7 +33,7 @@ class _InterpreterInstance {
 
   _InterpreterInstance({
     required this.interpreter,
-    required this.isolateInterpreter,
+    this.isolateInterpreter,
     required this.inputBuffer,
     required this.flatInputBuffer,
     required this.outputLandmarks,
@@ -45,9 +43,21 @@ class _InterpreterInstance {
     required this.outputWorld,
   });
 
+  /// Runs inference using the isolate interpreter if available, otherwise direct.
+  Future<void> runForMultipleInputs(
+    List<Object> inputs,
+    Map<int, Object> outputs,
+  ) async {
+    if (isolateInterpreter != null) {
+      await isolateInterpreter!.runForMultipleInputs(inputs, outputs);
+    } else {
+      interpreter.runForMultipleInputs(inputs, outputs);
+    }
+  }
+
   /// Disposes interpreter and isolate wrapper.
   Future<void> dispose() async {
-    isolateInterpreter.close();
+    isolateInterpreter?.close();
     interpreter.close();
   }
 }
@@ -94,7 +104,6 @@ class PoseLandmarkModelRunner {
   int _poolCounter = 0;
 
   bool _isInitialized = false;
-  static ffi.DynamicLibrary? _tfliteLib;
 
   /// Creates a landmark model runner with the specified pool size.
   ///
@@ -104,56 +113,6 @@ class PoseLandmarkModelRunner {
   ///   Default is 1 for backward compatibility.
   PoseLandmarkModelRunner({int poolSize = 1})
       : _poolSize = poolSize.clamp(1, 10);
-
-  static Future<void> _ensureTFLiteLoaded() async {
-    if (_tfliteLib != null) return;
-
-    if (!Platform.isWindows && !Platform.isLinux) return;
-
-    final File exe = File(Platform.resolvedExecutable);
-    final Directory exeDir = exe.parent;
-    late final List<String> candidates;
-    late final String hint;
-
-    if (Platform.isWindows) {
-      candidates = [
-        p.join(exeDir.path, 'libtensorflowlite_c-win.dll'),
-        'libtensorflowlite_c-win.dll',
-      ];
-      hint = 'Make sure your Windows plugin CMakeLists.txt sets:\n'
-          '  set(PLUGIN_NAME_bundled_libraries ".../libtensorflowlite_c-win.dll" PARENT_SCOPE)\n'
-          'so Flutter copies it next to the app EXE.';
-    } else {
-      candidates = [
-        p.join(exeDir.path, 'lib', 'libtensorflowlite_c-linux.so'),
-        'libtensorflowlite_c-linux.so',
-      ];
-      hint = 'Ensure linux/CMakeLists.txt sets:\n'
-          '  set(PLUGIN_NAME_bundled_libraries "../assets/bin/libtensorflowlite_c-linux.so" PARENT_SCOPE)\n'
-          'so Flutter copies it into bundle/lib/.';
-    }
-
-    final List<String> tried = <String>[];
-    for (final String c in candidates) {
-      try {
-        if (c.contains(p.separator)) {
-          if (!File(c).existsSync()) {
-            tried.add(c);
-            continue;
-          }
-        }
-        _tfliteLib = ffi.DynamicLibrary.open(c);
-        return;
-      } catch (_) {
-        tried.add(c);
-      }
-    }
-
-    throw ArgumentError(
-      'Failed to locate TensorFlow Lite C library.\n'
-      'Tried:\n - ${tried.join('\n - ')}\n\n$hint',
-    );
-  }
 
   /// Initializes the BlazePose landmark model with the specified variant.
   ///
@@ -178,7 +137,6 @@ class PoseLandmarkModelRunner {
     PerformanceConfig? performanceConfig,
   }) async {
     if (_isInitialized) await dispose();
-    await _ensureTFLiteLoaded();
 
     final String path = _getModelPath(model);
 
@@ -194,8 +152,13 @@ class PoseLandmarkModelRunner {
       interpreter.resizeInputTensor(0, [1, 256, 256, 3]);
       interpreter.allocateTensors();
 
-      final isolateInterpreter =
-          await IsolateInterpreter.create(address: interpreter.address);
+      // Skip IsolateInterpreter when delegates are active — the delegate
+      // already provides multi-threaded inference internally and
+      // IsolateInterpreter's Interpreter.fromAddress() re-calls
+      // allocateTensors() from a different OS thread which can crash XNNPACK.
+      final IsolateInterpreter? isolateInterpreter = delegate == null
+          ? await IsolateInterpreter.create(address: interpreter.address)
+          : null;
 
       // Pre-allocate input buffer [1, 256, 256, 3]
       final inputBuffer = List.generate(
@@ -466,6 +429,7 @@ class PoseLandmarkModelRunner {
   /// and a confidence score. Landmarks are in the 256x256 model output space.
   ///
   /// Throws [StateError] if the model is not initialized.
+  @Deprecated('Will be removed in 2.0.0. Use runOnMat instead.')
   Future<PoseLandmarks> run(img.Image roiImage) async {
     if (!_isInitialized) {
       throw StateError(
@@ -479,7 +443,7 @@ class PoseLandmarkModelRunner {
 
       // Run inference using pre-allocated output buffers
       // Note: TFLite overwrites the buffer contents, no need to zero first
-      await instance.isolateInterpreter.runForMultipleInputs(
+      await instance.runForMultipleInputs(
         [instance.inputBuffer],
         {
           0: instance.outputLandmarks,
@@ -524,7 +488,7 @@ class PoseLandmarkModelRunner {
       _matToInputBuffer(mat, instance.flatInputBuffer);
 
       // Run inference using flat buffer
-      await instance.isolateInterpreter.runForMultipleInputs(
+      await instance.runForMultipleInputs(
         [instance.flatInputBuffer.buffer],
         {
           0: instance.outputLandmarks,

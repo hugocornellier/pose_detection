@@ -24,8 +24,11 @@ target_include_directories(${PLUGIN_NAME} INTERFACE
 target_link_libraries(${PLUGIN_NAME} PRIVATE flutter)
 target_link_libraries(${PLUGIN_NAME} PRIVATE PkgConfig::GTK)
 
-set(_this_plugin_lib "${CMAKE_CURRENT_SOURCE_DIR}/../assets/bin/libtensorflowlite_c-linux.so")
-set(PLUGIN_BUNDLED_LIBRARIES "${PLUGIN_BUNDLED_LIBRARIES};${_this_plugin_lib}" PARENT_SCOPE)
+# TFLite C runtime and custom ops are now bundled by flutter_litert.
+set(pose_detection_tflite_bundled_libraries
+  ""
+  PARENT_SCOPE
+)
 
 if (${include_${PROJECT_NAME}_tests})
 if(${CMAKE_VERSION} VERSION_LESS "3.11.0")

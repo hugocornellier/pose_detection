@@ -215,6 +215,8 @@ class NativeImageUtils {
   /// - [image]: Source image from the `image` package
   ///
   /// Returns cv.Mat in BGR format. Caller must dispose.
+  @Deprecated(
+      'Will be removed in 2.0.0. Use cv.imdecode or pass cv.Mat directly.')
   static cv.Mat imageToMat(img.Image image) {
     final int w = image.width;
     final int h = image.height;

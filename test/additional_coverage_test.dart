@@ -6,7 +6,7 @@ import 'package:pose_detection_tflite/pose_detection_tflite.dart';
 import 'package:pose_detection_tflite/src/image_utils.dart';
 import 'package:pose_detection_tflite/src/person_detector.dart';
 import 'package:pose_detection_tflite/src/pose_landmark_model.dart';
-import 'package:tflite_flutter_custom/tflite_flutter.dart';
+import 'package:flutter_litert/flutter_litert.dart';
 
 class _StubTensor implements Tensor {
   _StubTensor(this.shapeValues);

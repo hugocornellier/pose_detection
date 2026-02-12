@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'dart:typed_data';
+import 'package:opencv_dart/opencv_dart.dart' as cv;
 import 'package:pose_detection_tflite/pose_detection_tflite.dart';
 
 Future main() async {
@@ -12,7 +13,13 @@ Future main() async {
 
   // 2. detect
   final Uint8List imageBytes = await File('path/to/image.jpg').readAsBytes();
-  final List<Pose> results = await detector.detect(imageBytes);
+  final cv.Mat mat = cv.imdecode(imageBytes, cv.IMREAD_COLOR);
+  final List<Pose> results = await detector.detectOnMat(
+    mat,
+    imageWidth: mat.cols,
+    imageHeight: mat.rows,
+  );
+  mat.dispose();
 
   // 3. access results
   for (final Pose pose in results) {

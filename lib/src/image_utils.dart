@@ -22,6 +22,8 @@ class ImageUtils {
   /// - [reuseCanvas]: Optional canvas to reuse (must be exactly [tw]x[th])
   ///
   /// Returns the letterboxed image with dimensions [tw]x[th].
+  @Deprecated(
+      'Will be removed in 2.0.0. Use NativeImageUtils.letterbox instead.')
   static img.Image letterbox(
     img.Image src,
     int tw,
@@ -77,6 +79,8 @@ class ImageUtils {
   /// - [reuseCanvas]: Optional 256x256 canvas to reuse
   ///
   /// Returns the letterboxed image with dimensions 256x256.
+  @Deprecated(
+      'Will be removed in 2.0.0. Use NativeImageUtils.letterbox256 instead.')
   static img.Image letterbox256(
     img.Image src,
     List<double> ratioOut,
@@ -123,6 +127,8 @@ class ImageUtils {
   /// - [reuse]: Optional tensor buffer to reuse (must match dimensions)
   ///
   /// Returns a 4D tensor [1, height, width, 3] with normalized pixel values.
+  @Deprecated(
+      'Will be removed in 2.0.0. Use NativeImageUtils.matToTensorYolo instead.')
   static List<List<List<List<double>>>> imageToNHWC4D(
     img.Image image,
     int width,

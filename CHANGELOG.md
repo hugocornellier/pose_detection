@@ -1,3 +1,13 @@
+## 1.3.0
+
+- Deprecate all `img.Image`-based APIs in favor of `cv.Mat` alternatives
+- `PoseDetector.detect()` and `detectOnImage()` → use `detectOnMat()`
+- `PoseLandmarkModelRunner.run()` → use `runOnMat()`
+- `YoloV8PersonDetector.detectOnImage()` → use `detectOnMat()`
+- `ImageUtils.letterbox()`, `letterbox256()`, `imageToNHWC4D()` → use `NativeImageUtils` equivalents
+- `NativeImageUtils.imageToMat()` → use `cv.imdecode` or pass `cv.Mat` directly
+- The `image` package dependency will be removed in 2.0.0
+
 ## 1.2.2
 
 - Fix Android build: bump tflite_flutter_custom to 1.2.5 (fixes undefined symbol TfLiteIntArrayCreate linker error)
