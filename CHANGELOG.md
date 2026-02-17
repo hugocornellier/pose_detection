@@ -1,3 +1,11 @@
+## 1.3.2
+
+- Windows: remove bundled .dll files, as they are no longer needed as of `flutter_litert` 0.1.4
+
+## 1.3.1
+
+- Swift Package Manager support
+
 ## 1.3.0
 
 - Deprecate all `img.Image`-based APIs in favor of `cv.Mat` alternatives
