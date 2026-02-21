@@ -48,8 +48,8 @@ class YoloV8PersonDetector {
   final _outShapes = <List<int>>[];
   img.Image? _canvasBuffer;
   Float32List? _inputBuffer;
-  Delegate? _delegate; // Store delegate reference for cleanup
-  Map<int, Object>? _cachedOutputs; // Pre-allocated output buffers
+  Delegate? _delegate;
+  Map<int, Object>? _cachedOutputs;
 
   /// Initializes the YOLOv8 person detector by loading the model.
   ///
@@ -64,19 +64,19 @@ class YoloV8PersonDetector {
   /// If already initialized, this will dispose the previous instance first.
   ///
   /// Throws an exception if the model fails to load.
-  Future<void> initialize({
-    PerformanceConfig? performanceConfig,
-  }) async {
+  Future<void> initialize({PerformanceConfig? performanceConfig}) async {
     const String assetPath =
         'packages/pose_detection_tflite/assets/models/yolov8n_float32.tflite';
     if (_isInitialized) await dispose();
 
-    // Create interpreter options with optional XNNPACK delegate
-    final InterpreterOptions options =
-        _createInterpreterOptions(performanceConfig);
+    final InterpreterOptions options = _createInterpreterOptions(
+      performanceConfig,
+    );
 
-    final Interpreter itp =
-        await Interpreter.fromAsset(assetPath, options: options);
+    final Interpreter itp = await Interpreter.fromAsset(
+      assetPath,
+      options: options,
+    );
     _interpreter = itp;
     itp.allocateTensors();
 
@@ -91,10 +91,6 @@ class YoloV8PersonDetector {
       _outShapes.add(List<int>.from(t.shape));
     }
 
-    // Skip IsolateInterpreter when delegates are active — the delegate
-    // already provides multi-threaded inference internally and
-    // IsolateInterpreter's Interpreter.fromAddress() re-calls
-    // allocateTensors() from a different OS thread which can crash XNNPACK.
     _useIsolateInterpreter = _delegate == null;
     if (_useIsolateInterpreter) {
       _iso = await IsolateInterpreter.create(address: itp.address);
@@ -119,7 +115,6 @@ class YoloV8PersonDetector {
   InterpreterOptions _createInterpreterOptions(PerformanceConfig? config) {
     final options = InterpreterOptions();
 
-    // Clean up any existing delegate before creating a new one
     _delegate?.delete();
     _delegate = null;
 
@@ -151,7 +146,9 @@ class YoloV8PersonDetector {
 
   /// Creates options for auto mode - selects best delegate per platform.
   InterpreterOptions _createAutoModeOptions(
-      InterpreterOptions options, int threadCount) {
+    InterpreterOptions options,
+    int threadCount,
+  ) {
     if (Platform.isMacOS || Platform.isLinux) {
       return _createXnnpackOptions(options, threadCount);
     }
@@ -160,17 +157,17 @@ class YoloV8PersonDetector {
       return _createGpuOptions(options, threadCount);
     }
 
-    // Windows and Android: CPU-only (safest default)
     options.threads = threadCount;
     return options;
   }
 
   /// Creates options with XNNPACK delegate (desktop only).
   InterpreterOptions _createXnnpackOptions(
-      InterpreterOptions options, int threadCount) {
+    InterpreterOptions options,
+    int threadCount,
+  ) {
     options.threads = threadCount;
 
-    // XNNPACK only supported on macOS and Linux
     if (!Platform.isMacOS && !Platform.isLinux) {
       return options;
     }
@@ -181,19 +178,18 @@ class YoloV8PersonDetector {
       );
       options.addDelegate(xnnpackDelegate);
       _delegate = xnnpackDelegate;
-    } catch (e) {
-      // Silent fallback to CPU
-    }
+    } catch (_) {}
 
     return options;
   }
 
   /// Creates options with GPU delegate.
   InterpreterOptions _createGpuOptions(
-      InterpreterOptions options, int threadCount) {
+    InterpreterOptions options,
+    int threadCount,
+  ) {
     options.threads = threadCount;
 
-    // GPU only supported on iOS and Android
     if (!Platform.isIOS && !Platform.isAndroid) {
       return options;
     }
@@ -203,9 +199,7 @@ class YoloV8PersonDetector {
           Platform.isIOS ? GpuDelegate() : GpuDelegateV2() as Delegate;
       options.addDelegate(gpuDelegate);
       _delegate = gpuDelegate;
-    } catch (e) {
-      // Silent fallback to CPU
-    }
+    } catch (_) {}
 
     return options;
   }
@@ -532,7 +526,7 @@ class YoloV8PersonDetector {
     }
 
     final List<List<double>> boxesLtr = [
-      for (final List<double> v in keptXywh) _xywhToXyxy(v)
+      for (final List<double> v in keptXywh) _xywhToXyxy(v),
     ];
     final List<List<double>> boxes = <List<double>>[];
     for (final List<double> b in boxesLtr) {
@@ -547,7 +541,6 @@ class YoloV8PersonDetector {
       b[3] = b[3].clamp(0.0, ih);
     }
 
-    // Dynamic topkPreNms: scale based on image area relative to 640x640 baseline
     final int effectiveTopk;
     if (topkPreNms > 0) {
       effectiveTopk = topkPreNms;
@@ -560,8 +553,9 @@ class YoloV8PersonDetector {
     }
 
     if (effectiveTopk > 0 && keptScore.length > effectiveTopk) {
-      final List<int> ord =
-          _argSortDesc(keptScore).take(effectiveTopk).toList();
+      final List<int> ord = _argSortDesc(
+        keptScore,
+      ).take(effectiveTopk).toList();
       final List<List<double>> sortedBoxes = <List<double>>[];
       final List<double> sortedScores = <double>[];
       final List<int> sortedCls = <int>[];
@@ -603,16 +597,16 @@ class YoloV8PersonDetector {
         ..addAll(fCls);
     }
 
-    final List<int> keep =
-        _nms(boxes, keptScore, iouThres: iouThres, maxDet: maxDet);
+    final List<int> keep = _nms(
+      boxes,
+      keptScore,
+      iouThres: iouThres,
+      maxDet: maxDet,
+    );
     final List<YoloDetection> out = <YoloDetection>[];
     for (final int i in keep) {
       out.add(
-        YoloDetection(
-          cls: keptCls[i],
-          score: keptScore[i],
-          bboxXYXY: boxes[i],
-        ),
+        YoloDetection(cls: keptCls[i], score: keptScore[i], bboxXYXY: boxes[i]),
       );
     }
     return out;
@@ -671,8 +665,6 @@ class YoloV8PersonDetector {
     }
     final Float32List flatInput = _inputBuffer!;
 
-    // Direct buffer access is ~10-50x faster than getPixel() which creates
-    // a new Pixel object and performs bounds checking on every call.
     final bytes = letter.buffer.asUint8List();
     final int numChannels = letter.numChannels;
     const double scale = 1.0 / 255.0;
@@ -690,13 +682,10 @@ class YoloV8PersonDetector {
     final int inputCount = _interpreter!.getInputTensors().length;
     final List<Object> inputs = List<Object>.filled(
       inputCount,
-      // Pass the raw buffer so flutter_litert does not try to
-      // auto-resize the input tensor to a 1D shape.
       flatInput.buffer,
       growable: false,
     );
 
-    // Lazy-initialize and reuse output buffers to reduce GC pressure
     _cachedOutputs ??= _createOutputBuffers();
     _zeroOutputBuffers(_cachedOutputs!);
 
@@ -749,11 +738,9 @@ class YoloV8PersonDetector {
       throw StateError('YoloV8PersonDetector not initialized.');
     }
 
-    // NATIVE: SIMD-accelerated letterbox preprocessing
     final (cv.Mat letter, double r, int dw, int dh) =
         NativeImageUtils.letterbox(mat, _inW, _inH);
 
-    // NATIVE: Direct buffer tensor conversion
     final int inputSize = _inH * _inW * 3;
     _inputBuffer ??= Float32List(inputSize);
     if (_inputBuffer!.length != inputSize) {
@@ -769,7 +756,6 @@ class YoloV8PersonDetector {
       growable: false,
     );
 
-    // Lazy-initialize and reuse output buffers
     _cachedOutputs ??= _createOutputBuffers();
     _zeroOutputBuffers(_cachedOutputs!);
 
@@ -788,7 +774,7 @@ class YoloV8PersonDetector {
       imageHeight: imageHeight,
       confThres: confThres,
       iouThres: iouThres,
-      topkPreNms: 0, // Always use dynamic scaling for native path
+      topkPreNms: 0,
       maxDet: maxDet,
       personOnly: personOnly,
     );

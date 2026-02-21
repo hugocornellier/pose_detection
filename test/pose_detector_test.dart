@@ -68,7 +68,9 @@ void main() {
 
     test('should allow re-initialization', () async {
       final detector = PoseDetector(
-          landmarkModel: PoseLandmarkModel.lite, useNativePreprocessing: false);
+        landmarkModel: PoseLandmarkModel.lite,
+        useNativePreprocessing: false,
+      );
       await detector.initialize();
       expect(detector.isInitialized, true);
 
@@ -92,36 +94,43 @@ void main() {
   });
 
   group('PoseDetector - Error Handling', () {
-    test('should throw StateError when detect() called before initialize',
-        () async {
-      final detector = PoseDetector(useNativePreprocessing: false);
-      final bytes = TestUtils.createDummyImageBytes();
+    test(
+      'should throw StateError when detect() called before initialize',
+      () async {
+        final detector = PoseDetector(useNativePreprocessing: false);
+        final bytes = TestUtils.createDummyImageBytes();
 
-      expect(
-        () => detector.detect(bytes),
-        throwsA(isA<StateError>().having(
-          (e) => e.message,
-          'message',
-          contains('not initialized'),
-        )),
-      );
-    });
+        expect(
+          () => detector.detect(bytes),
+          throwsA(
+            isA<StateError>().having(
+              (e) => e.message,
+              'message',
+              contains('not initialized'),
+            ),
+          ),
+        );
+      },
+    );
 
     test(
-        'should throw StateError when detectOnImage() called before initialize',
-        () async {
-      final detector = PoseDetector(useNativePreprocessing: false);
-      final image = img.Image(width: 100, height: 100);
+      'should throw StateError when detectOnImage() called before initialize',
+      () async {
+        final detector = PoseDetector(useNativePreprocessing: false);
+        final image = img.Image(width: 100, height: 100);
 
-      expect(
-        () => detector.detectOnImage(image),
-        throwsA(isA<StateError>().having(
-          (e) => e.message,
-          'message',
-          contains('not initialized'),
-        )),
-      );
-    });
+        expect(
+          () => detector.detectOnImage(image),
+          throwsA(
+            isA<StateError>().having(
+              (e) => e.message,
+              'message',
+              contains('not initialized'),
+            ),
+          ),
+        );
+      },
+    );
 
     test('should return empty list for invalid image bytes', () async {
       final detector = PoseDetector(useNativePreprocessing: false);
@@ -136,48 +145,52 @@ void main() {
   });
 
   group('PoseDetector - detect() with real images', () {
-    test('should detect people in pose1.jpg with boxesAndLandmarks mode',
-        () async {
-      final detector = PoseDetector(
-        mode: PoseMode.boxesAndLandmarks,
-        landmarkModel: PoseLandmarkModel.lite,
-        useNativePreprocessing: false,
-      );
-      await detector.initialize();
+    test(
+      'should detect people in pose1.jpg with boxesAndLandmarks mode',
+      () async {
+        final detector = PoseDetector(
+          mode: PoseMode.boxesAndLandmarks,
+          landmarkModel: PoseLandmarkModel.lite,
+          useNativePreprocessing: false,
+        );
+        await detector.initialize();
 
-      final ByteData data = await rootBundle.load('assets/samples/pose1.jpg');
-      final Uint8List bytes = data.buffer.asUint8List();
-      final List<Pose> results = await detector.detect(bytes);
+        final ByteData data = await rootBundle.load('assets/samples/pose1.jpg');
+        final Uint8List bytes = data.buffer.asUint8List();
+        final List<Pose> results = await detector.detect(bytes);
 
-      expect(results, isNotEmpty);
+        expect(results, isNotEmpty);
 
-      for (final pose in results) {
-        // Verify bounding box
-        expect(pose.boundingBox, isNotNull);
-        expect(pose.boundingBox.left, greaterThanOrEqualTo(0));
-        expect(pose.boundingBox.top, greaterThanOrEqualTo(0));
-        expect(pose.boundingBox.right, greaterThan(pose.boundingBox.left));
-        expect(pose.boundingBox.bottom, greaterThan(pose.boundingBox.top));
+        for (final pose in results) {
+          // Verify bounding box
+          expect(pose.boundingBox, isNotNull);
+          expect(pose.boundingBox.left, greaterThanOrEqualTo(0));
+          expect(pose.boundingBox.top, greaterThanOrEqualTo(0));
+          expect(pose.boundingBox.right, greaterThan(pose.boundingBox.left));
+          expect(pose.boundingBox.bottom, greaterThan(pose.boundingBox.top));
 
-        // Verify score
-        expect(pose.score, greaterThan(0));
-        expect(pose.score, lessThanOrEqualTo(1.0));
+          // Verify score
+          expect(pose.score, greaterThan(0));
+          expect(pose.score, lessThanOrEqualTo(1.0));
 
-        // Verify landmarks
-        expect(pose.hasLandmarks, true);
-        expect(pose.landmarks.length, 33); // BlazePose has 33 landmarks
+          // Verify landmarks
+          expect(pose.hasLandmarks, true);
+          expect(pose.landmarks.length, 33); // BlazePose has 33 landmarks
 
-        // Check image dimensions
-        expect(pose.imageWidth, greaterThan(0));
-        expect(pose.imageHeight, greaterThan(0));
-      }
+          // Check image dimensions
+          expect(pose.imageWidth, greaterThan(0));
+          expect(pose.imageHeight, greaterThan(0));
+        }
 
-      await detector.dispose();
-    });
+        await detector.dispose();
+      },
+    );
 
     test('should detect people in pose2.jpg', () async {
       final detector = PoseDetector(
-          landmarkModel: PoseLandmarkModel.lite, useNativePreprocessing: false);
+        landmarkModel: PoseLandmarkModel.lite,
+        useNativePreprocessing: false,
+      );
       await detector.initialize();
 
       final ByteData data = await rootBundle.load('assets/samples/pose2.jpg');
@@ -190,7 +203,9 @@ void main() {
 
     test('should detect people in pose3.jpg', () async {
       final detector = PoseDetector(
-          landmarkModel: PoseLandmarkModel.lite, useNativePreprocessing: false);
+        landmarkModel: PoseLandmarkModel.lite,
+        useNativePreprocessing: false,
+      );
       await detector.initialize();
 
       final ByteData data = await rootBundle.load('assets/samples/pose3.jpg');
@@ -232,7 +247,9 @@ void main() {
   group('PoseDetector - detectOnImage() method', () {
     test('should work with pre-decoded image', () async {
       final detector = PoseDetector(
-          landmarkModel: PoseLandmarkModel.lite, useNativePreprocessing: false);
+        landmarkModel: PoseLandmarkModel.lite,
+        useNativePreprocessing: false,
+      );
       await detector.initialize();
 
       // Load and decode image manually
@@ -283,10 +300,7 @@ void main() {
 
       // Scores should be identical (or very close)
       for (int i = 0; i < results1.length; i++) {
-        expect(
-          (results1[i].score - results2[i].score).abs(),
-          lessThan(0.01),
-        );
+        expect((results1[i].score - results2[i].score).abs(), lessThan(0.01));
       }
 
       await detector.dispose();
@@ -296,7 +310,9 @@ void main() {
   group('PoseDetector - Different Model Variants', () {
     test('should work with lite model', () async {
       final detector = PoseDetector(
-          landmarkModel: PoseLandmarkModel.lite, useNativePreprocessing: false);
+        landmarkModel: PoseLandmarkModel.lite,
+        useNativePreprocessing: false,
+      );
       await detector.initialize();
 
       final ByteData data = await rootBundle.load('assets/samples/pose1.jpg');
@@ -311,7 +327,9 @@ void main() {
 
     test('should work with full model', () async {
       final detector = PoseDetector(
-          landmarkModel: PoseLandmarkModel.full, useNativePreprocessing: false);
+        landmarkModel: PoseLandmarkModel.full,
+        useNativePreprocessing: false,
+      );
       await detector.initialize();
 
       final ByteData data = await rootBundle.load('assets/samples/pose1.jpg');
@@ -326,8 +344,9 @@ void main() {
 
     test('should work with heavy model', () async {
       final detector = PoseDetector(
-          landmarkModel: PoseLandmarkModel.heavy,
-          useNativePreprocessing: false);
+        landmarkModel: PoseLandmarkModel.heavy,
+        useNativePreprocessing: false,
+      );
       await detector.initialize();
 
       final ByteData data = await rootBundle.load('assets/samples/pose1.jpg');
@@ -347,7 +366,9 @@ void main() {
 
     setUpAll(() async {
       detector = PoseDetector(
-          landmarkModel: PoseLandmarkModel.lite, useNativePreprocessing: false);
+        landmarkModel: PoseLandmarkModel.lite,
+        useNativePreprocessing: false,
+      );
       await detector.initialize();
 
       final ByteData data = await rootBundle.load('assets/samples/pose1.jpg');
@@ -409,14 +430,8 @@ void main() {
       expect(yNorm, lessThanOrEqualTo(1.0));
 
       // Verify calculation
-      expect(
-        (xNorm - landmark.x / pose.imageWidth).abs(),
-        lessThan(0.0001),
-      );
-      expect(
-        (yNorm - landmark.y / pose.imageHeight).abs(),
-        lessThan(0.0001),
-      );
+      expect((xNorm - landmark.x / pose.imageWidth).abs(), lessThan(0.0001));
+      expect((yNorm - landmark.y / pose.imageHeight).abs(), lessThan(0.0001));
     });
 
     test('should convert landmark to pixel Point', () {
@@ -573,7 +588,9 @@ void main() {
   group('PoseDetector - Multiple Images', () {
     test('should process multiple images sequentially', () async {
       final detector = PoseDetector(
-          landmarkModel: PoseLandmarkModel.lite, useNativePreprocessing: false);
+        landmarkModel: PoseLandmarkModel.lite,
+        useNativePreprocessing: false,
+      );
       await detector.initialize();
 
       final images = [
@@ -595,7 +612,9 @@ void main() {
 
     test('should handle different image sizes', () async {
       final detector = PoseDetector(
-          landmarkModel: PoseLandmarkModel.lite, useNativePreprocessing: false);
+        landmarkModel: PoseLandmarkModel.lite,
+        useNativePreprocessing: false,
+      );
       await detector.initialize();
 
       final images = [
@@ -671,8 +690,10 @@ void main() {
 
   group('PoseDetector - Edge Cases', () {
     test('should handle empty landmarks list in boxes mode', () async {
-      final detector =
-          PoseDetector(mode: PoseMode.boxes, useNativePreprocessing: false);
+      final detector = PoseDetector(
+        mode: PoseMode.boxes,
+        useNativePreprocessing: false,
+      );
       await detector.initialize();
 
       final ByteData data = await rootBundle.load('assets/samples/pose1.jpg');
@@ -692,7 +713,9 @@ void main() {
 
     test('should handle 1x1 image', () async {
       final detector = PoseDetector(
-          landmarkModel: PoseLandmarkModel.lite, useNativePreprocessing: false);
+        landmarkModel: PoseLandmarkModel.lite,
+        useNativePreprocessing: false,
+      );
       await detector.initialize();
 
       final bytes = TestUtils.createDummyImageBytes();
@@ -706,7 +729,9 @@ void main() {
 
     test('Pose.toString() should not crash', () async {
       final detector = PoseDetector(
-          landmarkModel: PoseLandmarkModel.lite, useNativePreprocessing: false);
+        landmarkModel: PoseLandmarkModel.lite,
+        useNativePreprocessing: false,
+      );
       await detector.initialize();
 
       final ByteData data = await rootBundle.load('assets/samples/pose1.jpg');

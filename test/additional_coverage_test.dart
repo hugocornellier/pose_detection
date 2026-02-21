@@ -37,10 +37,7 @@ class _StubInterpreter implements Interpreter {
   List<Tensor> getOutputTensors() => outputTensors;
 
   @override
-  void runForMultipleInputs(
-    List<Object> inputs,
-    Map<int, Object> outputs,
-  ) {
+  void runForMultipleInputs(List<Object> inputs, Map<int, Object> outputs) {
     final callback = onRun;
     if (callback != null) {
       callback(inputs, outputs);
@@ -88,8 +85,14 @@ void main() {
     final img.Image reuse = img.Image(width: 1, height: 1);
 
     expect(
-      () => ImageUtils.letterbox(src, 4, 4, <double>[], <int>[],
-          reuseCanvas: reuse),
+      () => ImageUtils.letterbox(
+        src,
+        4,
+        4,
+        <double>[],
+        <int>[],
+        reuseCanvas: reuse,
+      ),
       throwsA(isA<ArgumentError>()),
     );
   });
@@ -127,7 +130,7 @@ void main() {
     test('runs through interpreter branch and resizes input buffer', () async {
       final _StubInterpreter interpreter = _StubInterpreter(
         inputTensors: <Tensor>[
-          _StubTensor(<int>[1, 2, 2, 3])
+          _StubTensor(<int>[1, 2, 2, 3]),
         ],
       );
       final detector = YoloV8PersonDetector();
@@ -148,8 +151,9 @@ void main() {
         out0[0][0] = _buildYoloRow();
       };
 
-      final List<YoloDetection> dets =
-          await detector.detectOnImage(img.Image(width: 2, height: 2));
+      final List<YoloDetection> dets = await detector.detectOnImage(
+        img.Image(width: 2, height: 2),
+      );
 
       expect(dets, hasLength(1));
       expect(dets.first.score, greaterThan(0.4));
@@ -159,7 +163,7 @@ void main() {
     test('fails fast on undersized output tensors', () {
       final _StubInterpreter interpreter = _StubInterpreter(
         inputTensors: <Tensor>[
-          _StubTensor(<int>[1, 1, 1, 3])
+          _StubTensor(<int>[1, 1, 1, 3]),
         ],
       );
       final detector = YoloV8PersonDetector();
@@ -184,10 +188,8 @@ void main() {
       final detector = YoloV8PersonDetector();
       final List<dynamic> outputs = <dynamic>[
         <dynamic>[
-          <List<double>>[
-            List<double>.filled(10, 0.0),
-          ],
-        ]
+          <List<double>>[List<double>.filled(10, 0.0)],
+        ],
       ];
 
       expect(

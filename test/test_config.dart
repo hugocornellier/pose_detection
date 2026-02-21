@@ -42,7 +42,7 @@ class TestUtils {
       0x54, 0x78, 0x9C, 0x63, 0x00, 0x01, 0x00, 0x00,
       0x05, 0x00, 0x01, 0x0D, 0x0A, 0x2D, 0xB4, 0x00, // Image data
       0x00, 0x00, 0x00, 0x49, 0x45, 0x4E, 0x44, 0xAE, // IEND chunk
-      0x42, 0x60, 0x82
+      0x42, 0x60, 0x82,
     ]);
   }
 
@@ -53,14 +53,19 @@ class TestUtils {
         point.y <= imageSize.height;
   }
 
-  static bool approximatelyEqual(double a, double b,
-      {double epsilon = 0.0001}) {
+  static bool approximatelyEqual(
+    double a,
+    double b, {
+    double epsilon = 0.0001,
+  }) {
     return (a - b).abs() < epsilon;
   }
 
   static bool pointsApproximatelyEqual(
-      math.Point<double> a, math.Point<double> b,
-      {double epsilon = 0.0001}) {
+    math.Point<double> a,
+    math.Point<double> b, {
+    double epsilon = 0.0001,
+  }) {
     return approximatelyEqual(a.x, b.x, epsilon: epsilon) &&
         approximatelyEqual(a.y, b.y, epsilon: epsilon);
   }
@@ -68,8 +73,10 @@ class TestUtils {
 
 class PoseDetectionMatchers {
   /// Matcher for checking if a Point is approximately equal to expected
-  static Matcher approximatelyEqualsPoint(math.Point<double> expected,
-      {double epsilon = 0.0001}) {
+  static Matcher approximatelyEqualsPoint(
+    math.Point<double> expected, {
+    double epsilon = 0.0001,
+  }) {
     return _ApproximatePointMatcher(expected, epsilon);
   }
 
@@ -114,7 +121,8 @@ class _ApproximatePointMatcher extends Matcher {
   @override
   Description describe(Description description) {
     return description.add(
-        'approximately equals Point(${expected.x}, ${expected.y}) within $epsilon');
+      'approximately equals Point(${expected.x}, ${expected.y}) within $epsilon',
+    );
   }
 
   @override
@@ -215,7 +223,8 @@ class _WithinImageBoundsMatcher extends Matcher {
   @override
   Description describe(Description description) {
     return description.add(
-        'within image bounds (width: ${imageSize.width}, height: ${imageSize.height})');
+      'within image bounds (width: ${imageSize.width}, height: ${imageSize.height})',
+    );
   }
 
   @override

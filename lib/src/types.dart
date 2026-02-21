@@ -145,10 +145,7 @@ class PerformanceConfig {
   /// Parameters:
   /// - [mode]: Performance mode. Default: [PerformanceMode.auto]
   /// - [numThreads]: Number of threads (null for auto-detection)
-  const PerformanceConfig({
-    this.mode = PerformanceMode.auto,
-    this.numThreads,
-  });
+  const PerformanceConfig({this.mode = PerformanceMode.auto, this.numThreads});
 
   /// Creates config with XNNPACK enabled (desktop only).
   ///
@@ -188,10 +185,7 @@ class PerformanceConfig {
       return numThreads!.clamp(0, 8);
     }
 
-    // Auto-detect: Cap at 4 for diminishing returns
-    // Using a constant here since we can't access Platform in this file
-    // The actual Platform.numberOfProcessors will be used in the delegate creation
-    return null; // Signal auto-detection
+    return null;
   }
 }
 
@@ -204,10 +198,7 @@ class PoseLandmarks {
   final double score;
 
   /// Creates a collection of pose landmarks with a confidence score.
-  PoseLandmarks({
-    required this.landmarks,
-    required this.score,
-  });
+  PoseLandmarks({required this.landmarks, required this.score});
 }
 
 /// A single body keypoint with 3D coordinates and visibility score.
@@ -436,35 +427,29 @@ class BoundingBox {
 /// }
 /// ```
 const List<List<PoseLandmarkType>> poseLandmarkConnections = [
-  // Face
   [PoseLandmarkType.leftEye, PoseLandmarkType.nose],
   [PoseLandmarkType.rightEye, PoseLandmarkType.nose],
   [PoseLandmarkType.leftEye, PoseLandmarkType.leftEar],
   [PoseLandmarkType.rightEye, PoseLandmarkType.rightEar],
   [PoseLandmarkType.mouthLeft, PoseLandmarkType.mouthRight],
-  // Torso
   [PoseLandmarkType.leftShoulder, PoseLandmarkType.rightShoulder],
   [PoseLandmarkType.leftShoulder, PoseLandmarkType.leftHip],
   [PoseLandmarkType.rightShoulder, PoseLandmarkType.rightHip],
   [PoseLandmarkType.leftHip, PoseLandmarkType.rightHip],
-  // Left arm
   [PoseLandmarkType.leftShoulder, PoseLandmarkType.leftElbow],
   [PoseLandmarkType.leftElbow, PoseLandmarkType.leftWrist],
   [PoseLandmarkType.leftWrist, PoseLandmarkType.leftPinky],
   [PoseLandmarkType.leftWrist, PoseLandmarkType.leftIndex],
   [PoseLandmarkType.leftWrist, PoseLandmarkType.leftThumb],
-  // Right arm
   [PoseLandmarkType.rightShoulder, PoseLandmarkType.rightElbow],
   [PoseLandmarkType.rightElbow, PoseLandmarkType.rightWrist],
   [PoseLandmarkType.rightWrist, PoseLandmarkType.rightPinky],
   [PoseLandmarkType.rightWrist, PoseLandmarkType.rightIndex],
   [PoseLandmarkType.rightWrist, PoseLandmarkType.rightThumb],
-  // Left leg
   [PoseLandmarkType.leftHip, PoseLandmarkType.leftKnee],
   [PoseLandmarkType.leftKnee, PoseLandmarkType.leftAnkle],
   [PoseLandmarkType.leftAnkle, PoseLandmarkType.leftHeel],
   [PoseLandmarkType.leftAnkle, PoseLandmarkType.leftFootIndex],
-  // Right leg
   [PoseLandmarkType.rightHip, PoseLandmarkType.rightKnee],
   [PoseLandmarkType.rightKnee, PoseLandmarkType.rightAnkle],
   [PoseLandmarkType.rightAnkle, PoseLandmarkType.rightHeel],
@@ -532,8 +517,10 @@ class Pose {
   @override
   String toString() {
     final String landmarksInfo = landmarks
-        .map((l) =>
-            '${l.type.name}: (${l.x.toStringAsFixed(2)}, ${l.y.toStringAsFixed(2)}) vis=${l.visibility.toStringAsFixed(2)}')
+        .map(
+          (l) =>
+              '${l.type.name}: (${l.x.toStringAsFixed(2)}, ${l.y.toStringAsFixed(2)}) vis=${l.visibility.toStringAsFixed(2)}',
+        )
         .join('\n');
     return 'Pose(\n'
         '  score=${score.toStringAsFixed(3)},\n'

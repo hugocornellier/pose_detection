@@ -23,7 +23,8 @@ class ImageUtils {
   ///
   /// Returns the letterboxed image with dimensions [tw]x[th].
   @Deprecated(
-      'Will be removed in 2.0.0. Use NativeImageUtils.letterbox instead.')
+    'Will be removed in 2.0.0. Use NativeImageUtils.letterbox instead.',
+  )
   static img.Image letterbox(
     img.Image src,
     int tw,
@@ -80,15 +81,22 @@ class ImageUtils {
   ///
   /// Returns the letterboxed image with dimensions 256x256.
   @Deprecated(
-      'Will be removed in 2.0.0. Use NativeImageUtils.letterbox256 instead.')
+    'Will be removed in 2.0.0. Use NativeImageUtils.letterbox256 instead.',
+  )
   static img.Image letterbox256(
     img.Image src,
     List<double> ratioOut,
     List<int> dwdhOut, {
     img.Image? reuseCanvas,
   }) {
-    return letterbox(src, 256, 256, ratioOut, dwdhOut,
-        reuseCanvas: reuseCanvas);
+    return letterbox(
+      src,
+      256,
+      256,
+      ratioOut,
+      dwdhOut,
+      reuseCanvas: reuseCanvas,
+    );
   }
 
   /// Transforms bounding box coordinates from letterbox space back to original image space.
@@ -128,7 +136,8 @@ class ImageUtils {
   ///
   /// Returns a 4D tensor [1, height, width, 3] with normalized pixel values.
   @Deprecated(
-      'Will be removed in 2.0.0. Use NativeImageUtils.matToTensorYolo instead.')
+    'Will be removed in 2.0.0. Use NativeImageUtils.matToTensorYolo instead.',
+  )
   static List<List<List<List<double>>>> imageToNHWC4D(
     img.Image image,
     int width,
@@ -150,8 +159,6 @@ class ImageUtils {
           growable: false,
         );
 
-    // Direct buffer access is ~10-50x faster than getPixel() which creates
-    // a new Pixel object and performs bounds checking on every call.
     final bytes = image.buffer.asUint8List();
     final int numChannels = image.numChannels;
     const double scale = 1.0 / 255.0;
@@ -194,10 +201,7 @@ class ImageUtils {
       dim1,
       (_) => List.generate(
         dim2,
-        (_) => List.generate(
-          dim3,
-          (_) => List<double>.filled(dim4, 0.0),
-        ),
+        (_) => List.generate(dim3, (_) => List<double>.filled(dim4, 0.0)),
       ),
     );
 

@@ -1,3 +1,7 @@
+## 1.3.3
+
+- Upgrade flutter_litert -> 0.1.12 
+
 ## 1.3.2
 
 - Windows: remove bundled .dll files, as they are no longer needed as of `flutter_litert` 0.1.4

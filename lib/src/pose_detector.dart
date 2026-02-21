@@ -93,7 +93,8 @@ class PoseDetector {
   /// Used in tests to simulate decoding failures or unusual image conditions.
   @visibleForTesting
   @Deprecated(
-      'Will be removed in 2.0.0. Use detectOnMat with cv.imdecode instead.')
+    'Will be removed in 2.0.0. Use detectOnMat with cv.imdecode instead.',
+  )
   static img.Image? Function(Uint8List bytes)? imageDecoderOverride;
 
   /// Detection mode controlling pipeline behavior.
@@ -285,7 +286,8 @@ class PoseDetector {
   Future<List<Pose>> detect(List<int> imageBytes) async {
     if (!_isInitialized) {
       throw StateError(
-          'PoseDetector not initialized. Call initialize() first.');
+        'PoseDetector not initialized. Call initialize() first.',
+      );
     }
     try {
       final decoder = imageDecoderOverride ?? img.decodeImage;
@@ -293,7 +295,6 @@ class PoseDetector {
       if (image == null) return <Pose>[];
       return detectOnImage(image);
     } catch (e) {
-      // Return empty list if image decoding fails (invalid/corrupted image data)
       return <Pose>[];
     }
   }
@@ -320,10 +321,10 @@ class PoseDetector {
   }) async {
     if (!_isInitialized) {
       throw StateError(
-          'PoseDetector not initialized. Call initialize() first.');
+        'PoseDetector not initialized. Call initialize() first.',
+      );
     }
 
-    // NATIVE: SIMD-accelerated YOLO detection
     final List<YoloDetection> dets = await _yolo.detectOnMat(
       mat,
       imageWidth: imageWidth,
@@ -338,9 +339,6 @@ class PoseDetector {
       return _buildBoxOnlyResults(dets, imageWidth, imageHeight);
     }
 
-    // Phase 1: NATIVE preprocessing - extract square ROI and resize to 256x256
-    // BlazePose expects the person to fill the entire 256x256 frame (no letterbox padding).
-    // We use warpAffine to extract a proper square with gray padding where needed.
     final List<_PersonCropData> cropDataList = <_PersonCropData>[];
     for (final YoloDetection d in dets) {
       final double x1 = d.bboxXYXY[0].clamp(0.0, imageWidth.toDouble());
@@ -350,43 +348,48 @@ class PoseDetector {
       final double bw = x2 - x1;
       final double bh = y2 - y1;
 
-      // Calculate square ROI centered on bbox with 25% margin
       final double cx = (x1 + x2) / 2.0;
       final double cy = (y1 + y2) / 2.0;
       final double side = (bw > bh ? bw : bh) * 1.25;
 
-      // NATIVE: Extract square region using warpAffine (handles out-of-bounds with gray padding)
       final cv.Mat? square = NativeImageUtils.extractAlignedSquare(
-        mat, cx, cy, side, 0.0, // theta=0 for no rotation
+        mat,
+        cx,
+        cy,
+        side,
+        0.0,
       );
 
       if (square == null) continue;
 
-      // NATIVE: Resize to 256x256
-      final cv.Mat resized =
-          cv.resize(square, (256, 256), interpolation: cv.INTER_LINEAR);
+      final cv.Mat resized = cv.resize(
+          square,
+          (
+            256,
+            256,
+          ),
+          interpolation: cv.INTER_LINEAR);
       square.dispose();
 
-      // For inverse transform: landmarks are in [0,1] relative to the square
-      // Square origin in image coords (may be negative if extends beyond bounds)
       final double sqX1 = cx - side / 2.0;
       final double sqY1 = cy - side / 2.0;
 
-      cropDataList.add(_PersonCropData(
-        detection: d,
-        letterboxedMat: resized,
-        scaleRatio: 1.0,
-        padLeft: 0,
-        padTop: 0,
-        cropX: sqX1.round(),
-        cropY: sqY1.round(),
-        cropWidth: side.round(),
-        cropHeight: side.round(),
-        useResize: true,
-      ));
+      cropDataList.add(
+        _PersonCropData(
+          detection: d,
+          letterboxedMat: resized,
+          scaleRatio: 1.0,
+          padLeft: 0,
+          padTop: 0,
+          cropX: sqX1.round(),
+          cropY: sqY1.round(),
+          cropWidth: side.round(),
+          cropHeight: side.round(),
+          useResize: true,
+        ),
+      );
     }
 
-    // Phase 2: Run landmark extraction using native Mat input
     final List<PoseLandmarks?> allLandmarks = <PoseLandmarks?>[];
     for (final _PersonCropData data in cropDataList) {
       try {
@@ -397,7 +400,6 @@ class PoseDetector {
       }
     }
 
-    // Phase 3: Post-process and cleanup
     final List<Pose> results = _buildLandmarkResults(
       cropDataList,
       allLandmarks,
@@ -405,7 +407,6 @@ class PoseDetector {
       imageHeight,
     );
 
-    // Cleanup native resources
     for (final data in cropDataList) {
       data.dispose();
     }
@@ -441,25 +442,22 @@ class PoseDetector {
   Future<List<Pose>> detectOnImage(img.Image image) async {
     if (!_isInitialized) {
       throw StateError(
-          'PoseDetector not initialized. Call initialize() first.');
+        'PoseDetector not initialized. Call initialize() first.',
+      );
     }
 
-    // Use native pipeline if enabled
     if (useNativePreprocessing) {
       return _detectOnImageNative(image);
     }
 
-    // Fall back to Dart pipeline
     return _detectOnImageDart(image);
   }
 
   /// Native pipeline using OpenCV for preprocessing.
   Future<List<Pose>> _detectOnImageNative(img.Image image) async {
-    // Convert image to cv.Mat for native processing
     final cv.Mat mat = NativeImageUtils.imageToMat(image);
 
     try {
-      // NATIVE: SIMD-accelerated YOLO detection
       final List<YoloDetection> dets = await _yolo.detectOnMat(
         mat,
         imageWidth: image.width,
@@ -475,7 +473,6 @@ class PoseDetector {
         return _buildBoxOnlyResults(dets, image.width, image.height);
       }
 
-      // Phase 1: NATIVE preprocessing - extract square ROI and resize to 256x256
       final List<_PersonCropData> cropDataList = <_PersonCropData>[];
       for (final YoloDetection d in dets) {
         final double x1 = d.bboxXYXY[0].clamp(0.0, image.width.toDouble());
@@ -485,12 +482,10 @@ class PoseDetector {
         final double bw = x2 - x1;
         final double bh = y2 - y1;
 
-        // Calculate square ROI centered on bbox with 25% margin
         final double cx = (x1 + x2) / 2.0;
         final double cy = (y1 + y2) / 2.0;
         final double side = (bw > bh ? bw : bh) * 1.25;
 
-        // NATIVE: Extract square region using warpAffine (handles out-of-bounds with gray padding)
         final cv.Mat? square = NativeImageUtils.extractAlignedSquare(
           mat,
           cx,
@@ -501,30 +496,34 @@ class PoseDetector {
 
         if (square == null) continue;
 
-        // NATIVE: Resize to 256x256
-        final cv.Mat resized =
-            cv.resize(square, (256, 256), interpolation: cv.INTER_LINEAR);
+        final cv.Mat resized = cv.resize(
+            square,
+            (
+              256,
+              256,
+            ),
+            interpolation: cv.INTER_LINEAR);
         square.dispose();
 
-        // For inverse transform: landmarks are in [0,1] relative to the square
         final double sqX1 = cx - side / 2.0;
         final double sqY1 = cy - side / 2.0;
 
-        cropDataList.add(_PersonCropData(
-          detection: d,
-          letterboxedMat: resized,
-          scaleRatio: 1.0,
-          padLeft: 0,
-          padTop: 0,
-          cropX: sqX1.round(),
-          cropY: sqY1.round(),
-          cropWidth: side.round(),
-          cropHeight: side.round(),
-          useResize: true,
-        ));
+        cropDataList.add(
+          _PersonCropData(
+            detection: d,
+            letterboxedMat: resized,
+            scaleRatio: 1.0,
+            padLeft: 0,
+            padTop: 0,
+            cropX: sqX1.round(),
+            cropY: sqY1.round(),
+            cropWidth: side.round(),
+            cropHeight: side.round(),
+            useResize: true,
+          ),
+        );
       }
 
-      // Phase 2: Run landmark extraction using native Mat input
       final List<PoseLandmarks?> allLandmarks = <PoseLandmarks?>[];
       for (final _PersonCropData data in cropDataList) {
         try {
@@ -535,7 +534,6 @@ class PoseDetector {
         }
       }
 
-      // Phase 3: Post-process and cleanup
       final List<Pose> results = _buildLandmarkResults(
         cropDataList,
         allLandmarks,
@@ -543,7 +541,6 @@ class PoseDetector {
         image.height,
       );
 
-      // Cleanup native resources
       for (final data in cropDataList) {
         data.dispose();
       }
@@ -570,7 +567,6 @@ class PoseDetector {
       return _buildBoxOnlyResults(dets, image.width, image.height);
     }
 
-    // Phase 1: Preprocess all detections (crop and letterbox) in parallel
     final List<Future<_PersonCropData>> cropFutures = dets.map((d) async {
       final int x1 = d.bboxXYXY[0].clamp(0.0, image.width.toDouble()).toInt();
       final int y1 = d.bboxXYXY[1].clamp(0.0, image.height.toDouble()).toInt();
@@ -579,8 +575,13 @@ class PoseDetector {
       final int cw = (x2 - x1).clamp(1, image.width);
       final int ch = (y2 - y1).clamp(1, image.height);
 
-      final img.Image crop =
-          img.copyCrop(image, x: x1, y: y1, width: cw, height: ch);
+      final img.Image crop = img.copyCrop(
+        image,
+        x: x1,
+        y: y1,
+        width: cw,
+        height: ch,
+      );
       final List<double> ratio = <double>[];
       final List<int> dwdh = <int>[];
       final img.Image letter = ImageUtils.letterbox256(crop, ratio, dwdh);
@@ -598,7 +599,6 @@ class PoseDetector {
 
     final List<_PersonCropData> cropDataList = await Future.wait(cropFutures);
 
-    // Phase 2: Run landmark extraction in parallel for all persons
     final List<Future<PoseLandmarks?>> futures = cropDataList.map((data) async {
       try {
         return await _lm.run(data.letterboxed!);
@@ -662,26 +662,27 @@ class PoseDetector {
         double xOrig, yOrig;
 
         if (data.useResize) {
-          // Square crop + resize mode: landmarks are normalized [0,1] relative to 256x256
-          // Simply scale by crop dimensions and add crop origin
-          xOrig = (data.cropX + lm.x * data.cropWidth)
-              .clamp(0.0, imageWidth.toDouble());
-          yOrig = (data.cropY + lm.y * data.cropHeight)
-              .clamp(0.0, imageHeight.toDouble());
+          xOrig = (data.cropX + lm.x * data.cropWidth).clamp(
+            0.0,
+            imageWidth.toDouble(),
+          );
+          yOrig = (data.cropY + lm.y * data.cropHeight).clamp(
+            0.0,
+            imageHeight.toDouble(),
+          );
         } else {
-          // Letterbox mode: landmarks are normalized [0,1] relative to full 256x256 input
-          // Step 1: Convert normalized [0,1] to pixel coords in 256x256 space
           final double xp = lm.x * 256.0;
           final double yp = lm.y * 256.0;
-          // Step 2: Subtract padding to get coords in content (resized) space
-          // Step 3: Divide by scale ratio to get coords in original crop space
           final double xCrop = (xp - data.padLeft) / data.scaleRatio;
           final double yCrop = (yp - data.padTop) / data.scaleRatio;
-          // Step 4: Add crop origin to get coords in original image space
-          xOrig =
-              (data.cropX.toDouble() + xCrop).clamp(0.0, imageWidth.toDouble());
-          yOrig = (data.cropY.toDouble() + yCrop)
-              .clamp(0.0, imageHeight.toDouble());
+          xOrig = (data.cropX.toDouble() + xCrop).clamp(
+            0.0,
+            imageWidth.toDouble(),
+          );
+          yOrig = (data.cropY.toDouble() + yCrop).clamp(
+            0.0,
+            imageHeight.toDouble(),
+          );
         }
 
         pts.add(

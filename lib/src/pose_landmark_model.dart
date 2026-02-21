@@ -18,18 +18,13 @@ class _InterpreterInstance {
   final Interpreter interpreter;
   final IsolateInterpreter? isolateInterpreter;
 
-  // Pre-allocated input buffer [1, 256, 256, 3] - reused across calls
   final List<List<List<List<double>>>> inputBuffer;
-
-  // Pre-allocated flat input buffer for native preprocessing
   final Float32List flatInputBuffer;
-
-  // Pre-allocated output buffers - reused across calls
-  final List<List<double>> outputLandmarks; // [1, 195]
-  final List<List<double>> outputScore; // [1, 1]
-  final List<List<List<List<double>>>> outputMask; // [1, 256, 256, 1]
-  final List<List<List<List<double>>>> outputHeatmap; // [1, 64, 64, 39]
-  final List<List<double>> outputWorld; // [1, 117]
+  final List<List<double>> outputLandmarks;
+  final List<List<double>> outputScore;
+  final List<List<List<List<double>>>> outputMask;
+  final List<List<List<List<double>>>> outputHeatmap;
+  final List<List<double>> outputWorld;
 
   _InterpreterInstance({
     required this.interpreter,
@@ -140,8 +135,6 @@ class PoseLandmarkModelRunner {
 
     final String path = _getModelPath(model);
 
-    // Create pool of interpreter instances - each with its OWN delegate
-    // XNNPACK delegates are NOT thread-safe for sharing across interpreters
     for (int i = 0; i < _poolSize; i++) {
       final (options, delegate) = _createInterpreterOptions(performanceConfig);
       if (delegate != null) {
@@ -152,15 +145,10 @@ class PoseLandmarkModelRunner {
       interpreter.resizeInputTensor(0, [1, 256, 256, 3]);
       interpreter.allocateTensors();
 
-      // Skip IsolateInterpreter when delegates are active — the delegate
-      // already provides multi-threaded inference internally and
-      // IsolateInterpreter's Interpreter.fromAddress() re-calls
-      // allocateTensors() from a different OS thread which can crash XNNPACK.
       final IsolateInterpreter? isolateInterpreter = delegate == null
           ? await IsolateInterpreter.create(address: interpreter.address)
           : null;
 
-      // Pre-allocate input buffer [1, 256, 256, 3]
       final inputBuffer = List.generate(
         1,
         (_) => List.generate(
@@ -175,29 +163,28 @@ class PoseLandmarkModelRunner {
         growable: false,
       );
 
-      // Pre-allocate flat input buffer for native preprocessing (256*256*3)
       final flatInputBuffer = Float32List(256 * 256 * 3);
 
-      // Pre-allocate output buffers
       final outputLandmarks = [List<double>.filled(195, 0.0, growable: false)];
       final outputScore = [List<double>.filled(1, 0.0, growable: false)];
       final outputMask = _createTensor4D(1, 256, 256, 1);
       final outputHeatmap = _createTensor4D(1, 64, 64, 39);
       final outputWorld = [List<double>.filled(117, 0.0, growable: false)];
 
-      _interpreterPool.add(_InterpreterInstance(
-        interpreter: interpreter,
-        isolateInterpreter: isolateInterpreter,
-        inputBuffer: inputBuffer,
-        flatInputBuffer: flatInputBuffer,
-        outputLandmarks: outputLandmarks,
-        outputScore: outputScore,
-        outputMask: outputMask,
-        outputHeatmap: outputHeatmap,
-        outputWorld: outputWorld,
-      ));
+      _interpreterPool.add(
+        _InterpreterInstance(
+          interpreter: interpreter,
+          isolateInterpreter: isolateInterpreter,
+          inputBuffer: inputBuffer,
+          flatInputBuffer: flatInputBuffer,
+          outputLandmarks: outputLandmarks,
+          outputScore: outputScore,
+          outputMask: outputMask,
+          outputHeatmap: outputHeatmap,
+          outputWorld: outputWorld,
+        ),
+      );
 
-      // Initialize serialization lock for this interpreter
       _interpreterLocks.add(Future.value());
     }
 
@@ -221,7 +208,8 @@ class PoseLandmarkModelRunner {
   /// *Falls back to CPU (XNNPACK not supported on this platform)
   /// **Experimental, may crash on some devices
   (InterpreterOptions, Delegate?) _createInterpreterOptions(
-      PerformanceConfig? config) {
+    PerformanceConfig? config,
+  ) {
     final options = InterpreterOptions();
     final effectiveConfig = config ?? const PerformanceConfig();
 
@@ -251,7 +239,9 @@ class PoseLandmarkModelRunner {
 
   /// Creates options for auto mode - selects best delegate per platform.
   (InterpreterOptions, Delegate?) _createAutoModeOptions(
-      InterpreterOptions options, int threadCount) {
+    InterpreterOptions options,
+    int threadCount,
+  ) {
     if (Platform.isMacOS || Platform.isLinux) {
       return _createXnnpackOptions(options, threadCount);
     }
@@ -260,17 +250,17 @@ class PoseLandmarkModelRunner {
       return _createGpuOptions(options, threadCount);
     }
 
-    // Windows and Android: CPU-only (safest default)
     options.threads = threadCount;
     return (options, null);
   }
 
   /// Creates options with XNNPACK delegate (desktop only).
   (InterpreterOptions, Delegate?) _createXnnpackOptions(
-      InterpreterOptions options, int threadCount) {
+    InterpreterOptions options,
+    int threadCount,
+  ) {
     options.threads = threadCount;
 
-    // XNNPACK only supported on macOS and Linux
     if (!Platform.isMacOS && !Platform.isLinux) {
       return (options, null);
     }
@@ -282,17 +272,17 @@ class PoseLandmarkModelRunner {
       options.addDelegate(xnnpackDelegate);
       return (options, xnnpackDelegate);
     } catch (e) {
-      // Silent fallback to CPU
       return (options, null);
     }
   }
 
   /// Creates options with GPU delegate.
   (InterpreterOptions, Delegate?) _createGpuOptions(
-      InterpreterOptions options, int threadCount) {
+    InterpreterOptions options,
+    int threadCount,
+  ) {
     options.threads = threadCount;
 
-    // GPU only supported on iOS and Android
     if (!Platform.isIOS && !Platform.isAndroid) {
       return (options, null);
     }
@@ -303,7 +293,6 @@ class PoseLandmarkModelRunner {
       options.addDelegate(gpuDelegate);
       return (options, gpuDelegate);
     } catch (e) {
-      // Silent fallback to CPU
       return (options, null);
     }
   }
@@ -352,19 +341,16 @@ class PoseLandmarkModelRunner {
   /// Closes all interpreter instances in the pool and clears all state.
   /// After disposal, [initialize] must be called again before using the runner.
   Future<void> dispose() async {
-    // Dispose all interpreter instances
     for (final instance in _interpreterPool) {
       await instance.dispose();
     }
     _interpreterPool.clear();
 
-    // Clean up all delegates (one per interpreter)
     for (final delegate in _delegates) {
       delegate.delete();
     }
     _delegates.clear();
 
-    // Clear serialization locks
     _interpreterLocks.clear();
 
     _isInitialized = false;
@@ -383,12 +369,12 @@ class PoseLandmarkModelRunner {
   ///
   /// Returns the result of [fn]
   Future<T> _withInterpreterLock<T>(
-      Future<T> Function(_InterpreterInstance) fn) async {
+    Future<T> Function(_InterpreterInstance) fn,
+  ) async {
     if (_interpreterPool.isEmpty) {
       throw StateError('Interpreter pool is empty. Call initialize() first.');
     }
 
-    // Round-robin selection to distribute load evenly
     final int poolIndex = _poolCounter % _interpreterPool.length;
     _poolCounter = (_poolCounter + 1) % _interpreterPool.length;
 
@@ -433,16 +419,13 @@ class PoseLandmarkModelRunner {
   Future<PoseLandmarks> run(img.Image roiImage) async {
     if (!_isInitialized) {
       throw StateError(
-          'PoseLandmarkModelRunner not initialized. Call initialize() first.');
+        'PoseLandmarkModelRunner not initialized. Call initialize() first.',
+      );
     }
 
-    // Use round-robin selection with serialization lock (mirrors face detection pattern)
     return await _withInterpreterLock((instance) async {
-      // Reuse pre-allocated input buffer (ImageUtils.imageToNHWC4D fills it in-place)
       ImageUtils.imageToNHWC4D(roiImage, 256, 256, reuse: instance.inputBuffer);
 
-      // Run inference using pre-allocated output buffers
-      // Note: TFLite overwrites the buffer contents, no need to zero first
       await instance.runForMultipleInputs(
         [instance.inputBuffer],
         {
@@ -479,15 +462,13 @@ class PoseLandmarkModelRunner {
   Future<PoseLandmarks> runOnMat(cv.Mat mat) async {
     if (!_isInitialized) {
       throw StateError(
-          'PoseLandmarkModelRunner not initialized. Call initialize() first.');
+        'PoseLandmarkModelRunner not initialized. Call initialize() first.',
+      );
     }
 
     return await _withInterpreterLock((instance) async {
-      // Input mat is already letterboxed to 256x256 by the caller (detectOnMat).
-      // Convert directly to tensor with [0, 1] normalization (BlazePose format).
       _matToInputBuffer(mat, instance.flatInputBuffer);
 
-      // Run inference using flat buffer
       await instance.runForMultipleInputs(
         [instance.flatInputBuffer.buffer],
         {
@@ -517,12 +498,11 @@ class PoseLandmarkModelRunner {
     final int totalPixels = h * w;
     final Uint8List data = mat.data;
 
-    // BGR to RGB conversion + normalize to [0, 1]
     const double scale = 1.0 / 255.0;
     for (int i = 0, j = 0; i < totalPixels * 3; i += 3, j += 3) {
-      buffer[j] = data[i + 2] * scale; // B -> R
-      buffer[j + 1] = data[i + 1] * scale; // G -> G
-      buffer[j + 2] = data[i] * scale; // R -> B
+      buffer[j] = data[i + 2] * scale;
+      buffer[j + 1] = data[i + 1] * scale;
+      buffer[j + 2] = data[i] * scale;
     }
   }
 
