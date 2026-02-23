@@ -2,31 +2,41 @@
 //
 // These tests cover:
 // - Initialization and disposal
-// - Error handling (works in standard test environment)
-// - Detection with real sample images (requires device/platform-specific testing)
-// - detect() and detectOnImage() methods
+// - Error handling
+// - Detection with real sample images via detect()
 // - Different model variants (lite, full, heavy)
 // - Different modes (boxes, boxesAndLandmarks)
 // - Landmark and bounding box access
 // - Configuration parameters
 // - Edge cases
 //
-// NOTE: Most tests require TensorFlow Lite native libraries which are not
-// available in the standard `flutter test` environment. To run all tests:
+// NOTE: Most tests require TensorFlow Lite and OpenCV native libraries which
+// are not available in the standard `flutter test` environment. To run all tests:
 //
 // - macOS: flutter test --platform=macos test/pose_detector_test.dart
 // - Device: Run as integration tests on a physical device or emulator
 //
-// Tests that work in standard environment (no TFLite required):
-// - StateError when not initialized
+// Tests that work in standard environment (no native libs required):
+// - Initialization and disposal
 // - Parameter validation
-//
 
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:image/image.dart' as img;
+import 'package:opencv_dart/opencv_dart.dart' as cv;
 import 'package:pose_detection_tflite/pose_detection_tflite.dart';
-import 'test_config.dart';
+
+/// Helper to load an image asset and run detection, returning results.
+Future<List<Pose>> _detectAsset(PoseDetector detector, String path) async {
+  final ByteData data = await rootBundle.load(path);
+  final cv.Mat mat = cv.imdecode(data.buffer.asUint8List(), cv.IMREAD_COLOR);
+  final results = await detector.detectFromMat(
+    mat,
+    imageWidth: mat.cols,
+    imageHeight: mat.rows,
+  );
+  mat.dispose();
+  return results;
+}
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -98,10 +108,10 @@ void main() {
       'should throw StateError when detect() called before initialize',
       () async {
         final detector = PoseDetector(useNativePreprocessing: false);
-        final bytes = TestUtils.createDummyImageBytes();
+        final mat = cv.Mat.zeros(100, 100, cv.MatType.CV_8UC3);
 
         expect(
-          () => detector.detect(bytes),
+          () => detector.detectFromMat(mat, imageWidth: 100, imageHeight: 100),
           throwsA(
             isA<StateError>().having(
               (e) => e.message,
@@ -110,38 +120,9 @@ void main() {
             ),
           ),
         );
+        mat.dispose();
       },
     );
-
-    test(
-      'should throw StateError when detectOnImage() called before initialize',
-      () async {
-        final detector = PoseDetector(useNativePreprocessing: false);
-        final image = img.Image(width: 100, height: 100);
-
-        expect(
-          () => detector.detectOnImage(image),
-          throwsA(
-            isA<StateError>().having(
-              (e) => e.message,
-              'message',
-              contains('not initialized'),
-            ),
-          ),
-        );
-      },
-    );
-
-    test('should return empty list for invalid image bytes', () async {
-      final detector = PoseDetector(useNativePreprocessing: false);
-      await detector.initialize();
-
-      final invalidBytes = Uint8List.fromList([1, 2, 3, 4, 5]);
-      final results = await detector.detect(invalidBytes);
-
-      expect(results, isEmpty);
-      await detector.dispose();
-    });
   });
 
   group('PoseDetector - detect() with real images', () {
@@ -155,9 +136,8 @@ void main() {
         );
         await detector.initialize();
 
-        final ByteData data = await rootBundle.load('assets/samples/pose1.jpg');
-        final Uint8List bytes = data.buffer.asUint8List();
-        final List<Pose> results = await detector.detect(bytes);
+        final List<Pose> results =
+            await _detectAsset(detector, 'assets/samples/pose1.jpg');
 
         expect(results, isNotEmpty);
 
@@ -193,9 +173,8 @@ void main() {
       );
       await detector.initialize();
 
-      final ByteData data = await rootBundle.load('assets/samples/pose2.jpg');
-      final Uint8List bytes = data.buffer.asUint8List();
-      final List<Pose> results = await detector.detect(bytes);
+      final List<Pose> results =
+          await _detectAsset(detector, 'assets/samples/pose2.jpg');
 
       expect(results, isNotEmpty);
       await detector.dispose();
@@ -208,9 +187,8 @@ void main() {
       );
       await detector.initialize();
 
-      final ByteData data = await rootBundle.load('assets/samples/pose3.jpg');
-      final Uint8List bytes = data.buffer.asUint8List();
-      final List<Pose> results = await detector.detect(bytes);
+      final List<Pose> results =
+          await _detectAsset(detector, 'assets/samples/pose3.jpg');
 
       expect(results, isNotEmpty);
       await detector.dispose();
@@ -224,9 +202,8 @@ void main() {
       );
       await detector.initialize();
 
-      final ByteData data = await rootBundle.load('assets/samples/pose1.jpg');
-      final Uint8List bytes = data.buffer.asUint8List();
-      final List<Pose> results = await detector.detect(bytes);
+      final List<Pose> results =
+          await _detectAsset(detector, 'assets/samples/pose1.jpg');
 
       expect(results, isNotEmpty);
 
@@ -244,69 +221,6 @@ void main() {
     });
   });
 
-  group('PoseDetector - detectOnImage() method', () {
-    test('should work with pre-decoded image', () async {
-      final detector = PoseDetector(
-        landmarkModel: PoseLandmarkModel.lite,
-        useNativePreprocessing: false,
-      );
-      await detector.initialize();
-
-      // Load and decode image manually
-      final ByteData data = await rootBundle.load('assets/samples/pose1.jpg');
-      final Uint8List bytes = data.buffer.asUint8List();
-      final img.Image? image = img.decodeImage(bytes);
-
-      expect(image, isNotNull);
-
-      // Use detectOnImage instead of detect
-      final List<Pose> results = await detector.detectOnImage(image!);
-
-      expect(results, isNotEmpty);
-
-      for (final pose in results) {
-        expect(pose.boundingBox, isNotNull);
-        expect(pose.hasLandmarks, true);
-        expect(pose.landmarks.length, 33);
-
-        // Verify image dimensions match the decoded image
-        expect(pose.imageWidth, image.width);
-        expect(pose.imageHeight, image.height);
-      }
-
-      await detector.dispose();
-    });
-
-    test('detectOnImage() should give same results as detect()', () async {
-      final detector = PoseDetector(
-        landmarkModel: PoseLandmarkModel.lite,
-        detectorConf: 0.5,
-        useNativePreprocessing: false,
-      );
-      await detector.initialize();
-
-      final ByteData data = await rootBundle.load('assets/samples/pose1.jpg');
-      final Uint8List bytes = data.buffer.asUint8List();
-
-      // Test with detect()
-      final List<Pose> results1 = await detector.detect(bytes);
-
-      // Test with detectOnImage()
-      final img.Image? image = img.decodeImage(bytes);
-      final List<Pose> results2 = await detector.detectOnImage(image!);
-
-      // Should detect same number of people
-      expect(results1.length, results2.length);
-
-      // Scores should be identical (or very close)
-      for (int i = 0; i < results1.length; i++) {
-        expect((results1[i].score - results2[i].score).abs(), lessThan(0.01));
-      }
-
-      await detector.dispose();
-    });
-  });
-
   group('PoseDetector - Different Model Variants', () {
     test('should work with lite model', () async {
       final detector = PoseDetector(
@@ -315,9 +229,8 @@ void main() {
       );
       await detector.initialize();
 
-      final ByteData data = await rootBundle.load('assets/samples/pose1.jpg');
-      final Uint8List bytes = data.buffer.asUint8List();
-      final List<Pose> results = await detector.detect(bytes);
+      final List<Pose> results =
+          await _detectAsset(detector, 'assets/samples/pose1.jpg');
 
       expect(results, isNotEmpty);
       expect(results.first.hasLandmarks, true);
@@ -332,9 +245,8 @@ void main() {
       );
       await detector.initialize();
 
-      final ByteData data = await rootBundle.load('assets/samples/pose1.jpg');
-      final Uint8List bytes = data.buffer.asUint8List();
-      final List<Pose> results = await detector.detect(bytes);
+      final List<Pose> results =
+          await _detectAsset(detector, 'assets/samples/pose1.jpg');
 
       expect(results, isNotEmpty);
       expect(results.first.hasLandmarks, true);
@@ -349,9 +261,8 @@ void main() {
       );
       await detector.initialize();
 
-      final ByteData data = await rootBundle.load('assets/samples/pose1.jpg');
-      final Uint8List bytes = data.buffer.asUint8List();
-      final List<Pose> results = await detector.detect(bytes);
+      final List<Pose> results =
+          await _detectAsset(detector, 'assets/samples/pose1.jpg');
 
       expect(results, isNotEmpty);
       expect(results.first.hasLandmarks, true);
@@ -371,9 +282,7 @@ void main() {
       );
       await detector.initialize();
 
-      final ByteData data = await rootBundle.load('assets/samples/pose1.jpg');
-      final Uint8List bytes = data.buffer.asUint8List();
-      poses = await detector.detect(bytes);
+      poses = await _detectAsset(detector, 'assets/samples/pose1.jpg');
     });
 
     tearDownAll(() async {
@@ -527,11 +436,10 @@ void main() {
       );
       await lenientDetector.initialize();
 
-      final ByteData data = await rootBundle.load('assets/samples/pose1.jpg');
-      final Uint8List bytes = data.buffer.asUint8List();
-
-      final strictResults = await strictDetector.detect(bytes);
-      final lenientResults = await lenientDetector.detect(bytes);
+      final strictResults =
+          await _detectAsset(strictDetector, 'assets/samples/pose1.jpg');
+      final lenientResults =
+          await _detectAsset(lenientDetector, 'assets/samples/pose1.jpg');
 
       // Lenient should detect same or more people
       expect(lenientResults.length, greaterThanOrEqualTo(strictResults.length));
@@ -548,9 +456,8 @@ void main() {
       );
       await detector.initialize();
 
-      final ByteData data = await rootBundle.load('assets/samples/pose1.jpg');
-      final Uint8List bytes = data.buffer.asUint8List();
-      final List<Pose> results = await detector.detect(bytes);
+      final List<Pose> results =
+          await _detectAsset(detector, 'assets/samples/pose1.jpg');
 
       // Should not detect more than maxDetections
       expect(results.length, lessThanOrEqualTo(1));
@@ -566,16 +473,13 @@ void main() {
       );
       await detector.initialize();
 
-      final ByteData data = await rootBundle.load('assets/samples/pose1.jpg');
-      final Uint8List bytes = data.buffer.asUint8List();
-      final List<Pose> results = await detector.detect(bytes);
+      final List<Pose> results =
+          await _detectAsset(detector, 'assets/samples/pose1.jpg');
 
       // With high landmark score threshold, might get fewer results
-      // or results without landmarks
       if (results.isNotEmpty) {
         for (final pose in results) {
           if (pose.hasLandmarks) {
-            // If landmarks exist, they passed the quality threshold
             expect(pose.landmarks.length, 33);
           }
         }
@@ -600,10 +504,7 @@ void main() {
       ];
 
       for (final imagePath in images) {
-        final ByteData data = await rootBundle.load(imagePath);
-        final Uint8List bytes = data.buffer.asUint8List();
-        final List<Pose> results = await detector.detect(bytes);
-
+        final List<Pose> results = await _detectAsset(detector, imagePath);
         expect(results, isNotEmpty, reason: 'Failed to detect in $imagePath');
       }
 
@@ -625,9 +526,7 @@ void main() {
       ];
 
       for (final imagePath in images) {
-        final ByteData data = await rootBundle.load(imagePath);
-        final Uint8List bytes = data.buffer.asUint8List();
-        final List<Pose> results = await detector.detect(bytes);
+        final List<Pose> results = await _detectAsset(detector, imagePath);
 
         // Should work regardless of image size
         if (results.isNotEmpty) {
@@ -675,9 +574,7 @@ void main() {
       };
 
       for (final entry in expectedCounts.entries) {
-        final data = await rootBundle.load(entry.key);
-        final bytes = data.buffer.asUint8List();
-        final results = await detector.detect(bytes);
+        final results = await _detectAsset(detector, entry.key);
 
         expect(
           results.length,
@@ -696,9 +593,8 @@ void main() {
       );
       await detector.initialize();
 
-      final ByteData data = await rootBundle.load('assets/samples/pose1.jpg');
-      final Uint8List bytes = data.buffer.asUint8List();
-      final List<Pose> results = await detector.detect(bytes);
+      final List<Pose> results =
+          await _detectAsset(detector, 'assets/samples/pose1.jpg');
 
       for (final pose in results) {
         expect(pose.landmarks, isEmpty);
@@ -711,22 +607,6 @@ void main() {
       await detector.dispose();
     });
 
-    test('should handle 1x1 image', () async {
-      final detector = PoseDetector(
-        landmarkModel: PoseLandmarkModel.lite,
-        useNativePreprocessing: false,
-      );
-      await detector.initialize();
-
-      final bytes = TestUtils.createDummyImageBytes();
-      final List<Pose> results = await detector.detect(bytes);
-
-      // Should not crash, but probably won't detect anything
-      expect(results, isNotNull);
-
-      await detector.dispose();
-    });
-
     test('Pose.toString() should not crash', () async {
       final detector = PoseDetector(
         landmarkModel: PoseLandmarkModel.lite,
@@ -734,9 +614,8 @@ void main() {
       );
       await detector.initialize();
 
-      final ByteData data = await rootBundle.load('assets/samples/pose1.jpg');
-      final Uint8List bytes = data.buffer.asUint8List();
-      final List<Pose> results = await detector.detect(bytes);
+      final List<Pose> results =
+          await _detectAsset(detector, 'assets/samples/pose1.jpg');
 
       expect(results, isNotEmpty);
 

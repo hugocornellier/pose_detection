@@ -197,13 +197,7 @@ class _StillImageScreenState extends State<StillImageScreen> {
       });
 
       final Uint8List bytes = await _imageFile!.readAsBytes();
-      final cv.Mat mat = cv.imdecode(bytes, cv.IMREAD_COLOR);
-      final List<Pose> results = await _poseDetector.detectOnMat(
-        mat,
-        imageWidth: mat.cols,
-        imageHeight: mat.rows,
-      );
-      mat.dispose();
+      final List<Pose> results = await _poseDetector.detect(bytes);
 
       setState(() {
         _results = results;
@@ -726,8 +720,8 @@ class _CameraScreenState extends State<CameraScreen> {
         return;
       }
 
-      // Use the new detectOnMat method - no image decoding needed
-      final List<Pose> poses = await _poseDetector.detectOnMat(
+      // Use detectFromMat for direct cv.Mat input - no image decoding needed
+      final List<Pose> poses = await _poseDetector.detectFromMat(
         mat,
         imageWidth: imageData.width,
         imageHeight: imageData.height,

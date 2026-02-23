@@ -1,5 +1,4 @@
 import 'dart:typed_data';
-import 'package:image/image.dart' as img;
 import 'package:opencv_dart/opencv_dart.dart' as cv;
 
 /// Native image processing utilities using OpenCV.
@@ -207,35 +206,5 @@ class NativeImageUtils {
     } catch (_) {
       return null;
     }
-  }
-
-  /// Converts an img.Image to cv.Mat.
-  ///
-  /// Parameters:
-  /// - [image]: Source image from the `image` package
-  ///
-  /// Returns cv.Mat in BGR format. Caller must dispose.
-  @Deprecated(
-    'Will be removed in 2.0.0. Use cv.imdecode or pass cv.Mat directly.',
-  )
-  static cv.Mat imageToMat(img.Image image) {
-    final int w = image.width;
-    final int h = image.height;
-
-    final Uint8List bgr = Uint8List(w * h * 3);
-    final imageBytes = image.buffer.asUint8List();
-    final int numChannels = image.numChannels;
-
-    int bgrIdx = 0;
-    int srcIdx = 0;
-    for (int i = 0; i < w * h; i++) {
-      bgr[bgrIdx] = imageBytes[srcIdx + 2];
-      bgr[bgrIdx + 1] = imageBytes[srcIdx + 1];
-      bgr[bgrIdx + 2] = imageBytes[srcIdx];
-      bgrIdx += 3;
-      srcIdx += numChannels;
-    }
-
-    return cv.Mat.fromList(h, w, cv.MatType.CV_8UC3, bgr);
   }
 }

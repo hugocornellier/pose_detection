@@ -153,7 +153,7 @@ void main() {
 
         // Warmup
         for (int i = 0; i < warmupIterations; i++) {
-          final results = await detector.detectOnMat(
+          final results = await detector.detectFromMat(
             mat,
             imageWidth: imageWidth,
             imageHeight: imageHeight,
@@ -164,7 +164,7 @@ void main() {
         // Timed iterations
         for (int i = 0; i < iterations; i++) {
           final stopwatch = Stopwatch()..start();
-          await detector.detectOnMat(
+          await detector.detectFromMat(
             mat,
             imageWidth: imageWidth,
             imageHeight: imageHeight,

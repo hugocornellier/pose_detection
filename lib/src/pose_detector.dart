@@ -1,12 +1,10 @@
 import 'dart:typed_data';
-import 'package:image/image.dart' as img;
-import 'package:meta/meta.dart';
+
 import 'package:opencv_dart/opencv_dart.dart' as cv;
 import 'types.dart';
-import 'image_utils.dart';
-import 'native_image_utils.dart';
-import 'person_detector.dart';
-import 'pose_landmark_model.dart';
+import 'util/native_image_utils.dart';
+import 'models/person_detector.dart';
+import 'models/pose_landmark_model.dart';
 
 /// Helper class to store preprocessing data for each detected person.
 ///
@@ -15,9 +13,6 @@ import 'pose_landmark_model.dart';
 class _PersonCropData {
   /// The original YOLO detection result.
   final YoloDetection detection;
-
-  /// The letterboxed 256x256 image ready for landmark extraction (Dart path).
-  final img.Image? letterboxed;
 
   /// The resized/letterboxed 256x256 cv.Mat ready for landmark extraction (Native path).
   final cv.Mat? letterboxedMat;
@@ -49,7 +44,6 @@ class _PersonCropData {
 
   _PersonCropData({
     required this.detection,
-    this.letterboxed,
     this.letterboxedMat,
     required this.scaleRatio,
     required this.padLeft,
@@ -86,16 +80,6 @@ class _PersonCropData {
 class PoseDetector {
   final YoloV8PersonDetector _yolo = YoloV8PersonDetector();
   late final PoseLandmarkModelRunner _lm;
-
-  /// Test-only override for image decoding behavior.
-  ///
-  /// When set, replaces the default image decoder with a custom function.
-  /// Used in tests to simulate decoding failures or unusual image conditions.
-  @visibleForTesting
-  @Deprecated(
-    'Will be removed in 2.0.0. Use detectOnMat with cv.imdecode instead.',
-  )
-  static img.Image? Function(Uint8List bytes)? imageDecoderOverride;
 
   /// Detection mode controlling pipeline behavior.
   ///
@@ -245,7 +229,7 @@ class PoseDetector {
 
   /// Initializes the pose detector by loading TensorFlow Lite models.
   ///
-  /// Must be called before [detect] or [detectOnImage].
+  /// Must be called before [detect].
   /// If already initialized, will dispose existing models and reinitialize.
   ///
   /// Throws an exception if model loading fails.
@@ -271,31 +255,28 @@ class PoseDetector {
     _isInitialized = false;
   }
 
-  /// Detects poses in an image from raw bytes.
+  /// Detects poses from encoded image bytes (JPEG, PNG, etc.).
   ///
-  /// Decodes the image bytes and performs pose detection.
+  /// This is the convenient method for processing images from files or network
+  /// responses. The bytes are decoded internally to a cv.Mat, processed, and
+  /// the decoded Mat is disposed automatically.
   ///
   /// Parameters:
-  /// - [imageBytes]: Raw image data in a supported format (JPEG, PNG, etc.)
+  /// - [imageBytes]: Encoded image bytes (JPEG, PNG, BMP, etc.)
   ///
   /// Returns a list of [Pose] objects, one per detected person.
-  /// Returns an empty list if image decoding fails or no persons are detected.
   ///
   /// Throws [StateError] if called before [initialize].
-  @Deprecated('Will be removed in 2.0.0. Use detectOnMat instead.')
-  Future<List<Pose>> detect(List<int> imageBytes) async {
-    if (!_isInitialized) {
-      throw StateError(
-        'PoseDetector not initialized. Call initialize() first.',
-      );
-    }
+  Future<List<Pose>> detect(Uint8List imageBytes) async {
+    final cv.Mat mat = cv.imdecode(imageBytes, cv.IMREAD_COLOR);
     try {
-      final decoder = imageDecoderOverride ?? img.decodeImage;
-      final img.Image? image = decoder(Uint8List.fromList(imageBytes));
-      if (image == null) return <Pose>[];
-      return detectOnImage(image);
-    } catch (e) {
-      return <Pose>[];
+      return await detectFromMat(
+        mat,
+        imageWidth: mat.cols,
+        imageHeight: mat.rows,
+      );
+    } finally {
+      mat.dispose();
     }
   }
 
@@ -314,7 +295,7 @@ class PoseDetector {
   /// The caller is responsible for disposing the input Mat.
   ///
   /// Throws [StateError] if called before [initialize].
-  Future<List<Pose>> detectOnMat(
+  Future<List<Pose>> detectFromMat(
     cv.Mat mat, {
     required int imageWidth,
     required int imageHeight,
@@ -325,7 +306,7 @@ class PoseDetector {
       );
     }
 
-    final List<YoloDetection> dets = await _yolo.detectOnMat(
+    final List<YoloDetection> dets = await _yolo.detect(
       mat,
       imageWidth: imageWidth,
       imageHeight: imageHeight,
@@ -393,7 +374,7 @@ class PoseDetector {
     final List<PoseLandmarks?> allLandmarks = <PoseLandmarks?>[];
     for (final _PersonCropData data in cropDataList) {
       try {
-        final PoseLandmarks lms = await _lm.runOnMat(data.letterboxedMat!);
+        final PoseLandmarks lms = await _lm.run(data.letterboxedMat!);
         allLandmarks.add(lms);
       } catch (e) {
         allLandmarks.add(null);
@@ -412,209 +393,6 @@ class PoseDetector {
     }
 
     return results;
-  }
-
-  /// Detects poses in a decoded image.
-  ///
-  /// Performs the two-stage detection pipeline:
-  /// 1. Detects persons using YOLOv8n
-  /// 2. Extracts landmarks using BlazePose in parallel for all detected persons
-  ///
-  /// Parameters:
-  /// - [image]: A decoded image from the `image` package
-  ///
-  /// Returns a list of [Pose] objects, one per detected person.
-  /// Each pose contains:
-  /// - A bounding box in original image coordinates
-  /// - A confidence score (0.0-1.0)
-  /// - 33 body landmarks (if [mode] is [PoseMode.boxesAndLandmarks])
-  ///
-  /// **Performance:** Landmark extraction runs in parallel using an interpreter pool.
-  /// The [interpreterPoolSize] determines the maximum number of concurrent inferences.
-  /// For example, with 5 people detected and pool size 5, all landmarks are extracted
-  /// simultaneously, providing ~5x speedup compared to sequential processing.
-  ///
-  /// When [useNativePreprocessing] is true (default), uses SIMD-accelerated OpenCV
-  /// operations for 5-15x faster preprocessing.
-  ///
-  /// Throws [StateError] if called before [initialize].
-  @Deprecated('Will be removed in 2.0.0. Use detectOnMat instead.')
-  Future<List<Pose>> detectOnImage(img.Image image) async {
-    if (!_isInitialized) {
-      throw StateError(
-        'PoseDetector not initialized. Call initialize() first.',
-      );
-    }
-
-    if (useNativePreprocessing) {
-      return _detectOnImageNative(image);
-    }
-
-    return _detectOnImageDart(image);
-  }
-
-  /// Native pipeline using OpenCV for preprocessing.
-  Future<List<Pose>> _detectOnImageNative(img.Image image) async {
-    final cv.Mat mat = NativeImageUtils.imageToMat(image);
-
-    try {
-      final List<YoloDetection> dets = await _yolo.detectOnMat(
-        mat,
-        imageWidth: image.width,
-        imageHeight: image.height,
-        confThres: detectorConf,
-        iouThres: detectorIou,
-        maxDet: maxDetections,
-        personOnly: true,
-      );
-
-      if (mode == PoseMode.boxes) {
-        mat.dispose();
-        return _buildBoxOnlyResults(dets, image.width, image.height);
-      }
-
-      final List<_PersonCropData> cropDataList = <_PersonCropData>[];
-      for (final YoloDetection d in dets) {
-        final double x1 = d.bboxXYXY[0].clamp(0.0, image.width.toDouble());
-        final double y1 = d.bboxXYXY[1].clamp(0.0, image.height.toDouble());
-        final double x2 = d.bboxXYXY[2].clamp(0.0, image.width.toDouble());
-        final double y2 = d.bboxXYXY[3].clamp(0.0, image.height.toDouble());
-        final double bw = x2 - x1;
-        final double bh = y2 - y1;
-
-        final double cx = (x1 + x2) / 2.0;
-        final double cy = (y1 + y2) / 2.0;
-        final double side = (bw > bh ? bw : bh) * 1.25;
-
-        final cv.Mat? square = NativeImageUtils.extractAlignedSquare(
-          mat,
-          cx,
-          cy,
-          side,
-          0.0,
-        );
-
-        if (square == null) continue;
-
-        final cv.Mat resized = cv.resize(
-            square,
-            (
-              256,
-              256,
-            ),
-            interpolation: cv.INTER_LINEAR);
-        square.dispose();
-
-        final double sqX1 = cx - side / 2.0;
-        final double sqY1 = cy - side / 2.0;
-
-        cropDataList.add(
-          _PersonCropData(
-            detection: d,
-            letterboxedMat: resized,
-            scaleRatio: 1.0,
-            padLeft: 0,
-            padTop: 0,
-            cropX: sqX1.round(),
-            cropY: sqY1.round(),
-            cropWidth: side.round(),
-            cropHeight: side.round(),
-            useResize: true,
-          ),
-        );
-      }
-
-      final List<PoseLandmarks?> allLandmarks = <PoseLandmarks?>[];
-      for (final _PersonCropData data in cropDataList) {
-        try {
-          final PoseLandmarks lms = await _lm.runOnMat(data.letterboxedMat!);
-          allLandmarks.add(lms);
-        } catch (e) {
-          allLandmarks.add(null);
-        }
-      }
-
-      final List<Pose> results = _buildLandmarkResults(
-        cropDataList,
-        allLandmarks,
-        image.width,
-        image.height,
-      );
-
-      for (final data in cropDataList) {
-        data.dispose();
-      }
-      mat.dispose();
-
-      return results;
-    } catch (e) {
-      mat.dispose();
-      rethrow;
-    }
-  }
-
-  /// Dart pipeline using pure Dart for preprocessing (fallback).
-  Future<List<Pose>> _detectOnImageDart(img.Image image) async {
-    final List<YoloDetection> dets = await _yolo.detectOnImage(
-      image,
-      confThres: detectorConf,
-      iouThres: detectorIou,
-      maxDet: maxDetections,
-      personOnly: true,
-    );
-
-    if (mode == PoseMode.boxes) {
-      return _buildBoxOnlyResults(dets, image.width, image.height);
-    }
-
-    final List<Future<_PersonCropData>> cropFutures = dets.map((d) async {
-      final int x1 = d.bboxXYXY[0].clamp(0.0, image.width.toDouble()).toInt();
-      final int y1 = d.bboxXYXY[1].clamp(0.0, image.height.toDouble()).toInt();
-      final int x2 = d.bboxXYXY[2].clamp(0.0, image.width.toDouble()).toInt();
-      final int y2 = d.bboxXYXY[3].clamp(0.0, image.height.toDouble()).toInt();
-      final int cw = (x2 - x1).clamp(1, image.width);
-      final int ch = (y2 - y1).clamp(1, image.height);
-
-      final img.Image crop = img.copyCrop(
-        image,
-        x: x1,
-        y: y1,
-        width: cw,
-        height: ch,
-      );
-      final List<double> ratio = <double>[];
-      final List<int> dwdh = <int>[];
-      final img.Image letter = ImageUtils.letterbox256(crop, ratio, dwdh);
-
-      return _PersonCropData(
-        detection: d,
-        letterboxed: letter,
-        scaleRatio: ratio.first,
-        padLeft: dwdh[0],
-        padTop: dwdh[1],
-        cropX: x1,
-        cropY: y1,
-      );
-    }).toList();
-
-    final List<_PersonCropData> cropDataList = await Future.wait(cropFutures);
-
-    final List<Future<PoseLandmarks?>> futures = cropDataList.map((data) async {
-      try {
-        return await _lm.run(data.letterboxed!);
-      } catch (e) {
-        return null;
-      }
-    }).toList();
-
-    final List<PoseLandmarks?> allLandmarks = await Future.wait(futures);
-
-    return _buildLandmarkResults(
-      cropDataList,
-      allLandmarks,
-      image.width,
-      image.height,
-    );
   }
 
   /// Builds box-only results (no landmarks).

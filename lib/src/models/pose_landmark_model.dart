@@ -3,11 +3,9 @@ import 'dart:io';
 import 'dart:math' as math;
 import 'dart:typed_data';
 
-import 'package:image/image.dart' as img;
 import 'package:opencv_dart/opencv_dart.dart' as cv;
 import 'package:flutter_litert/flutter_litert.dart';
-import 'image_utils.dart';
-import 'types.dart';
+import '../types.dart';
 
 /// A single interpreter instance with its associated resources.
 ///
@@ -390,68 +388,14 @@ class PoseLandmarkModelRunner {
     }
   }
 
-  /// Runs landmark extraction on a person crop image.
-  ///
-  /// Extracts 33 body landmarks from the input person crop using the BlazePose model.
-  /// The input image should be a cropped person region, ideally from the YOLOv8 detector.
-  ///
-  /// **Thread-safety:** This method is safe to call concurrently. It uses round-robin
-  /// selection to distribute load across the interpreter pool, with per-interpreter
-  /// serialization locks to prevent XNNPACK thread contention. Multiple people can be
-  /// processed in parallel using different interpreters, but each interpreter only
-  /// runs one inference at a time.
-  ///
-  /// The method performs:
-  /// 1. Selects an interpreter using round-robin (distributes load evenly)
-  /// 2. Serializes access to the interpreter (waits for previous inference to complete)
-  /// 3. Converts image to tensor (NHWC format, normalized 0-1)
-  /// 4. Runs model inference via IsolateInterpreter
-  /// 5. Post-processes results: sigmoid activation, coordinate normalization
-  ///
-  /// Parameters:
-  /// - [roiImage]: Cropped person image (will be resized to 256x256 internally)
-  ///
-  /// Returns [PoseLandmarks] containing 33 landmarks with normalized coordinates (0-1 range)
-  /// and a confidence score. Landmarks are in the 256x256 model output space.
-  ///
-  /// Throws [StateError] if the model is not initialized.
-  @Deprecated('Will be removed in 2.0.0. Use runOnMat instead.')
-  Future<PoseLandmarks> run(img.Image roiImage) async {
-    if (!_isInitialized) {
-      throw StateError(
-        'PoseLandmarkModelRunner not initialized. Call initialize() first.',
-      );
-    }
-
-    return await _withInterpreterLock((instance) async {
-      ImageUtils.imageToNHWC4D(roiImage, 256, 256, reuse: instance.inputBuffer);
-
-      await instance.runForMultipleInputs(
-        [instance.inputBuffer],
-        {
-          0: instance.outputLandmarks,
-          1: instance.outputScore,
-          2: instance.outputMask,
-          3: instance.outputHeatmap,
-          4: instance.outputWorld,
-        },
-      );
-
-      return _parseLandmarks(
-        instance.outputLandmarks,
-        instance.outputScore,
-        instance.outputWorld,
-      );
-    });
-  }
-
   /// Runs landmark extraction on a pre-letterboxed 256x256 cv.Mat.
   ///
   /// This method expects the input to already be letterboxed to 256x256.
-  /// The caller (typically [PoseDetector.detectOnMat]) handles cropping and
+  /// The caller (typically [PoseDetector.detect]) handles cropping and
   /// letterboxing, storing the transformation parameters for coordinate mapping.
   ///
-  /// **Thread-safety:** Same as [run] - safe to call concurrently.
+  /// **Thread-safety:** Safe to call concurrently. Uses round-robin interpreter
+  /// selection with per-interpreter serialization locks.
   ///
   /// Parameters:
   /// - [mat]: Letterboxed 256x256 cv.Mat in BGR format
@@ -459,7 +403,7 @@ class PoseLandmarkModelRunner {
   /// Returns [PoseLandmarks] containing 33 landmarks with normalized coordinates.
   ///
   /// Throws [StateError] if the model is not initialized.
-  Future<PoseLandmarks> runOnMat(cv.Mat mat) async {
+  Future<PoseLandmarks> run(cv.Mat mat) async {
     if (!_isInitialized) {
       throw StateError(
         'PoseLandmarkModelRunner not initialized. Call initialize() first.',

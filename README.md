@@ -4,7 +4,7 @@
 [![pub package](https://img.shields.io/pub/v/pose_detection_tflite.svg)](https://pub.dev/packages/pose_detection_tflite)
 
 Flutter implementation of Google's [Pose Landmark Detection](https://ai.google.dev/edge/mediapipe/solutions/vision/pose_landmarker) with bounding boxes. 
-Provides on-device, multi-person pose and landmark detection using TensorFlow Lite. Minimal dependencies, just TensorFlow Lite and image. 
+Provides on-device, multi-person pose and landmark detection using TensorFlow Lite.
 
 
 ![Example Screenshot](assets/screenshots/ex1.png)
@@ -24,7 +24,7 @@ Future main() async {
   );
   await detector.initialize();
 
-  // Detect poses
+  // Load and detect from image bytes
   final Uint8List imageBytes = await File('image.jpg').readAsBytes();
   final List<Pose> results = await detector.detect(imageBytes);
 
@@ -48,7 +48,7 @@ Future main() async {
     }
   }
 
-  // 4. clean-up
+  // Clean up
   await detector.dispose();
 }
 ```
@@ -204,17 +204,6 @@ The `poseLandmarkConnections` constant contains 27 connections organized by body
 
 ## Advanced Usage
 
-### Processing pre-decoded images
-
-If you already have an `Image` object from the `image` package, use `detectOnImage()` to skip re-decoding:
-
-```dart
-import 'package:image/image.dart' as img;
-
-final img.Image image = img.decodeImage(imageBytes)!;
-final List<Pose> results = await detector.detectOnImage(image);
-```
-
 ### Multi-person detection
 
 The detector automatically handles multiple people in a single image with parallel landmark extraction:
@@ -260,9 +249,13 @@ final detector = PoseDetector(
 );
 await detector.initialize();
 
-// Process each frame
-void processFrame(Uint8List frameBytes) async {
-  final results = await detector.detect(frameBytes);
+// Process each frame (convert camera frame to cv.Mat first)
+void processFrame(cv.Mat mat) async {
+  final results = await detector.detectFromMat(
+    mat,
+    imageWidth: mat.cols,
+    imageHeight: mat.rows,
+  );
   // Update UI with results
 }
 

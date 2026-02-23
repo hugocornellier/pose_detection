@@ -10,7 +10,6 @@ dependencies:
   flutter:
     sdk: flutter
   cupertino_icons: ^1.0.8
-  image: ^4.7.2
   image_picker: ^1.2.1
   file_selector: ^1.1.0
   file_selector_macos: ^0.9.5

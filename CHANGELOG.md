@@ -1,3 +1,17 @@
+## 2.0.0
+
+**Breaking changes:**
+
+- Remove all deprecated `image` package-based APIs
+  - `PoseDetector.detect(List<int>)` — use `detect(cv.Mat)` instead
+  - `PoseDetector.detectOnImage(img.Image)` — use `detect(cv.Mat)` instead
+  - `PoseDetector.imageDecoderOverride` setter — no longer needed
+  - `PoseLandmarkModelRunner.run(img.Image)` — use `run(cv.Mat)` instead
+  - `YoloV8PersonDetector.detectOnImage(img.Image)` — use `detect(cv.Mat)` instead
+  - `ImageUtils.letterbox()`, `letterbox256()`, `imageToNHWC4D()` — use `NativeImageUtils` equivalents
+  - `NativeImageUtils.imageToMat()` — use `cv.imdecode` directly
+- Remove `image` package dependency
+
 ## 1.3.3
 
 - Upgrade flutter_litert -> 0.1.12 

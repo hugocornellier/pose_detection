@@ -4,7 +4,7 @@
 // - Initialization and disposal
 // - Error handling (works in standard test environment)
 // - Detection with real sample images (requires device/platform-specific testing)
-// - detectOnMat() method
+// - detect() method
 // - Different model variants (lite, full, heavy)
 // - Different modes (boxes, boxesAndLandmarks)
 // - Landmark and bounding box access
@@ -90,13 +90,13 @@ void main() {
   });
 
   group('PoseDetector - Error Handling', () {
-    test('should throw StateError when detectOnMat() called before initialize',
+    test('should throw StateError when detect() called before initialize',
         () async {
       final detector = PoseDetector();
       final cv.Mat mat = cv.Mat.zeros(1, 1, cv.MatType.CV_8UC3);
 
       expect(
-        () => detector.detectOnMat(mat, imageWidth: 1, imageHeight: 1),
+        () => detector.detectFromMat(mat, imageWidth: 1, imageHeight: 1),
         throwsA(isA<StateError>().having(
           (e) => e.message,
           'message',
@@ -108,7 +108,7 @@ void main() {
     });
   });
 
-  group('PoseDetector - detectOnMat() with real images', () {
+  group('PoseDetector - detect() with real images', () {
     test('should detect people in pose1.jpg with boxesAndLandmarks mode',
         () async {
       final detector = PoseDetector(
@@ -120,7 +120,7 @@ void main() {
       final ByteData data = await rootBundle.load('assets/samples/pose1.jpg');
       final Uint8List bytes = data.buffer.asUint8List();
       final cv.Mat mat = cv.imdecode(bytes, cv.IMREAD_COLOR);
-      final List<Pose> results = await detector.detectOnMat(
+      final List<Pose> results = await detector.detectFromMat(
         mat,
         imageWidth: mat.cols,
         imageHeight: mat.rows,
@@ -160,7 +160,7 @@ void main() {
       final ByteData data = await rootBundle.load('assets/samples/pose2.jpg');
       final Uint8List bytes = data.buffer.asUint8List();
       final cv.Mat mat = cv.imdecode(bytes, cv.IMREAD_COLOR);
-      final List<Pose> results = await detector.detectOnMat(
+      final List<Pose> results = await detector.detectFromMat(
         mat,
         imageWidth: mat.cols,
         imageHeight: mat.rows,
@@ -178,7 +178,7 @@ void main() {
       final ByteData data = await rootBundle.load('assets/samples/pose3.jpg');
       final Uint8List bytes = data.buffer.asUint8List();
       final cv.Mat mat = cv.imdecode(bytes, cv.IMREAD_COLOR);
-      final List<Pose> results = await detector.detectOnMat(
+      final List<Pose> results = await detector.detectFromMat(
         mat,
         imageWidth: mat.cols,
         imageHeight: mat.rows,
@@ -199,7 +199,7 @@ void main() {
       final ByteData data = await rootBundle.load('assets/samples/pose1.jpg');
       final Uint8List bytes = data.buffer.asUint8List();
       final cv.Mat mat = cv.imdecode(bytes, cv.IMREAD_COLOR);
-      final List<Pose> results = await detector.detectOnMat(
+      final List<Pose> results = await detector.detectFromMat(
         mat,
         imageWidth: mat.cols,
         imageHeight: mat.rows,
@@ -233,12 +233,12 @@ void main() {
       final cv.Mat mat1 = cv.imdecode(bytes, cv.IMREAD_COLOR);
       final cv.Mat mat2 = cv.imdecode(bytes, cv.IMREAD_COLOR);
 
-      final List<Pose> results1 = await detector.detectOnMat(
+      final List<Pose> results1 = await detector.detectFromMat(
         mat1,
         imageWidth: mat1.cols,
         imageHeight: mat1.rows,
       );
-      final List<Pose> results2 = await detector.detectOnMat(
+      final List<Pose> results2 = await detector.detectFromMat(
         mat2,
         imageWidth: mat2.cols,
         imageHeight: mat2.rows,
@@ -269,7 +269,7 @@ void main() {
       final ByteData data = await rootBundle.load('assets/samples/pose1.jpg');
       final Uint8List bytes = data.buffer.asUint8List();
       final cv.Mat mat = cv.imdecode(bytes, cv.IMREAD_COLOR);
-      final List<Pose> results = await detector.detectOnMat(
+      final List<Pose> results = await detector.detectFromMat(
         mat,
         imageWidth: mat.cols,
         imageHeight: mat.rows,
@@ -289,7 +289,7 @@ void main() {
       final ByteData data = await rootBundle.load('assets/samples/pose1.jpg');
       final Uint8List bytes = data.buffer.asUint8List();
       final cv.Mat mat = cv.imdecode(bytes, cv.IMREAD_COLOR);
-      final List<Pose> results = await detector.detectOnMat(
+      final List<Pose> results = await detector.detectFromMat(
         mat,
         imageWidth: mat.cols,
         imageHeight: mat.rows,
@@ -309,7 +309,7 @@ void main() {
       final ByteData data = await rootBundle.load('assets/samples/pose1.jpg');
       final Uint8List bytes = data.buffer.asUint8List();
       final cv.Mat mat = cv.imdecode(bytes, cv.IMREAD_COLOR);
-      final List<Pose> results = await detector.detectOnMat(
+      final List<Pose> results = await detector.detectFromMat(
         mat,
         imageWidth: mat.cols,
         imageHeight: mat.rows,
@@ -334,7 +334,7 @@ void main() {
       final ByteData data = await rootBundle.load('assets/samples/pose1.jpg');
       final Uint8List bytes = data.buffer.asUint8List();
       final cv.Mat mat = cv.imdecode(bytes, cv.IMREAD_COLOR);
-      poses = await detector.detectOnMat(
+      poses = await detector.detectFromMat(
         mat,
         imageWidth: mat.cols,
         imageHeight: mat.rows,
@@ -502,12 +502,12 @@ void main() {
       final cv.Mat mat1 = cv.imdecode(bytes, cv.IMREAD_COLOR);
       final cv.Mat mat2 = cv.imdecode(bytes, cv.IMREAD_COLOR);
 
-      final strictResults = await strictDetector.detectOnMat(
+      final strictResults = await strictDetector.detectFromMat(
         mat1,
         imageWidth: mat1.cols,
         imageHeight: mat1.rows,
       );
-      final lenientResults = await lenientDetector.detectOnMat(
+      final lenientResults = await lenientDetector.detectFromMat(
         mat2,
         imageWidth: mat2.cols,
         imageHeight: mat2.rows,
@@ -532,7 +532,7 @@ void main() {
       final ByteData data = await rootBundle.load('assets/samples/pose1.jpg');
       final Uint8List bytes = data.buffer.asUint8List();
       final cv.Mat mat = cv.imdecode(bytes, cv.IMREAD_COLOR);
-      final List<Pose> results = await detector.detectOnMat(
+      final List<Pose> results = await detector.detectFromMat(
         mat,
         imageWidth: mat.cols,
         imageHeight: mat.rows,
@@ -555,7 +555,7 @@ void main() {
       final ByteData data = await rootBundle.load('assets/samples/pose1.jpg');
       final Uint8List bytes = data.buffer.asUint8List();
       final cv.Mat mat = cv.imdecode(bytes, cv.IMREAD_COLOR);
-      final List<Pose> results = await detector.detectOnMat(
+      final List<Pose> results = await detector.detectFromMat(
         mat,
         imageWidth: mat.cols,
         imageHeight: mat.rows,
@@ -592,7 +592,7 @@ void main() {
         final ByteData data = await rootBundle.load(imagePath);
         final Uint8List bytes = data.buffer.asUint8List();
         final cv.Mat mat = cv.imdecode(bytes, cv.IMREAD_COLOR);
-        final List<Pose> results = await detector.detectOnMat(
+        final List<Pose> results = await detector.detectFromMat(
           mat,
           imageWidth: mat.cols,
           imageHeight: mat.rows,
@@ -620,7 +620,7 @@ void main() {
         final ByteData data = await rootBundle.load(imagePath);
         final Uint8List bytes = data.buffer.asUint8List();
         final cv.Mat mat = cv.imdecode(bytes, cv.IMREAD_COLOR);
-        final List<Pose> results = await detector.detectOnMat(
+        final List<Pose> results = await detector.detectFromMat(
           mat,
           imageWidth: mat.cols,
           imageHeight: mat.rows,
@@ -649,7 +649,7 @@ void main() {
       final ByteData data = await rootBundle.load('assets/samples/pose1.jpg');
       final Uint8List bytes = data.buffer.asUint8List();
       final cv.Mat mat = cv.imdecode(bytes, cv.IMREAD_COLOR);
-      final List<Pose> results = await detector.detectOnMat(
+      final List<Pose> results = await detector.detectFromMat(
         mat,
         imageWidth: mat.cols,
         imageHeight: mat.rows,
@@ -672,7 +672,7 @@ void main() {
       await detector.initialize();
 
       final cv.Mat mat = cv.Mat.zeros(1, 1, cv.MatType.CV_8UC3);
-      final List<Pose> results = await detector.detectOnMat(
+      final List<Pose> results = await detector.detectFromMat(
         mat,
         imageWidth: 1,
         imageHeight: 1,
@@ -692,7 +692,7 @@ void main() {
       final ByteData data = await rootBundle.load('assets/samples/pose1.jpg');
       final Uint8List bytes = data.buffer.asUint8List();
       final cv.Mat mat = cv.imdecode(bytes, cv.IMREAD_COLOR);
-      final List<Pose> results = await detector.detectOnMat(
+      final List<Pose> results = await detector.detectFromMat(
         mat,
         imageWidth: mat.cols,
         imageHeight: mat.rows,

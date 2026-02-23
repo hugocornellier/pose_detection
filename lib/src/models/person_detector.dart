@@ -1,13 +1,12 @@
 import 'dart:io';
 import 'dart:math' as math;
 import 'dart:typed_data';
-import 'package:image/image.dart' as img;
 import 'package:meta/meta.dart';
 import 'package:opencv_dart/opencv_dart.dart' as cv;
 import 'package:flutter_litert/flutter_litert.dart';
-import 'image_utils.dart';
-import 'native_image_utils.dart';
-import 'types.dart';
+import '../util/image_utils.dart';
+import '../util/native_image_utils.dart';
+import '../types.dart';
 
 /// A single object detection result from YOLOv8.
 ///
@@ -46,7 +45,6 @@ class YoloV8PersonDetector {
   /// COCO dataset class ID for the "person" class.
   static const int cocoPersonClassId = 0;
   final _outShapes = <List<int>>[];
-  img.Image? _canvasBuffer;
   Float32List? _inputBuffer;
   Delegate? _delegate;
   Map<int, Object>? _cachedOutputs;
@@ -59,7 +57,7 @@ class YoloV8PersonDetector {
   ///   for CPU optimization.
   ///
   /// Loads the YOLOv8n model from assets, allocates tensors, and creates
-  /// an IsolateInterpreter for async inference. Must be called before [detectOnImage].
+  /// an IsolateInterpreter for async inference. Must be called before [detect].
   ///
   /// If already initialized, this will dispose the previous instance first.
   ///
@@ -219,7 +217,6 @@ class YoloV8PersonDetector {
     _interpreter = null;
     _delegate?.delete();
     _delegate = null;
-    _canvasBuffer = null;
     _cachedOutputs = null;
     _isInitialized = false;
   }
@@ -379,7 +376,6 @@ class YoloV8PersonDetector {
     required List<List<int>> outputShapes,
     Interpreter? interpreter,
     IsolateInterpreter? isolate,
-    img.Image? canvasBuffer,
     Float32List? inputBuffer,
     bool initialized = true,
   }) {
@@ -390,7 +386,6 @@ class YoloV8PersonDetector {
       ..addAll(outputShapes.map((s) => List<int>.from(s)));
     _interpreter = interpreter;
     _iso = isolate;
-    _canvasBuffer = canvasBuffer;
     _inputBuffer = inputBuffer;
     _isInitialized = initialized;
   }
@@ -612,104 +607,6 @@ class YoloV8PersonDetector {
     return out;
   }
 
-  /// Detects persons in the given image using YOLOv8.
-  ///
-  /// Performs the following steps:
-  /// 1. Letterbox preprocessing to 640x640
-  /// 2. Model inference via IsolateInterpreter
-  /// 3. Post-processing: confidence filtering, NMS, coordinate transformation
-  ///
-  /// Parameters:
-  /// - [image]: Input image to detect persons in
-  /// - [confThres]: Confidence threshold for detections (default: 0.35)
-  /// - [iouThres]: IoU threshold for Non-Maximum Suppression (default: 0.4)
-  /// - [topkPreNms]: Maximum detections to keep before NMS. If <= 0, uses dynamic
-  ///   scaling based on image size (default: 0 for dynamic)
-  /// - [maxDet]: Maximum detections to return after NMS (default: 10)
-  /// - [personOnly]: If true, only returns person class (class 0) detections (default: true)
-  ///
-  /// Returns a list of [YoloDetection] objects with bounding boxes in original image coordinates.
-  ///
-  /// Throws [StateError] if the detector is not initialized.
-  @Deprecated('Will be removed in 2.0.0. Use detectOnMat instead.')
-  Future<List<YoloDetection>> detectOnImage(
-    img.Image image, {
-    double confThres = 0.35,
-    double iouThres = 0.4,
-    int topkPreNms = 0,
-    int maxDet = 10,
-    bool personOnly = true,
-  }) async {
-    if (!_isInitialized || _interpreter == null) {
-      throw StateError('YoloV8PersonDetector not initialized.');
-    }
-
-    final List<double> ratio = <double>[];
-    final List<int> dwdh = <int>[];
-    _canvasBuffer ??= img.Image(width: _inW, height: _inH);
-    final img.Image letter = ImageUtils.letterbox(
-      image,
-      _inW,
-      _inH,
-      ratio,
-      dwdh,
-      reuseCanvas: _canvasBuffer,
-    );
-    final double r = ratio.first;
-    final int dw = dwdh[0], dh = dwdh[1];
-
-    final int inputSize = _inH * _inW * 3;
-    _inputBuffer ??= Float32List(inputSize);
-    if (_inputBuffer!.length != inputSize) {
-      _inputBuffer = Float32List(inputSize);
-    }
-    final Float32List flatInput = _inputBuffer!;
-
-    final bytes = letter.buffer.asUint8List();
-    final int numChannels = letter.numChannels;
-    const double scale = 1.0 / 255.0;
-    int k = 0;
-    int byteIndex = 0;
-    for (int y = 0; y < _inH; y++) {
-      for (int x = 0; x < _inW; x++) {
-        flatInput[k++] = bytes[byteIndex] * scale;
-        flatInput[k++] = bytes[byteIndex + 1] * scale;
-        flatInput[k++] = bytes[byteIndex + 2] * scale;
-        byteIndex += numChannels;
-      }
-    }
-
-    final int inputCount = _interpreter!.getInputTensors().length;
-    final List<Object> inputs = List<Object>.filled(
-      inputCount,
-      flatInput.buffer,
-      growable: false,
-    );
-
-    _cachedOutputs ??= _createOutputBuffers();
-    _zeroOutputBuffers(_cachedOutputs!);
-
-    if (_iso != null) {
-      await _iso!.runForMultipleInputs(inputs, _cachedOutputs!);
-    } else {
-      _interpreter!.runForMultipleInputs(inputs, _cachedOutputs!);
-    }
-
-    return _postProcessDetections(
-      outputs: _cachedOutputs!.values.toList(),
-      r: r,
-      dw: dw,
-      dh: dh,
-      imageWidth: image.width,
-      imageHeight: image.height,
-      confThres: confThres,
-      iouThres: iouThres,
-      topkPreNms: topkPreNms,
-      maxDet: maxDet,
-      personOnly: personOnly,
-    );
-  }
-
   /// Detects persons in a cv.Mat using native OpenCV preprocessing.
   ///
   /// Uses SIMD-accelerated OpenCV operations for preprocessing which is
@@ -725,7 +622,7 @@ class YoloV8PersonDetector {
   /// - [personOnly]: If true, only returns person class detections (default: true)
   ///
   /// Returns a list of [YoloDetection] objects with bounding boxes in original image coordinates.
-  Future<List<YoloDetection>> detectOnMat(
+  Future<List<YoloDetection>> detect(
     cv.Mat mat, {
     required int imageWidth,
     required int imageHeight,

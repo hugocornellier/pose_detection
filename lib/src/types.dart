@@ -458,7 +458,7 @@ const List<List<PoseLandmarkType>> poseLandmarkConnections = [
 
 /// Detected person with bounding box and optional body landmarks.
 ///
-/// This is the main result returned by [PoseDetector.detect()].
+/// This is the main result returned by [PoseDetector.detect].
 ///
 /// Contains:
 /// - [boundingBox]: Location of the detected person in the image

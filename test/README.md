@@ -16,14 +16,14 @@ Contains full integration tests that run in an actual app environment with TFLit
 - ✅ Initialization and disposal
 - ✅ Error handling
 - ✅ Detection with real sample images (pose1-7.jpg)
-- ✅ `detect()` and `detectOnImage()` methods
+- ✅ `detect(cv.Mat)` method
 - ✅ Different model variants (lite, full, heavy)
 - ✅ Different modes (boxes, boxesAndLandmarks)
 - ✅ Landmark and bounding box access (all 33 BlazePose landmarks)
 - ✅ Configuration parameters
 - ✅ Edge cases
 
-**Total Test Cases: 30**
+**Total Test Cases: 28**
 
 ## Running Tests
 
@@ -88,8 +88,6 @@ To run the limited unit tests (only error handling):
 flutter test test/pose_detector_test.dart
 ```
 
-**Expected result:** 2 passed (StateError tests), 28 failed (require TFLite) - this is normal!
-
 ## Test Coverage
 
 The test suite covers:
@@ -102,8 +100,6 @@ The test suite covers:
 
 2. **Error Handling**
    - StateError when not initialized
-   - Invalid image bytes
-   - Empty images
 
 3. **Real Image Detection**
    - 7 sample images (pose1.jpg - pose7.jpg)
@@ -111,9 +107,7 @@ The test suite covers:
    - Different image sizes
 
 4. **API Methods**
-   - `detect(Uint8List)` with byte arrays
-   - `detectOnImage(img.Image)` with pre-decoded images
-   - Results consistency between both methods
+   - `detect(cv.Mat)` with OpenCV Mat input
 
 5. **Model Variants**
    - PoseLandmarkModel.lite
@@ -148,7 +142,7 @@ The tests use real pose images from `assets/samples/`:
 ## Expected Test Results
 
 When running in a proper environment (device or platform-specific tests):
-- ✅ All 25 tests should pass
+- ✅ All 28 tests should pass
 - Detection should find people in all sample images
 - Landmarks should have valid coordinates within image bounds
 - Visibility scores should be between 0.0 and 1.0
@@ -181,10 +175,9 @@ If tests fail because no people are detected, verify:
 When adding new tests:
 
 1. Use real sample images when possible
-2. Test both `detect()` and `detectOnImage()` paths
-3. Verify results are within expected bounds
-4. Test edge cases and error conditions
-5. Clean up resources with `await detector.dispose()`
+2. Verify results are within expected bounds
+3. Test edge cases and error conditions
+4. Clean up resources with `await detector.dispose()`
 
 ## CI/CD Integration
 
