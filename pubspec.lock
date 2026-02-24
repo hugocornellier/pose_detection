@@ -122,10 +122,10 @@ packages:
     dependency: "direct main"
     description:
       name: flutter_litert
-      sha256: "5cb2cd10a4e8459fc33e54af0198da30d193a6b0d508b47f9056d6c583402943"
+      sha256: "84fd97e9f343994a8505c19f436025bd0d04a8a864e02bd45c1b0a32ddc53b82"
       url: "https://pub.dev"
     source: hosted
-    version: "0.1.12"
+    version: "0.1.16"
   flutter_test:
     dependency: "direct dev"
     description: flutter
@@ -207,10 +207,10 @@ packages:
     dependency: "direct main"
     description:
       name: meta
-      sha256: "1741988757a65eb6b36abe716829688cf01910bbf91c34354ff7ec1c3de2b349"
+      sha256: "23f08335362185a5ea2ad3a4e597f1375e78bce8a040df5c600c8d3552ef2394"
       url: "https://pub.dev"
     source: hosted
-    version: "1.18.0"
+    version: "1.17.0"
   native_toolchain_cmake:
     dependency: transitive
     description:

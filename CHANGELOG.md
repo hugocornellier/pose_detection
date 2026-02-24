@@ -1,3 +1,7 @@
+## 2.0.1
+
+- Migrate iOS CocoaPods -> Swift Package Manager
+
 ## 2.0.0
 
 **Breaking changes:**
