@@ -1,10 +1,10 @@
-name: pose_detection_tflite_example
-description: Example app for pose_detection_tflite
+name: pose_detection_example
+description: Example app for pose_detection
 publish_to: 'none'
 version: 1.0.0
 
 environment:
-  sdk: '>=3.4.0 <4.0.0'
+  sdk: '>=3.10.0 <4.0.0'
 
 dependencies:
   flutter:
@@ -13,17 +13,13 @@ dependencies:
   image_picker: ^1.2.1
   file_selector: ^1.1.0
   file_selector_macos: ^0.9.5
-  pose_detection_tflite:
+  pose_detection:
     path: ../
   flutter_colorpicker: ^1.1.0
   path_provider: ^2.1.5
   camera: ^0.11.3
   camera_macos: ^0.0.9
   opencv_dart: ^2.1.0
-
-dependency_overrides:
-  flutter_litert:
-    path: ../../flutter_litert
 
 dev_dependencies:
   flutter_test:

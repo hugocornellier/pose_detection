@@ -1,15 +1,15 @@
 cmake_minimum_required(VERSION 3.14)
 
-set(PROJECT_NAME "pose_detection_tflite")
+set(PROJECT_NAME "pose_detection")
 project(${PROJECT_NAME} LANGUAGES CXX)
 
-set(PLUGIN_NAME "pose_detection_tflite_plugin")
+set(PLUGIN_NAME "pose_detection_plugin")
 
 add_library(${PLUGIN_NAME} SHARED
-  "pose_detection_tflite_plugin.cpp"
-  "pose_detection_tflite_plugin.h"
-  "pose_detection_tflite_plugin_c_api.cpp"
-  "include/pose_detection_tflite/pose_detection_tflite_plugin_c_api.h"
+  "pose_detection_plugin.cpp"
+  "pose_detection_plugin.h"
+  "pose_detection_plugin_c_api.cpp"
+  "include/pose_detection/pose_detection_plugin_c_api.h"
 )
 
 apply_standard_settings(${PLUGIN_NAME})

@@ -1,12 +1,12 @@
 cmake_minimum_required(VERSION 3.10)
 
-set(PROJECT_NAME "pose_detection_tflite")
+set(PROJECT_NAME "pose_detection")
 project(${PROJECT_NAME} LANGUAGES CXX)
 
-set(PLUGIN_NAME "pose_detection_tflite_plugin")
+set(PLUGIN_NAME "pose_detection_plugin")
 
 list(APPEND PLUGIN_SOURCES
-  "pose_detection_tflite_plugin.cc"
+  "pose_detection_plugin.cc"
 )
 
 add_library(${PLUGIN_NAME} SHARED
@@ -25,7 +25,7 @@ target_link_libraries(${PLUGIN_NAME} PRIVATE flutter)
 target_link_libraries(${PLUGIN_NAME} PRIVATE PkgConfig::GTK)
 
 # TFLite C runtime and custom ops are now bundled by flutter_litert.
-set(pose_detection_tflite_bundled_libraries
+set(pose_detection_bundled_libraries
   ""
   PARENT_SCOPE
 )
@@ -49,7 +49,7 @@ set(INSTALL_GTEST OFF CACHE BOOL "Disable installation of googletest" FORCE)
 FetchContent_MakeAvailable(googletest)
 
 add_executable(${TEST_RUNNER}
-  test/pose_detection_tflite_plugin_test.cc
+  test/pose_detection_plugin_test.cc
   ${PLUGIN_SOURCES}
 )
 apply_standard_settings(${TEST_RUNNER})

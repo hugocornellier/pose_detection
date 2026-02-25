@@ -275,7 +275,7 @@ class PoseDetector {
           // Ignore in release mode, but surface the actual failure during debug.
           developer.log(
             'Pose landmark extraction failed on web',
-            name: 'pose_detection_tflite',
+            name: 'pose_detection',
             error: e,
             stackTrace: stackTrace,
           );
@@ -299,6 +299,20 @@ class PoseDetector {
     }
 
     return results;
+  }
+
+  /// API-compatibility stub for native-only OpenCV input.
+  ///
+  /// The web build does not support `cv.Mat` input. Use [detect] with encoded
+  /// image bytes instead.
+  Future<List<Pose>> detectFromMat(
+    Object mat, {
+    required int imageWidth,
+    required int imageHeight,
+  }) {
+    throw UnsupportedError(
+      'detectFromMat is not supported on web. Use detect(imageBytes) instead.',
+    );
   }
 
   /// Decodes encoded image bytes (JPEG, PNG, etc.) to an HTMLImageElement.

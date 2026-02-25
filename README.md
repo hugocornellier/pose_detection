@@ -1,7 +1,7 @@
-# pose_detection_tflite
+# pose_detection
  
-[![pub points](https://img.shields.io/pub/points/pose_detection_tflite?color=2E8B57&label=pub%20points)](https://pub.dev/packages/pose_detection_tflite/score)
-[![pub package](https://img.shields.io/pub/v/pose_detection_tflite.svg)](https://pub.dev/packages/pose_detection_tflite)
+[![pub points](https://img.shields.io/pub/points/pose_detection?color=2E8B57&label=pub%20points)](https://pub.dev/packages/pose_detection/score)
+[![pub package](https://img.shields.io/pub/v/pose_detection.svg)](https://pub.dev/packages/pose_detection)
 
 Flutter implementation of Google's [Pose Landmark Detection](https://ai.google.dev/edge/mediapipe/solutions/vision/pose_landmarker) with bounding boxes. 
 Provides on-device, multi-person pose and landmark detection using TensorFlow Lite.
@@ -14,7 +14,7 @@ Provides on-device, multi-person pose and landmark detection using TensorFlow Li
 ```dart
 import 'dart:io';
 import 'dart:typed_data';
-import 'package:pose_detection_tflite/pose_detection_tflite.dart';
+import 'package:pose_detection/pose_detection.dart';
 
 Future main() async {
   // Set mode/model then initialize
@@ -53,14 +53,14 @@ Future main() async {
 }
 ```
 
-Refer to the [sample code](https://pub.dev/packages/pose_detection_tflite/example) on the pub.dev example tab for a more in-depth example.
+Refer to the [sample code](https://pub.dev/packages/pose_detection/example) on the pub.dev example tab for a more in-depth example.
 
 ## Web (Flutter Web)
 
 This package supports Flutter Web using the same package import:
 
 ```dart
-import 'package:pose_detection_tflite/pose_detection_tflite.dart';
+import 'package:pose_detection/pose_detection.dart';
 ```
 
 The main difference is how you load images:
@@ -197,7 +197,7 @@ The package provides `poseLandmarkConnections`, a predefined list of landmark pa
 
 ```dart
 import 'package:flutter/material.dart';
-import 'package:pose_detection_tflite/pose_detection_tflite.dart';
+import 'package:pose_detection/pose_detection.dart';
 
 class PoseOverlayPainter extends CustomPainter {
   final Pose pose;

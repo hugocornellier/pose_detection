@@ -152,7 +152,7 @@ class PerformanceConfig {
   /// XNNPACK provides 2-5x speedup on macOS and Linux.
   /// On unsupported platforms (Windows, Android, iOS), falls back to CPU-only.
   const PerformanceConfig.xnnpack({this.numThreads})
-      : mode = PerformanceMode.xnnpack;
+    : mode = PerformanceMode.xnnpack;
 
   /// Creates config with GPU delegate enabled.
   ///

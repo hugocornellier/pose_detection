@@ -1,21 +1,17 @@
-name: pose_detection_tflite_example_web
-description: Web example for pose_detection_tflite
+name: pose_detection_example_web
+description: Web example for pose_detection
 publish_to: 'none'
 version: 1.0.0
 
 environment:
-  sdk: '>=3.4.0 <4.0.0'
+  sdk: '>=3.10.0 <4.0.0'
 
 dependencies:
   flutter:
     sdk: flutter
-  pose_detection_tflite:
+  pose_detection:
     path: ../
   web: ^1.1.1
-
-dependency_overrides:
-  flutter_litert:
-    path: ../../flutter_litert
 
 flutter:
   uses-material-design: true

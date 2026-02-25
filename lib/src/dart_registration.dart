@@ -1,12 +1,12 @@
-/// Dart plugin registration for pose_detection_tflite.
+/// Dart plugin registration for pose_detection.
 ///
 /// This class provides plugin registration for pure Dart platforms.
-class PoseDetectionTfliteDart {
-  /// Creates a [PoseDetectionTfliteDart] instance.
+class PoseDetectionDart {
+  /// Creates a [PoseDetectionDart] instance.
   ///
   /// This constructor is typically not called directly. Plugin registration
   /// happens automatically via the [registerWith] method.
-  PoseDetectionTfliteDart();
+  PoseDetectionDart();
 
   /// Registers the plugin with the Dart plugin registry.
   ///

@@ -1,3 +1,5 @@
+// ignore_for_file: public_member_api_docs
+
 import 'dart:async';
 import 'dart:math' as math;
 import 'dart:typed_data';
@@ -5,7 +7,7 @@ import 'dart:js_interop';
 import 'dart:ui_web' as ui_web;
 
 import 'package:flutter/material.dart';
-import 'package:pose_detection_tflite/pose_detection_tflite.dart';
+import 'package:pose_detection/pose_detection.dart';
 import 'package:web/web.dart' as web;
 
 void main() {
@@ -44,8 +46,9 @@ class _PoseDetectionWidgetState extends State<PoseDetectionWidget> {
   web.HTMLCanvasElement? _displayCanvas;
   bool _hasAnnotation = false;
   double _confidenceThreshold = 0.70;
-  final TextEditingController _confidenceController =
-      TextEditingController(text: '0.70');
+  final TextEditingController _confidenceController = TextEditingController(
+    text: '0.70',
+  );
 
   static bool _viewFactoryRegistered = false;
 
@@ -154,8 +157,10 @@ class _PoseDetectionWidgetState extends State<PoseDetectionWidget> {
 
     final confThres = double.tryParse(_confidenceController.text) ?? 0.70;
     if (confThres < 0.0 || confThres > 1.0) {
-      setState(() =>
-          _status = 'Invalid confidence threshold! Must be between 0.0 and 1.0');
+      setState(
+        () => _status =
+            'Invalid confidence threshold! Must be between 0.0 and 1.0',
+      );
       return;
     }
 
@@ -181,16 +186,14 @@ class _PoseDetectionWidgetState extends State<PoseDetectionWidget> {
       final totalStart = DateTime.now();
 
       final poses = await _detector!.detect(_pickedBytes!);
-      final totalElapsed =
-          DateTime.now().difference(totalStart).inMilliseconds;
+      final totalElapsed = DateTime.now().difference(totalStart).inMilliseconds;
 
       // Draw annotations on canvas
       if (poses.isNotEmpty) {
         await _drawAnnotations(poses);
       }
 
-      final withLandmarks =
-          poses.where((p) => p.landmarks.isNotEmpty).length;
+      final withLandmarks = poses.where((p) => p.landmarks.isNotEmpty).length;
       final resultsText = StringBuffer();
       resultsText.writeln('Found ${poses.length} person(s)');
       resultsText.writeln('Poses with landmarks: $withLandmarks');
@@ -202,8 +205,9 @@ class _PoseDetectionWidgetState extends State<PoseDetectionWidget> {
         resultsText.writeln('    Score: ${pose.score.toStringAsFixed(2)}');
         if (pose.landmarks.isNotEmpty) {
           resultsText.writeln('    Keypoints: ${pose.landmarks.length}');
-          final visibleCount =
-              pose.landmarks.where((lm) => lm.visibility > 0.5).length;
+          final visibleCount = pose.landmarks
+              .where((lm) => lm.visibility > 0.5)
+              .length;
           resultsText.writeln('    Visible keypoints: $visibleCount');
         } else {
           resultsText.writeln('    Landmarks: Low confidence');
@@ -234,11 +238,13 @@ class _PoseDetectionWidgetState extends State<PoseDetectionWidget> {
       final htmlImage = web.HTMLImageElement();
       final loadCompleter = Completer<void>();
       htmlImage.addEventListener(
-          'load', ((web.Event _) => loadCompleter.complete()).toJS);
+        'load',
+        ((web.Event _) => loadCompleter.complete()).toJS,
+      );
       htmlImage.addEventListener(
-          'error',
-          ((web.Event _) => loadCompleter.completeError('Failed to load'))
-              .toJS);
+        'error',
+        ((web.Event _) => loadCompleter.completeError('Failed to load')).toJS,
+      );
       htmlImage.src = url;
       await loadCompleter.future;
 
@@ -260,8 +266,12 @@ class _PoseDetectionWidgetState extends State<PoseDetectionWidget> {
         // Bounding box
         ctx.strokeStyle = colorStr.toJS;
         ctx.lineWidth = 3;
-        ctx.strokeRect(box.left, box.top, box.right - box.left,
-            box.bottom - box.top);
+        ctx.strokeRect(
+          box.left,
+          box.top,
+          box.right - box.left,
+          box.bottom - box.top,
+        );
 
         // Label
         final label = 'Person ${(pose.score * 100).toStringAsFixed(0)}%';
@@ -285,7 +295,9 @@ class _PoseDetectionWidgetState extends State<PoseDetectionWidget> {
   }
 
   void _drawLandmarks(
-      web.CanvasRenderingContext2D ctx, List<PoseLandmark> landmarks) {
+    web.CanvasRenderingContext2D ctx,
+    List<PoseLandmark> landmarks,
+  ) {
     ctx.fillStyle = 'rgb(255,0,0)'.toJS;
     for (final lm in landmarks) {
       if (lm.visibility < 0.5) continue;
@@ -296,7 +308,9 @@ class _PoseDetectionWidgetState extends State<PoseDetectionWidget> {
   }
 
   void _drawSkeleton(
-      web.CanvasRenderingContext2D ctx, List<PoseLandmark> landmarks) {
+    web.CanvasRenderingContext2D ctx,
+    List<PoseLandmark> landmarks,
+  ) {
     ctx.strokeStyle = 'rgb(0,255,255)'.toJS;
     ctx.lineWidth = 2;
     for (final pair in poseLandmarkConnections) {
@@ -331,8 +345,10 @@ class _PoseDetectionWidgetState extends State<PoseDetectionWidget> {
                 child: const Text('Detect Poses'),
               ),
               const SizedBox(width: 20),
-              const Text('Confidence:',
-                  style: TextStyle(fontWeight: FontWeight.bold)),
+              const Text(
+                'Confidence:',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
               const SizedBox(width: 8),
               SizedBox(
                 width: 80,
@@ -341,8 +357,10 @@ class _PoseDetectionWidgetState extends State<PoseDetectionWidget> {
                   keyboardType: TextInputType.number,
                   decoration: const InputDecoration(
                     isDense: true,
-                    contentPadding:
-                        EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                    contentPadding: EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 8,
+                    ),
                     border: OutlineInputBorder(),
                   ),
                   onChanged: (value) {
@@ -365,8 +383,9 @@ class _PoseDetectionWidgetState extends State<PoseDetectionWidget> {
                       ? (value) {
                           setState(() {
                             _confidenceThreshold = value;
-                            _confidenceController.text =
-                                value.toStringAsFixed(2);
+                            _confidenceController.text = value.toStringAsFixed(
+                              2,
+                            );
                           });
                         }
                       : null,

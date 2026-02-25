@@ -4,7 +4,7 @@
 
 list(APPEND FLUTTER_PLUGIN_LIST
   file_selector_linux
-  pose_detection_tflite
+  pose_detection
 )
 
 list(APPEND FLUTTER_FFI_PLUGIN_LIST

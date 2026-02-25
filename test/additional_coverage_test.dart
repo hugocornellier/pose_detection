@@ -1,15 +1,15 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:pose_detection_tflite/pose_detection_tflite.dart';
-import 'package:pose_detection_tflite/src/models/person_detector.dart';
-import 'package:pose_detection_tflite/src/models/pose_landmark_model.dart';
+import 'package:pose_detection/pose_detection.dart';
+import 'package:pose_detection/src/models/person_detector.dart';
+import 'package:pose_detection/src/models/pose_landmark_model.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   test('Dart registration is callable', () {
-    final instance = PoseDetectionTfliteDart();
-    expect(instance, isA<PoseDetectionTfliteDart>());
-    expect(() => PoseDetectionTfliteDart.registerWith(), returnsNormally);
+    final instance = PoseDetectionDart();
+    expect(instance, isA<PoseDetectionDart>());
+    expect(() => PoseDetectionDart.registerWith(), returnsNormally);
   });
 
   group('PoseLandmarkModelRunner', () {

@@ -105,7 +105,7 @@ class PoseLandmarkModelRunner {
   ///   Higher values enable more parallelism but consume more memory.
   ///   Default is 1 for backward compatibility.
   PoseLandmarkModelRunner({int poolSize = 1})
-      : _poolSize = poolSize.clamp(1, 10);
+    : _poolSize = poolSize.clamp(1, 10);
 
   /// Initializes the BlazePose landmark model with the specified variant.
   ///
@@ -211,7 +211,8 @@ class PoseLandmarkModelRunner {
     final options = InterpreterOptions();
     final effectiveConfig = config ?? const PerformanceConfig();
 
-    final threadCount = effectiveConfig.numThreads?.clamp(0, 8) ??
+    final threadCount =
+        effectiveConfig.numThreads?.clamp(0, 8) ??
         math.min(4, Platform.numberOfProcessors);
 
     if (effectiveConfig.mode == PerformanceMode.disabled) {
@@ -286,8 +287,9 @@ class PoseLandmarkModelRunner {
     }
 
     try {
-      final gpuDelegate =
-          Platform.isIOS ? GpuDelegate() : GpuDelegateV2() as Delegate;
+      final gpuDelegate = Platform.isIOS
+          ? GpuDelegate()
+          : GpuDelegateV2() as Delegate;
       options.addDelegate(gpuDelegate);
       return (options, gpuDelegate);
     } catch (e) {
@@ -320,11 +322,11 @@ class PoseLandmarkModelRunner {
   String _getModelPath(PoseLandmarkModel model) {
     switch (model) {
       case PoseLandmarkModel.lite:
-        return 'packages/pose_detection_tflite/assets/models/pose_landmark_lite.tflite';
+        return 'packages/pose_detection/assets/models/pose_landmark_lite.tflite';
       case PoseLandmarkModel.full:
-        return 'packages/pose_detection_tflite/assets/models/pose_landmark_full.tflite';
+        return 'packages/pose_detection/assets/models/pose_landmark_full.tflite';
       case PoseLandmarkModel.heavy:
-        return 'packages/pose_detection_tflite/assets/models/pose_landmark_heavy.tflite';
+        return 'packages/pose_detection/assets/models/pose_landmark_heavy.tflite';
     }
   }
 
@@ -459,8 +461,8 @@ class PoseLandmarkModelRunner {
     double clamp01(double v) => v.isNaN
         ? 0.0
         : v < 0.0
-            ? 0.0
-            : (v > 1.0 ? 1.0 : v);
+        ? 0.0
+        : (v > 1.0 ? 1.0 : v);
 
     final double score = sigmoid(scoreData[0][0] as double);
     final List<dynamic> raw = landmarksData[0] as List<dynamic>;

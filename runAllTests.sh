@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Run all tests for pose_detection_tflite
+# Run all tests for pose_detection
 # This script runs both regular unit tests and integration tests
 
 set -e  # Exit on any error

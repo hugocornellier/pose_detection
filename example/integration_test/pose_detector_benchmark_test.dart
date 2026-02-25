@@ -14,7 +14,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 import 'package:opencv_dart/opencv_dart.dart' as cv;
-import 'package:pose_detection_tflite/pose_detection_tflite.dart';
+import 'package:pose_detection/pose_detection.dart';
 
 const int iterations = 20;
 const int warmupIterations = 3;
@@ -49,7 +49,7 @@ class BenchmarkStats {
     final mean = average;
     final variance =
         timings.map((t) => pow(t - mean, 2)).reduce((a, b) => a + b) /
-            timings.length;
+        timings.length;
     return sqrt(variance);
   }
 
@@ -79,19 +79,19 @@ class BenchmarkStats {
   }
 
   Map<String, dynamic> toJson() => {
-        'image_path': imagePath,
-        'iterations': timings.length,
-        'image_size_bytes': imageSize,
-        'detections_per_frame': detectionCount,
-        'average_ms': double.parse(average.toStringAsFixed(2)),
-        'min_ms': min,
-        'max_ms': max,
-        'p50_ms': double.parse(p50.toStringAsFixed(2)),
-        'p95_ms': double.parse(p95.toStringAsFixed(2)),
-        'p99_ms': double.parse(p99.toStringAsFixed(2)),
-        'std_dev_ms': double.parse(standardDeviation.toStringAsFixed(2)),
-        'all_timings_ms': timings,
-      };
+    'image_path': imagePath,
+    'iterations': timings.length,
+    'image_size_bytes': imageSize,
+    'detections_per_frame': detectionCount,
+    'average_ms': double.parse(average.toStringAsFixed(2)),
+    'min_ms': min,
+    'max_ms': max,
+    'p50_ms': double.parse(p50.toStringAsFixed(2)),
+    'p95_ms': double.parse(p95.toStringAsFixed(2)),
+    'p99_ms': double.parse(p99.toStringAsFixed(2)),
+    'std_dev_ms': double.parse(standardDeviation.toStringAsFixed(2)),
+    'all_timings_ms': timings,
+  };
 }
 
 class BenchmarkResults {
@@ -108,11 +108,11 @@ class BenchmarkResults {
   });
 
   Map<String, dynamic> toJson() => {
-        'timestamp': timestamp,
-        'test_name': testName,
-        'configuration': configuration,
-        'results': results.map((r) => r.toJson()).toList(),
-      };
+    'timestamp': timestamp,
+    'test_name': testName,
+    'configuration': configuration,
+    'results': results.map((r) => r.toJson()).toList(),
+  };
 
   void printJson(String filename) {
     print('\n BENCHMARK_JSON_START:$filename');
@@ -125,83 +125,86 @@ void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
   group('PoseDetector - Performance Benchmarks', () {
-    test('Benchmark heavy model with XNNPACK',
-        timeout: const Timeout(Duration(minutes: 10)), () async {
-      final detector = PoseDetector(
-        mode: PoseMode.boxesAndLandmarks,
-        landmarkModel: PoseLandmarkModel.heavy,
-        performanceConfig: const PerformanceConfig.xnnpack(),
-      );
-      await detector.initialize();
-
-      print('\n${'=' * 60}');
-      print('BENCHMARK: Heavy Model (XNNPACK, pool=1 forced)');
-      print('=' * 60);
-
-      final allStats = <BenchmarkStats>[];
-
-      for (final imagePath in sampleImages) {
-        final ByteData data = await rootBundle.load(imagePath);
-        final Uint8List bytes = data.buffer.asUint8List();
-
-        final cv.Mat mat = cv.imdecode(bytes, cv.IMREAD_COLOR);
-        final int imageWidth = mat.cols;
-        final int imageHeight = mat.rows;
-
-        final List<int> timings = [];
-        int detectionCount = 0;
-
-        // Warmup
-        for (int i = 0; i < warmupIterations; i++) {
-          final results = await detector.detectFromMat(
-            mat,
-            imageWidth: imageWidth,
-            imageHeight: imageHeight,
-          );
-          if (i == 0) detectionCount = results.length;
-        }
-
-        // Timed iterations
-        for (int i = 0; i < iterations; i++) {
-          final stopwatch = Stopwatch()..start();
-          await detector.detectFromMat(
-            mat,
-            imageWidth: imageWidth,
-            imageHeight: imageHeight,
-          );
-          stopwatch.stop();
-          timings.add(stopwatch.elapsedMilliseconds);
-        }
-
-        mat.dispose();
-
-        final stats = BenchmarkStats(
-          imagePath: imagePath,
-          timings: timings,
-          imageSize: bytes.length,
-          detectionCount: detectionCount,
+    test(
+      'Benchmark heavy model with XNNPACK',
+      timeout: const Timeout(Duration(minutes: 10)),
+      () async {
+        final detector = PoseDetector(
+          mode: PoseMode.boxesAndLandmarks,
+          landmarkModel: PoseLandmarkModel.heavy,
+          performanceConfig: const PerformanceConfig.xnnpack(),
         );
-        stats.printResults(imagePath);
-        allStats.add(stats);
-      }
+        await detector.initialize();
 
-      await detector.dispose();
+        print('\n${'=' * 60}');
+        print('BENCHMARK: Heavy Model (XNNPACK, pool=1 forced)');
+        print('=' * 60);
 
-      final timestamp = DateTime.now().toIso8601String().replaceAll(':', '-');
-      final benchmarkResults = BenchmarkResults(
-        timestamp: timestamp,
-        testName: 'Heavy Model (XNNPACK)',
-        configuration: {
-          'model': 'heavy',
-          'mode': 'boxesAndLandmarks',
-          'warmup_iterations': warmupIterations,
-          'timed_iterations': iterations,
-          'interpreter_pool_size': 1,
-          'xnnpack_threads': 'auto',
-        },
-        results: allStats,
-      );
-      benchmarkResults.printJson('benchmark_xnnpack_$timestamp.json');
-    });
+        final allStats = <BenchmarkStats>[];
+
+        for (final imagePath in sampleImages) {
+          final ByteData data = await rootBundle.load(imagePath);
+          final Uint8List bytes = data.buffer.asUint8List();
+
+          final cv.Mat mat = cv.imdecode(bytes, cv.IMREAD_COLOR);
+          final int imageWidth = mat.cols;
+          final int imageHeight = mat.rows;
+
+          final List<int> timings = [];
+          int detectionCount = 0;
+
+          // Warmup
+          for (int i = 0; i < warmupIterations; i++) {
+            final results = await detector.detectFromMat(
+              mat,
+              imageWidth: imageWidth,
+              imageHeight: imageHeight,
+            );
+            if (i == 0) detectionCount = results.length;
+          }
+
+          // Timed iterations
+          for (int i = 0; i < iterations; i++) {
+            final stopwatch = Stopwatch()..start();
+            await detector.detectFromMat(
+              mat,
+              imageWidth: imageWidth,
+              imageHeight: imageHeight,
+            );
+            stopwatch.stop();
+            timings.add(stopwatch.elapsedMilliseconds);
+          }
+
+          mat.dispose();
+
+          final stats = BenchmarkStats(
+            imagePath: imagePath,
+            timings: timings,
+            imageSize: bytes.length,
+            detectionCount: detectionCount,
+          );
+          stats.printResults(imagePath);
+          allStats.add(stats);
+        }
+
+        await detector.dispose();
+
+        final timestamp = DateTime.now().toIso8601String().replaceAll(':', '-');
+        final benchmarkResults = BenchmarkResults(
+          timestamp: timestamp,
+          testName: 'Heavy Model (XNNPACK)',
+          configuration: {
+            'model': 'heavy',
+            'mode': 'boxesAndLandmarks',
+            'warmup_iterations': warmupIterations,
+            'timed_iterations': iterations,
+            'interpreter_pool_size': 1,
+            'xnnpack_threads': 'auto',
+          },
+          results: allStats,
+        );
+        benchmarkResults.printJson('benchmark_xnnpack_$timestamp.json');
+      },
+    );
   });
 }

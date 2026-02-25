@@ -121,10 +121,11 @@ packages:
   flutter_litert:
     dependency: "direct main"
     description:
-      path: "../flutter_litert"
-      relative: true
-    source: path
-    version: "0.2.0"
+      name: flutter_litert
+      sha256: "8cfd394dea0b2c7651c1ce0da68acf9c84123ebb08a7b0980ccbf2c270744b2f"
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.2.1"
   flutter_test:
     dependency: "direct dev"
     description: flutter

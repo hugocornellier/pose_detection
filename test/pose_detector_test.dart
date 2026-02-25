@@ -23,7 +23,7 @@
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:opencv_dart/opencv_dart.dart' as cv;
-import 'package:pose_detection_tflite/pose_detection_tflite.dart';
+import 'package:pose_detection/pose_detection.dart';
 
 /// Helper to load an image asset and run detection, returning results.
 Future<List<Pose>> _detectAsset(PoseDetector detector, String path) async {
@@ -136,8 +136,10 @@ void main() {
         );
         await detector.initialize();
 
-        final List<Pose> results =
-            await _detectAsset(detector, 'assets/samples/pose1.jpg');
+        final List<Pose> results = await _detectAsset(
+          detector,
+          'assets/samples/pose1.jpg',
+        );
 
         expect(results, isNotEmpty);
 
@@ -173,8 +175,10 @@ void main() {
       );
       await detector.initialize();
 
-      final List<Pose> results =
-          await _detectAsset(detector, 'assets/samples/pose2.jpg');
+      final List<Pose> results = await _detectAsset(
+        detector,
+        'assets/samples/pose2.jpg',
+      );
 
       expect(results, isNotEmpty);
       await detector.dispose();
@@ -187,8 +191,10 @@ void main() {
       );
       await detector.initialize();
 
-      final List<Pose> results =
-          await _detectAsset(detector, 'assets/samples/pose3.jpg');
+      final List<Pose> results = await _detectAsset(
+        detector,
+        'assets/samples/pose3.jpg',
+      );
 
       expect(results, isNotEmpty);
       await detector.dispose();
@@ -202,8 +208,10 @@ void main() {
       );
       await detector.initialize();
 
-      final List<Pose> results =
-          await _detectAsset(detector, 'assets/samples/pose1.jpg');
+      final List<Pose> results = await _detectAsset(
+        detector,
+        'assets/samples/pose1.jpg',
+      );
 
       expect(results, isNotEmpty);
 
@@ -229,8 +237,10 @@ void main() {
       );
       await detector.initialize();
 
-      final List<Pose> results =
-          await _detectAsset(detector, 'assets/samples/pose1.jpg');
+      final List<Pose> results = await _detectAsset(
+        detector,
+        'assets/samples/pose1.jpg',
+      );
 
       expect(results, isNotEmpty);
       expect(results.first.hasLandmarks, true);
@@ -245,8 +255,10 @@ void main() {
       );
       await detector.initialize();
 
-      final List<Pose> results =
-          await _detectAsset(detector, 'assets/samples/pose1.jpg');
+      final List<Pose> results = await _detectAsset(
+        detector,
+        'assets/samples/pose1.jpg',
+      );
 
       expect(results, isNotEmpty);
       expect(results.first.hasLandmarks, true);
@@ -261,8 +273,10 @@ void main() {
       );
       await detector.initialize();
 
-      final List<Pose> results =
-          await _detectAsset(detector, 'assets/samples/pose1.jpg');
+      final List<Pose> results = await _detectAsset(
+        detector,
+        'assets/samples/pose1.jpg',
+      );
 
       expect(results, isNotEmpty);
       expect(results.first.hasLandmarks, true);
@@ -436,10 +450,14 @@ void main() {
       );
       await lenientDetector.initialize();
 
-      final strictResults =
-          await _detectAsset(strictDetector, 'assets/samples/pose1.jpg');
-      final lenientResults =
-          await _detectAsset(lenientDetector, 'assets/samples/pose1.jpg');
+      final strictResults = await _detectAsset(
+        strictDetector,
+        'assets/samples/pose1.jpg',
+      );
+      final lenientResults = await _detectAsset(
+        lenientDetector,
+        'assets/samples/pose1.jpg',
+      );
 
       // Lenient should detect same or more people
       expect(lenientResults.length, greaterThanOrEqualTo(strictResults.length));
@@ -456,8 +474,10 @@ void main() {
       );
       await detector.initialize();
 
-      final List<Pose> results =
-          await _detectAsset(detector, 'assets/samples/pose1.jpg');
+      final List<Pose> results = await _detectAsset(
+        detector,
+        'assets/samples/pose1.jpg',
+      );
 
       // Should not detect more than maxDetections
       expect(results.length, lessThanOrEqualTo(1));
@@ -473,8 +493,10 @@ void main() {
       );
       await detector.initialize();
 
-      final List<Pose> results =
-          await _detectAsset(detector, 'assets/samples/pose1.jpg');
+      final List<Pose> results = await _detectAsset(
+        detector,
+        'assets/samples/pose1.jpg',
+      );
 
       // With high landmark score threshold, might get fewer results
       if (results.isNotEmpty) {
@@ -593,8 +615,10 @@ void main() {
       );
       await detector.initialize();
 
-      final List<Pose> results =
-          await _detectAsset(detector, 'assets/samples/pose1.jpg');
+      final List<Pose> results = await _detectAsset(
+        detector,
+        'assets/samples/pose1.jpg',
+      );
 
       for (final pose in results) {
         expect(pose.landmarks, isEmpty);
@@ -614,8 +638,10 @@ void main() {
       );
       await detector.initialize();
 
-      final List<Pose> results =
-          await _detectAsset(detector, 'assets/samples/pose1.jpg');
+      final List<Pose> results = await _detectAsset(
+        detector,
+        'assets/samples/pose1.jpg',
+      );
 
       expect(results, isNotEmpty);
 

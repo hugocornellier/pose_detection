@@ -1,6 +1,6 @@
 import 'dart:io';
 import 'dart:typed_data';
-import 'package:pose_detection_tflite/pose_detection_tflite.dart';
+import 'package:pose_detection/pose_detection.dart';
 
 Future main() async {
   // 1. initialize
@@ -18,7 +18,8 @@ Future main() async {
   for (final Pose pose in results) {
     final BoundingBox bbox = pose.boundingBox;
     stdout.writeln(
-        'Bounding box: (${bbox.left}, ${bbox.top}) → (${bbox.right}, ${bbox.bottom})');
+      'Bounding box: (${bbox.left}, ${bbox.top}) → (${bbox.right}, ${bbox.bottom})',
+    );
 
     if (pose.hasLandmarks) {
       // iterate through landmarks
@@ -31,11 +32,13 @@ Future main() async {
 
       // access individual landmarks
       // see "Pose Landmark Types" section in README for full list of landmarks
-      final PoseLandmark? leftKnee =
-          pose.getLandmark(PoseLandmarkType.leftKnee);
+      final PoseLandmark? leftKnee = pose.getLandmark(
+        PoseLandmarkType.leftKnee,
+      );
       if (leftKnee != null) {
         stdout.writeln(
-            'Left knee visibility: ${leftKnee.visibility.toStringAsFixed(2)}');
+          'Left knee visibility: ${leftKnee.visibility.toStringAsFixed(2)}',
+        );
       }
     }
   }

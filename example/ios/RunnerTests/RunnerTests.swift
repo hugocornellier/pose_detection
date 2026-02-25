@@ -3,7 +3,7 @@ import UIKit
 import XCTest
 
 
-@testable import pose_detection_tflite
+@testable import pose_detection
 
 // This demonstrates a simple unit test of the Swift portion of this plugin's implementation.
 //
@@ -12,7 +12,7 @@ import XCTest
 class RunnerTests: XCTestCase {
 
   func testGetPlatformVersion() {
-    let plugin = PoseDetectionTflitePlugin()
+    let plugin = PoseDetectionPlugin()
 
     let call = FlutterMethodCall(methodName: "getPlatformVersion", arguments: [])
 

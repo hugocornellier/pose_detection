@@ -26,7 +26,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 import 'package:opencv_dart/opencv_dart.dart' as cv;
-import 'package:pose_detection_tflite/pose_detection_tflite.dart';
+import 'package:pose_detection/pose_detection.dart';
 
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
@@ -90,68 +90,74 @@ void main() {
   });
 
   group('PoseDetector - Error Handling', () {
-    test('should throw StateError when detect() called before initialize',
-        () async {
-      final detector = PoseDetector();
-      final cv.Mat mat = cv.Mat.zeros(1, 1, cv.MatType.CV_8UC3);
+    test(
+      'should throw StateError when detect() called before initialize',
+      () async {
+        final detector = PoseDetector();
+        final cv.Mat mat = cv.Mat.zeros(1, 1, cv.MatType.CV_8UC3);
 
-      expect(
-        () => detector.detectFromMat(mat, imageWidth: 1, imageHeight: 1),
-        throwsA(isA<StateError>().having(
-          (e) => e.message,
-          'message',
-          contains('not initialized'),
-        )),
-      );
+        expect(
+          () => detector.detectFromMat(mat, imageWidth: 1, imageHeight: 1),
+          throwsA(
+            isA<StateError>().having(
+              (e) => e.message,
+              'message',
+              contains('not initialized'),
+            ),
+          ),
+        );
 
-      mat.dispose();
-    });
+        mat.dispose();
+      },
+    );
   });
 
   group('PoseDetector - detect() with real images', () {
-    test('should detect people in pose1.jpg with boxesAndLandmarks mode',
-        () async {
-      final detector = PoseDetector(
-        mode: PoseMode.boxesAndLandmarks,
-        landmarkModel: PoseLandmarkModel.lite,
-      );
-      await detector.initialize();
+    test(
+      'should detect people in pose1.jpg with boxesAndLandmarks mode',
+      () async {
+        final detector = PoseDetector(
+          mode: PoseMode.boxesAndLandmarks,
+          landmarkModel: PoseLandmarkModel.lite,
+        );
+        await detector.initialize();
 
-      final ByteData data = await rootBundle.load('assets/samples/pose1.jpg');
-      final Uint8List bytes = data.buffer.asUint8List();
-      final cv.Mat mat = cv.imdecode(bytes, cv.IMREAD_COLOR);
-      final List<Pose> results = await detector.detectFromMat(
-        mat,
-        imageWidth: mat.cols,
-        imageHeight: mat.rows,
-      );
+        final ByteData data = await rootBundle.load('assets/samples/pose1.jpg');
+        final Uint8List bytes = data.buffer.asUint8List();
+        final cv.Mat mat = cv.imdecode(bytes, cv.IMREAD_COLOR);
+        final List<Pose> results = await detector.detectFromMat(
+          mat,
+          imageWidth: mat.cols,
+          imageHeight: mat.rows,
+        );
 
-      expect(results, isNotEmpty);
+        expect(results, isNotEmpty);
 
-      for (final pose in results) {
-        // Verify bounding box
-        expect(pose.boundingBox, isNotNull);
-        expect(pose.boundingBox.left, greaterThanOrEqualTo(0));
-        expect(pose.boundingBox.top, greaterThanOrEqualTo(0));
-        expect(pose.boundingBox.right, greaterThan(pose.boundingBox.left));
-        expect(pose.boundingBox.bottom, greaterThan(pose.boundingBox.top));
+        for (final pose in results) {
+          // Verify bounding box
+          expect(pose.boundingBox, isNotNull);
+          expect(pose.boundingBox.left, greaterThanOrEqualTo(0));
+          expect(pose.boundingBox.top, greaterThanOrEqualTo(0));
+          expect(pose.boundingBox.right, greaterThan(pose.boundingBox.left));
+          expect(pose.boundingBox.bottom, greaterThan(pose.boundingBox.top));
 
-        // Verify score
-        expect(pose.score, greaterThan(0));
-        expect(pose.score, lessThanOrEqualTo(1.0));
+          // Verify score
+          expect(pose.score, greaterThan(0));
+          expect(pose.score, lessThanOrEqualTo(1.0));
 
-        // Verify landmarks
-        expect(pose.hasLandmarks, true);
-        expect(pose.landmarks.length, 33); // BlazePose has 33 landmarks
+          // Verify landmarks
+          expect(pose.hasLandmarks, true);
+          expect(pose.landmarks.length, 33); // BlazePose has 33 landmarks
 
-        // Check image dimensions
-        expect(pose.imageWidth, greaterThan(0));
-        expect(pose.imageHeight, greaterThan(0));
-      }
+          // Check image dimensions
+          expect(pose.imageWidth, greaterThan(0));
+          expect(pose.imageHeight, greaterThan(0));
+        }
 
-      mat.dispose();
-      await detector.dispose();
-    });
+        mat.dispose();
+        await detector.dispose();
+      },
+    );
 
     test('should detect people in pose2.jpg', () async {
       final detector = PoseDetector(landmarkModel: PoseLandmarkModel.lite);
@@ -249,10 +255,7 @@ void main() {
 
       // Scores should be identical (or very close)
       for (int i = 0; i < results1.length; i++) {
-        expect(
-          (results1[i].score - results2[i].score).abs(),
-          lessThan(0.01),
-        );
+        expect((results1[i].score - results2[i].score).abs(), lessThan(0.01));
       }
 
       mat1.dispose();
@@ -396,14 +399,8 @@ void main() {
       expect(yNorm, lessThanOrEqualTo(1.0));
 
       // Verify calculation
-      expect(
-        (xNorm - landmark.x / pose.imageWidth).abs(),
-        lessThan(0.0001),
-      );
-      expect(
-        (yNorm - landmark.y / pose.imageHeight).abs(),
-        lessThan(0.0001),
-      );
+      expect((xNorm - landmark.x / pose.imageWidth).abs(), lessThan(0.0001));
+      expect((yNorm - landmark.y / pose.imageHeight).abs(), lessThan(0.0001));
     });
 
     test('should convert landmark to pixel Point', () {

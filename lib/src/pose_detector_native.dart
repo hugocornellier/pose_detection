@@ -222,8 +222,8 @@ class PoseDetector {
     this.performanceConfig = PerformanceConfig.disabled,
     this.useNativePreprocessing = true,
   }) : interpreterPoolSize = performanceConfig.mode == PerformanceMode.disabled
-            ? interpreterPoolSize
-            : 1 {
+           ? interpreterPoolSize
+           : 1 {
     _lm = PoseLandmarkModelRunner(poolSize: this.interpreterPoolSize);
   }
 
@@ -343,13 +343,10 @@ class PoseDetector {
 
       if (square == null) continue;
 
-      final cv.Mat resized = cv.resize(
-          square,
-          (
-            256,
-            256,
-          ),
-          interpolation: cv.INTER_LINEAR);
+      final cv.Mat resized = cv.resize(square, (
+        256,
+        256,
+      ), interpolation: cv.INTER_LINEAR);
       square.dispose();
 
       final double sqX1 = cx - side / 2.0;

@@ -27,13 +27,10 @@ class NativeImageUtils {
     final int nw = (w * r).round();
     final int nh = (h * r).round();
 
-    final cv.Mat resized = cv.resize(
-        src,
-        (
-          nw,
-          nh,
-        ),
-        interpolation: cv.INTER_LINEAR);
+    final cv.Mat resized = cv.resize(src, (
+      nw,
+      nh,
+    ), interpolation: cv.INTER_LINEAR);
 
     final int dw = (tw - nw) ~/ 2;
     final int dh = (th - nh) ~/ 2;
@@ -77,13 +74,10 @@ class NativeImageUtils {
     final int h = src.rows;
     final double scaleX = 256.0 / w;
     final double scaleY = 256.0 / h;
-    final cv.Mat resized = cv.resize(
-        src,
-        (
-          256,
-          256,
-        ),
-        interpolation: cv.INTER_LINEAR);
+    final cv.Mat resized = cv.resize(src, (
+      256,
+      256,
+    ), interpolation: cv.INTER_LINEAR);
     return (resized, scaleX, scaleY);
   }
 

@@ -61,7 +61,7 @@ class YoloV8PersonDetector {
   /// Throws an exception if the model fails to load.
   Future<void> initialize({PerformanceConfig? performanceConfig}) async {
     const String assetPath =
-        'packages/pose_detection_tflite/assets/models/yolov8n_float32.tflite';
+        'packages/pose_detection/assets/models/yolov8n_float32.tflite';
     if (_isInitialized) await dispose();
 
     final options = InterpreterOptions();
@@ -151,8 +151,7 @@ class YoloV8PersonDetector {
     final web.CanvasRenderingContext2D ctx = _canvasCtx!;
     ctx.fillStyle = 'rgb(114,114,114)'.toJS;
     ctx.fillRect(0, 0, _inW, _inH);
-    ctx.drawImage(
-        htmlImage, 0, 0, imageWidth, imageHeight, dw, dh, nw, nh);
+    ctx.drawImage(htmlImage, 0, 0, imageWidth, imageHeight, dw, dh, nw, nh);
 
     // Extract pixel data
     final web.ImageData imageData = ctx.getImageData(0, 0, _inW, _inH);
@@ -172,10 +171,7 @@ class YoloV8PersonDetector {
     _cachedOutputs ??= _createOutputBuffers();
     _zeroOutputBuffers(_cachedOutputs!);
 
-    _interpreter!.runForMultipleInputs(
-      [inputFlat.buffer],
-      _cachedOutputs!,
-    );
+    _interpreter!.runForMultipleInputs([inputFlat.buffer], _cachedOutputs!);
 
     return _postProcessDetections(
       outputs: _cachedOutputs!.values.toList(),
@@ -372,6 +368,11 @@ class YoloV8PersonDetector {
         .toList();
   }
 
+  /// Exposes YOLO output decoding for tests.
+  List<Map<String, dynamic>> decodeOutputsForTest(List<dynamic> outputs) {
+    return _decodeAnyYoloOutputs(outputs);
+  }
+
   static List<double> _xywhToXyxy(List<double> xywh) {
     final double cx = xywh[0], cy = xywh[1], w = xywh[2], h = xywh[3];
     return [cx - w / 2.0, cy - h / 2.0, cx + w / 2.0, cy + h / 2.0];
@@ -411,10 +412,12 @@ class YoloV8PersonDetector {
 
     for (final Map<String, dynamic> row in decoded) {
       final int C = row['C'] as int;
-      final List<double> xywh =
-          (row['xywh'] as List).map((v) => (v as num).toDouble()).toList();
-      final List<double> rest =
-          (row['rest'] as List).map((v) => (v as num).toDouble()).toList();
+      final List<double> xywh = (row['xywh'] as List)
+          .map((v) => (v as num).toDouble())
+          .toList();
+      final List<double> rest = (row['rest'] as List)
+          .map((v) => (v as num).toDouble())
+          .toList();
 
       if (C == 84) {
         int argMax = 0;
@@ -548,8 +551,7 @@ class YoloV8PersonDetector {
     final List<YoloDetection> out = <YoloDetection>[];
     for (final int i in keep) {
       out.add(
-        YoloDetection(
-            cls: keptCls[i], score: keptScore[i], bboxXYXY: boxes[i]),
+        YoloDetection(cls: keptCls[i], score: keptScore[i], bboxXYXY: boxes[i]),
       );
     }
     return out;

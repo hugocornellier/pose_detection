@@ -1,3 +1,5 @@
+// ignore_for_file: implementation_imports
+
 import 'dart:math' as math;
 import 'dart:js_interop';
 import 'dart:js_interop_unsafe';
@@ -58,11 +60,11 @@ class PoseLandmarkModelRunner {
   String _getModelPath(PoseLandmarkModel model) {
     switch (model) {
       case PoseLandmarkModel.lite:
-        return 'packages/pose_detection_tflite/assets/models/pose_landmark_lite.tflite';
+        return 'packages/pose_detection/assets/models/pose_landmark_lite.tflite';
       case PoseLandmarkModel.full:
-        return 'packages/pose_detection_tflite/assets/models/pose_landmark_full.tflite';
+        return 'packages/pose_detection/assets/models/pose_landmark_full.tflite';
       case PoseLandmarkModel.heavy:
-        return 'packages/pose_detection_tflite/assets/models/pose_landmark_heavy.tflite';
+        return 'packages/pose_detection/assets/models/pose_landmark_heavy.tflite';
     }
   }
 

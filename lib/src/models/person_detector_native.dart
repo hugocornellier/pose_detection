@@ -64,7 +64,7 @@ class YoloV8PersonDetector {
   /// Throws an exception if the model fails to load.
   Future<void> initialize({PerformanceConfig? performanceConfig}) async {
     const String assetPath =
-        'packages/pose_detection_tflite/assets/models/yolov8n_float32.tflite';
+        'packages/pose_detection/assets/models/yolov8n_float32.tflite';
     if (_isInitialized) await dispose();
 
     final InterpreterOptions options = _createInterpreterOptions(
@@ -118,7 +118,8 @@ class YoloV8PersonDetector {
 
     final effectiveConfig = config ?? const PerformanceConfig();
 
-    final threadCount = effectiveConfig.numThreads?.clamp(0, 8) ??
+    final threadCount =
+        effectiveConfig.numThreads?.clamp(0, 8) ??
         math.min(4, Platform.numberOfProcessors);
 
     if (effectiveConfig.mode == PerformanceMode.disabled) {
@@ -193,8 +194,9 @@ class YoloV8PersonDetector {
     }
 
     try {
-      final gpuDelegate =
-          Platform.isIOS ? GpuDelegate() : GpuDelegateV2() as Delegate;
+      final gpuDelegate = Platform.isIOS
+          ? GpuDelegate()
+          : GpuDelegateV2() as Delegate;
       options.addDelegate(gpuDelegate);
       _delegate = gpuDelegate;
     } catch (_) {}
@@ -464,10 +466,12 @@ class YoloV8PersonDetector {
 
     for (final Map<String, dynamic> row in decoded) {
       final int C = row['C'] as int;
-      final List<double> xywh =
-          (row['xywh'] as List).map((v) => (v as num).toDouble()).toList();
-      final List<double> rest =
-          (row['rest'] as List).map((v) => (v as num).toDouble()).toList();
+      final List<double> xywh = (row['xywh'] as List)
+          .map((v) => (v as num).toDouble())
+          .toList();
+      final List<double> rest = (row['rest'] as List)
+          .map((v) => (v as num).toDouble())
+          .toList();
 
       if (C == 84) {
         int argMax = 0;
