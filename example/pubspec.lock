@@ -260,13 +260,12 @@ packages:
     source: hosted
     version: "6.0.0"
   flutter_litert:
-    dependency: transitive
+    dependency: "direct overridden"
     description:
-      name: flutter_litert
-      sha256: "84fd97e9f343994a8505c19f436025bd0d04a8a864e02bd45c1b0a32ddc53b82"
-      url: "https://pub.dev"
-    source: hosted
-    version: "0.1.16"
+      path: "../../flutter_litert"
+      relative: true
+    source: path
+    version: "0.2.0"
   flutter_plugin_android_lifecycle:
     dependency: transitive
     description:

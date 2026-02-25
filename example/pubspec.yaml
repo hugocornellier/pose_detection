@@ -21,6 +21,10 @@ dependencies:
   camera_macos: ^0.0.9
   opencv_dart: ^2.1.0
 
+dependency_overrides:
+  flutter_litert:
+    path: ../../flutter_litert
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

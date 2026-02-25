@@ -55,6 +55,54 @@ Future main() async {
 
 Refer to the [sample code](https://pub.dev/packages/pose_detection_tflite/example) on the pub.dev example tab for a more in-depth example.
 
+## Web (Flutter Web)
+
+This package supports Flutter Web using the same package import:
+
+```dart
+import 'package:pose_detection_tflite/pose_detection_tflite.dart';
+```
+
+The main difference is how you load images:
+
+- The Quick Start example above uses `dart:io` (`File(...)`), which is not available on web.
+- On web, load an image as `Uint8List` (for example from a file picker, drag-and-drop, or network response) and call `detect(imageBytes)`.
+- `detectFromMat(...)` (OpenCV `cv.Mat`) is native-only and is not available on web.
+- `interpreterPoolSize`, `performanceConfig`, and `useNativePreprocessing` are accepted for API compatibility but are ignored on web (web runs CPU/WASM).
+
+```dart
+final detector = PoseDetector(
+  mode: PoseMode.boxesAndLandmarks,
+  landmarkModel: PoseLandmarkModel.heavy,
+);
+await detector.initialize(); // Also initializes the web TFLite/WASM runtime
+
+final List<Pose> poses = await detector.detect(imageBytes);
+
+await detector.dispose();
+```
+
+### Separate `example_web` app
+
+The repository keeps the browser demo in `example_web/` (separate from `example/`) because the web sample uses browser-specific APIs (HTML file picker + canvas overlay) and UI flow.
+
+Run the web demo locally:
+
+```bash
+cd example_web
+flutter pub get
+flutter run -d chrome
+```
+
+Build for web:
+
+```bash
+cd example_web
+flutter build web
+```
+
+Note: `example_web/pubspec.yaml` includes a local `dependency_overrides` entry for `flutter_litert` (`../../flutter_litert`) for repo development. Update or remove it if your local folder layout is different.
+
 ## Pose Detection Modes
 
 This package supports two operation modes that determine what data is returned:

@@ -1,3 +1,7 @@
+## 2.0.2
+
+- Web support (experimental: incomplete)
+
 ## 2.0.1
 
 - Migrate iOS CocoaPods -> Swift Package Manager
