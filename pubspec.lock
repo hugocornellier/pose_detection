@@ -93,10 +93,10 @@ packages:
     dependency: transitive
     description:
       name: ffi
-      sha256: d07d37192dbf97461359c1518788f203b0c9102cfd2c35a716b823741219542c
+      sha256: "6d7fd89431262d8f3125e81b50d3847a091d846eafcd4fdb88dd06f36d705a45"
       url: "https://pub.dev"
     source: hosted
-    version: "2.1.5"
+    version: "2.2.0"
   file:
     dependency: transitive
     description:
@@ -122,10 +122,10 @@ packages:
     dependency: "direct main"
     description:
       name: flutter_litert
-      sha256: "8cfd394dea0b2c7651c1ce0da68acf9c84123ebb08a7b0980ccbf2c270744b2f"
+      sha256: "08323bc634e4884fa434f470b31fe122a72040eab9b86176ec136a84e8b8649e"
       url: "https://pub.dev"
     source: hosted
-    version: "0.2.1"
+    version: "1.0.1"
   flutter_test:
     dependency: "direct dev"
     description: flutter
