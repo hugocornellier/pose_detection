@@ -4,9 +4,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:pose_detection/pose_detection.dart';
-import 'package:camera_macos/camera_macos_controller.dart';
-import 'package:camera_macos/camera_macos_view.dart';
-import 'package:camera_macos/camera_macos_arguments.dart';
+import 'package:camera/camera.dart';
 import 'package:opencv_dart/opencv_dart.dart' as cv;
 
 void main() {
@@ -611,7 +609,8 @@ class CameraScreen extends StatefulWidget {
 }
 
 class _CameraScreenState extends State<CameraScreen> {
-  CameraMacOSController? _cameraController;
+  CameraController? _cameraController;
+  bool _isImageStreamStarted = false;
   final PoseDetector _poseDetector = PoseDetector(
     mode: PoseMode.boxesAndLandmarks,
     landmarkModel:
@@ -646,6 +645,7 @@ class _CameraScreenState extends State<CameraScreen> {
   void initState() {
     super.initState();
     _initializePoseDetector();
+    _initCamera();
   }
 
   Future<void> _initializePoseDetector() async {
@@ -668,56 +668,150 @@ class _CameraScreenState extends State<CameraScreen> {
     }
   }
 
-  void _onCameraInitialized(CameraMacOSController controller) {
-    if (_isDisposed) {
-      controller.destroy();
-      return;
-    }
-
-    setState(() {
-      _cameraController = controller;
-    });
-
-    controller.startImageStream((CameraImageData? imageData) {
-      if (imageData != null && !_isDisposed) {
-        _processCameraImage(imageData);
+  Future<void> _initCamera() async {
+    try {
+      final cameras = await availableCameras();
+      if (cameras.isEmpty) {
+        if (mounted) {
+          setState(() => _errorMessage = 'No cameras available');
+        }
+        return;
       }
-    });
-  }
 
-  /// Converts ARGB camera bytes directly to BGR cv.Mat without PNG encoding.
-  ///
-  /// This is 10-50x faster than the PNG encode/decode path because:
-  /// - No PNG compression (saves 100-200ms per frame)
-  /// - No PNG decompression (saves 50-100ms per frame)
-  /// - Single buffer copy instead of 3-4 copies
-  cv.Mat _convertARGBtoBGRMat(CameraImageData imageData) {
-    final int w = imageData.width;
-    final int h = imageData.height;
-    final Uint8List argb = imageData.bytes;
+      final camera = cameras.firstWhere(
+        (c) => c.lensDirection == CameraLensDirection.front,
+        orElse: () => cameras.first,
+      );
 
-    // Pre-allocate BGR buffer (3 bytes per pixel instead of 4)
-    final Uint8List bgr = Uint8List(w * h * 3);
+      _cameraController = CameraController(
+        camera,
+        ResolutionPreset.medium,
+        enableAudio: false,
+        imageFormatGroup: ImageFormatGroup.yuv420,
+      );
 
-    // ARGB to BGR conversion in a single pass
-    // ARGB layout: [A, R, G, B, A, R, G, B, ...]
-    // BGR layout:  [B, G, R, B, G, R, ...]
-    int srcIdx = 0;
-    int dstIdx = 0;
-    final int pixelCount = w * h;
-    for (int i = 0; i < pixelCount; i++) {
-      // Skip Alpha (srcIdx + 0), read RGB
-      bgr[dstIdx] = argb[srcIdx + 3]; // B
-      bgr[dstIdx + 1] = argb[srcIdx + 2]; // G
-      bgr[dstIdx + 2] = argb[srcIdx + 1]; // R
-      srcIdx += 4;
-      dstIdx += 3;
+      await _cameraController!.initialize();
+      if (!mounted) return;
+
+      _cameraSize = Size(
+        _cameraController!.value.previewSize!.height,
+        _cameraController!.value.previewSize!.width,
+      );
+
+      await _cameraController!.startImageStream(_processCameraImage);
+      _isImageStreamStarted = true;
+
+      setState(() {});
+    } catch (e) {
+      if (mounted) {
+        setState(() => _errorMessage = 'Camera init failed: $e');
+      }
     }
-
-    return cv.Mat.fromList(h, w, cv.MatType.CV_8UC3, bgr);
   }
 
-  Future<void> _processCameraImage(CameraImageData imageData) async {
+  /// Converts a CameraImage to BGR cv.Mat for OpenCV processing.
+  ///
+  /// Handles:
+  /// - Desktop BGRA (macOS via camera_desktop): single plane, BGRA byte order
+  /// - Desktop RGBA (Linux via camera_desktop): single plane, RGBA byte order
+  /// - iOS NV12: 2 planes, YUV420
+  /// - Android I420: 3 planes, YUV420
+  cv.Mat? _convertCameraImageToMat(CameraImage image) {
+    try {
+      final int w = image.width;
+      final int h = image.height;
+
+      // Desktop: single-plane 4-channel packed format
+      if (image.planes.length == 1 &&
+          (image.planes[0].bytesPerPixel ?? 1) >= 4) {
+        final bytes = image.planes[0].bytes;
+        final stride = image.planes[0].bytesPerRow;
+        final bgr = Uint8List(w * h * 3);
+
+        int dstIdx = 0;
+        for (int y = 0; y < h; y++) {
+          final rowStart = y * stride;
+          for (int x = 0; x < w; x++) {
+            final srcIdx = rowStart + x * 4;
+            if (Platform.isMacOS) {
+              // BGRA: B=0, G=1, R=2, A=3
+              bgr[dstIdx] = bytes[srcIdx];
+              bgr[dstIdx + 1] = bytes[srcIdx + 1];
+              bgr[dstIdx + 2] = bytes[srcIdx + 2];
+            } else {
+              // RGBA: R=0, G=1, B=2, A=3
+              bgr[dstIdx] = bytes[srcIdx + 2];
+              bgr[dstIdx + 1] = bytes[srcIdx + 1];
+              bgr[dstIdx + 2] = bytes[srcIdx];
+            }
+            dstIdx += 3;
+          }
+        }
+        return cv.Mat.fromList(h, w, cv.MatType.CV_8UC3, bgr);
+      }
+
+      // Mobile: YUV420 format
+      final yRowStride = image.planes[0].bytesPerRow;
+      final yPixelStride = image.planes[0].bytesPerPixel ?? 1;
+      final bgr = Uint8List(w * h * 3);
+
+      void writePixel(int x, int y, int yp, int up, int vp) {
+        int r = (yp + vp * 1436 / 1024 - 179).round().clamp(0, 255);
+        int g = (yp - up * 46549 / 131072 + 44 - vp * 93604 / 131072 + 91)
+            .round()
+            .clamp(0, 255);
+        int b = (yp + up * 1814 / 1024 - 227).round().clamp(0, 255);
+        final idx = (y * w + x) * 3;
+        bgr[idx] = b;
+        bgr[idx + 1] = g;
+        bgr[idx + 2] = r;
+      }
+
+      if (image.planes.length == 2) {
+        // iOS NV12
+        final uvRowStride = image.planes[1].bytesPerRow;
+        final uvPixelStride = image.planes[1].bytesPerPixel ?? 2;
+        for (int y = 0; y < h; y++) {
+          for (int x = 0; x < w; x++) {
+            final uvIdx = uvPixelStride * (x ~/ 2) + uvRowStride * (y ~/ 2);
+            final yIdx = y * yRowStride + x * yPixelStride;
+            writePixel(
+              x,
+              y,
+              image.planes[0].bytes[yIdx],
+              image.planes[1].bytes[uvIdx],
+              image.planes[1].bytes[uvIdx + 1],
+            );
+          }
+        }
+      } else if (image.planes.length >= 3) {
+        // Android I420
+        final uvRowStride = image.planes[1].bytesPerRow;
+        final uvPixelStride = image.planes[1].bytesPerPixel ?? 1;
+        for (int y = 0; y < h; y++) {
+          for (int x = 0; x < w; x++) {
+            final uvIdx = uvPixelStride * (x ~/ 2) + uvRowStride * (y ~/ 2);
+            final yIdx = y * yRowStride + x * yPixelStride;
+            writePixel(
+              x,
+              y,
+              image.planes[0].bytes[yIdx],
+              image.planes[1].bytes[uvIdx],
+              image.planes[2].bytes[uvIdx],
+            );
+          }
+        }
+      } else {
+        return null;
+      }
+
+      return cv.Mat.fromList(h, w, cv.MatType.CV_8UC3, bgr);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> _processCameraImage(CameraImage image) async {
     if (_isDisposed || !_isInitialized || _isProcessing) return;
 
     // Dynamic throttling: Skip if not enough time has passed
@@ -733,34 +827,46 @@ class _CameraScreenState extends State<CameraScreen> {
       // Set camera size once (for overlay coordinate mapping)
       if (_cameraSize == null && mounted && !_isDisposed) {
         setState(() {
-          _cameraSize = Size(
-            imageData.width.toDouble(),
-            imageData.height.toDouble(),
-          );
+          _cameraSize = Size(image.width.toDouble(), image.height.toDouble());
         });
       }
 
-      // PERFORMANCE FIX: Convert ARGB directly to BGR Mat
-      // This bypasses PNG encoding entirely (saves 150-300ms per frame)
-      final cv.Mat mat = _convertARGBtoBGRMat(imageData);
+      cv.Mat? mat = _convertCameraImageToMat(image);
+      if (mat == null) {
+        _isProcessing = false;
+        return;
+      }
 
       if (_isDisposed) {
         mat.dispose();
         return;
       }
 
+      // Downscale for performance — the detection model internally resizes
+      // to 256px, so full-res frames just waste IPC bandwidth.
+      const int maxDim = 640;
+      if (mat.cols > maxDim || mat.rows > maxDim) {
+        final double scale =
+            maxDim / (mat.cols > mat.rows ? mat.cols : mat.rows);
+        final cv.Mat resized = cv.resize(mat, (
+          (mat.cols * scale).toInt(),
+          (mat.rows * scale).toInt(),
+        ), interpolation: cv.INTER_LINEAR);
+        mat.dispose();
+        mat = resized;
+      }
+
       // Use detectFromMat for direct cv.Mat input - no image decoding needed
       final List<Pose> poses = await _poseDetector.detectFromMat(
         mat,
-        imageWidth: imageData.width,
-        imageHeight: imageData.height,
+        imageWidth: mat.cols,
+        imageHeight: mat.rows,
       );
 
       // Clean up native Mat resource
       mat.dispose();
 
-      // PERFORMANCE FIX: Update via ValueNotifier instead of setState
-      // This only repaints the CustomPaint, not the entire widget tree
+      // Update via ValueNotifier instead of setState
       if (!_isDisposed) {
         _poseNotifier.value = poses;
       }
@@ -784,12 +890,12 @@ class _CameraScreenState extends State<CameraScreen> {
     _isDisposed = true;
     _poseNotifier.dispose();
 
-    if (_cameraController != null) {
+    if (_isImageStreamStarted) {
       try {
-        _cameraController!.stopImageStream();
+        _cameraController?.stopImageStream();
       } catch (_) {}
-      _cameraController!.destroy();
     }
+    _cameraController?.dispose();
 
     _poseDetector.dispose();
     super.dispose();
@@ -865,22 +971,16 @@ class _CameraScreenState extends State<CameraScreen> {
     return Stack(
       fit: StackFit.expand,
       children: [
-        // Camera preview and overlay wrapped in matching AspectRatio widgets
-        // This ensures the overlay coordinates match exactly where the camera renders
-        if (_cameraSize != null)
+        if (_cameraController != null && _cameraController!.value.isInitialized)
           Center(
             child: AspectRatio(
-              aspectRatio: _cameraSize!.width / _cameraSize!.height,
+              aspectRatio: _cameraSize != null
+                  ? _cameraSize!.width / _cameraSize!.height
+                  : _cameraController!.value.aspectRatio,
               child: Stack(
                 fit: StackFit.expand,
                 children: [
-                  // Camera preview
-                  CameraMacOSView(
-                    onCameraInizialized: _onCameraInitialized,
-                    cameraMode: CameraMacOSMode.photo,
-                    enableAudio: false,
-                  ),
-                  // Pose overlay - now guaranteed to match camera preview bounds
+                  CameraPreview(_cameraController!),
                   ValueListenableBuilder<List<Pose>>(
                     valueListenable: _poseNotifier,
                     builder: (context, poses, _) {
@@ -898,12 +998,7 @@ class _CameraScreenState extends State<CameraScreen> {
             ),
           )
         else
-          // Show camera without overlay until we know the size
-          CameraMacOSView(
-            onCameraInizialized: _onCameraInitialized,
-            cameraMode: CameraMacOSMode.photo,
-            enableAudio: false,
-          ),
+          const Center(child: CircularProgressIndicator()),
 
         // Status indicator with performance metrics
         Positioned(

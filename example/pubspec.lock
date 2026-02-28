@@ -41,14 +41,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "0.10.0+3"
-  camera_macos:
+  camera_desktop:
     dependency: "direct main"
     description:
-      name: camera_macos
-      sha256: a0e15729caf4e7c2831b9cd964e8c2e2ea985cd816e56316be03355de44aa743
+      name: camera_desktop
+      sha256: d66cf8d275a5fec33d2cd9475bac7e20dd8879343bde563eb66c1a6f4c5efa33
       url: "https://pub.dev"
     source: hosted
-    version: "0.0.9"
+    version: "0.0.5"
   camera_platform_interface:
     dependency: transitive
     description:
@@ -263,10 +263,10 @@ packages:
     dependency: transitive
     description:
       name: flutter_litert
-      sha256: e52a167a58c3ebf86f746794f38ad726dd0999aae69693924f8900c901216956
+      sha256: d0cea53cfe6539119c886950e8b477e6e8689f50477c43977a13c9b1a1d0c703
       url: "https://pub.dev"
     source: hosted
-    version: "0.2.2"
+    version: "1.0.2"
   flutter_plugin_android_lifecycle:
     dependency: transitive
     description:
@@ -557,7 +557,7 @@ packages:
       path: ".."
       relative: true
     source: path
-    version: "1.0.2"
+    version: "1.0.3"
   process:
     dependency: transitive
     description:
@@ -708,5 +708,5 @@ packages:
     source: hosted
     version: "3.1.3"
 sdks:
-  dart: ">=3.10.0 <4.0.0"
+  dart: ">=3.11.0 <4.0.0"
   flutter: ">=3.38.1"
