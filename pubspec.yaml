@@ -1,6 +1,6 @@
 name: pose_detection
 description: Pose & landmark detection using on-device TFLite models.
-version: 1.0.4
+version: 1.0.5
 
 repository: https://github.com/hugocornellier/pose_detection
 homepage: https://github.com/hugocornellier/pose_detection
@@ -18,8 +18,8 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  flutter_litert: ^1.0.2
-  opencv_dart: ^2.1.0
+  flutter_litert: ^1.0.3
+  opencv_dart: ^2.2.1+4
   meta: ^1.17.0
   web: ^1.1.1
   flutter_web_plugins:
