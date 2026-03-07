@@ -127,12 +127,12 @@ class PoseDetector {
   /// **IMPORTANT:** When XNNPACK is enabled (via [performanceConfig]), this is
   /// automatically forced to 1 to prevent thread contention and performance spikes.
   ///
-  /// Controls the degree of parallelism for landmark extraction when multiple
-  /// people are detected. Only relevant when XNNPACK is disabled.
+  /// Controls the number of interpreter instances available for landmark
+  /// extraction. Only relevant when XNNPACK is disabled.
   ///
   /// **Performance characteristics:**
   /// - With XNNPACK enabled: Always pool=1 (forced for stability)
-  /// - With XNNPACK disabled: Can use higher pool sizes for parallelism
+  /// - With XNNPACK disabled: Can use higher pool sizes
   ///
   /// **Memory usage:** ~10MB × poolSize for landmark model instances.
   ///
@@ -184,7 +184,7 @@ class PoseDetector {
   /// - [detectorIou]: NMS IoU threshold for duplicate suppression (0.0-1.0). Default: 0.45
   /// - [maxDetections]: Maximum number of persons to detect. Default: 10
   /// - [minLandmarkScore]: Minimum landmark confidence score (0.0-1.0). Default: 0.5
-  /// - [interpreterPoolSize]: Number of landmark model interpreter instances (1-10). Default: 5
+  /// - [interpreterPoolSize]: Number of landmark model interpreter instances (1-10). Default: 1
   /// - [performanceConfig]: TensorFlow Lite performance configuration. Default: no acceleration
   /// - [useNativePreprocessing]: Whether to use OpenCV for faster preprocessing. Default: true
   ///
@@ -206,7 +206,7 @@ class PoseDetector {
   ///
   /// **Choosing interpreterPoolSize:**
   /// - When XNNPACK is enabled, pool size is always forced to 1 for stable performance
-  /// - When XNNPACK is disabled, you can use higher pool sizes for parallelism
+  /// - When XNNPACK is disabled, you can use higher pool sizes
   /// - Each interpreter adds ~10MB memory overhead
   ///
   /// **IMPORTANT:** XNNPACK with multiple interpreters causes thread contention and

@@ -11,8 +11,7 @@
 <a href="https://github.com/hugocornellier/pose_detection/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-Apache_2.0-007A88.svg?logo=apache" alt="License"></a>
 </p>
 
-Flutter implementation of Google's [Pose Landmark Detection](https://ai.google.dev/edge/mediapipe/solutions/vision/pose_landmarker) with bounding boxes. 
-Provides on-device, multi-person pose and landmark detection using TensorFlow Lite.
+Flutter plugin for on-device, multi-person pose detection and landmark estimation using TensorFlow Lite. Uses YOLOv8n for person detection and Google's [BlazePose](https://ai.google.dev/edge/mediapipe/solutions/vision/pose_landmarker) for 33-keypoint landmark extraction.
 
 
 ![Example Screenshot](assets/screenshots/ex1.png)
@@ -108,8 +107,6 @@ Build for web:
 cd example_web
 flutter build web
 ```
-
-Note: `example_web/pubspec.yaml` includes a local `dependency_overrides` entry for `flutter_litert` (`../../flutter_litert`) for repo development. Update or remove it if your local folder layout is different.
 
 ## Pose Detection Modes
 
@@ -262,7 +259,7 @@ The `poseLandmarkConnections` constant contains 27 connections organized by body
 
 ### Multi-person detection
 
-The detector automatically handles multiple people in a single image with parallel landmark extraction:
+The detector automatically handles multiple people in a single image:
 
 ```dart
 final List<Pose> results = await detector.detect(imageBytes);
@@ -277,22 +274,16 @@ for (int i = 0; i < results.length; i++) {
 }
 ```
 
-**Performance Optimization:** The detector uses an interpreter pool to extract landmarks in parallel when multiple people are detected. Configure the pool size based on your use case:
+**Interpreter Pool:** The detector maintains a pool of TensorFlow Lite interpreter instances for landmark extraction. Each interpreter adds ~10MB memory overhead.
 
 ```dart
 final detector = PoseDetector(
-  interpreterPoolSize: 5,  // Up to 5 concurrent landmark extractions
+  interpreterPoolSize: 3,  // Number of interpreter instances
 );
 ```
 
-- **Pool size 1**: Sequential processing (lowest memory, ~50ms per person)
-- **Pool size 3-5**: Recommended for 2-5 people (balanced performance/memory)
-- **Pool size 5-10**: For crowded scenes with many people (~10MB memory per interpreter)
-- **Default pool size**: 5 (balanced performance vs. memory for most cases)
-
-**Example speedup** with 5 people detected:
-- Pool size 1: ~250ms total (sequential)
-- Pool size 5: ~50ms total (all parallel) = **5x faster**
+- **Default pool size**: 1
+- When XNNPACK is enabled (via `performanceConfig`), pool size is automatically forced to 1 to prevent thread contention
 
 ### Camera/video stream processing
 

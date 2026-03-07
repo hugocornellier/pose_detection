@@ -36,8 +36,8 @@
 ///
 /// **Model Variants:**
 /// - [PoseLandmarkModel.lite]: Fastest, good accuracy
-/// - [PoseLandmarkModel.full]: Balanced speed/accuracy (default)
-/// - [PoseLandmarkModel.heavy]: Slowest, best accuracy
+/// - [PoseLandmarkModel.full]: Balanced speed/accuracy
+/// - [PoseLandmarkModel.heavy]: Slowest, best accuracy (default)
 library;
 
 export 'src/types.dart';
