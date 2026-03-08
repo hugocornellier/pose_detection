@@ -4,8 +4,6 @@ import 'dart:typed_data';
 
 import 'package:web/web.dart' as web;
 import 'package:flutter_litert/flutter_litert.dart';
-import '../util/image_utils.dart';
-import '../types.dart';
 
 /// A single object detection result from YOLOv8.
 ///
@@ -475,7 +473,7 @@ class YoloV8PersonDetector {
     ];
     final List<List<double>> boxes = <List<double>>[];
     for (final List<double> b in boxesLtr) {
-      boxes.add(ImageUtils.scaleFromLetterbox(b, r, dw, dh));
+      boxes.add(scaleFromLetterbox(b, r, dw, dh));
     }
     final double iw = imageWidth.toDouble();
     final double ih = imageHeight.toDouble();

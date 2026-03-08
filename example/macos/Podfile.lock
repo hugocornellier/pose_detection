@@ -35,9 +35,9 @@ EXTERNAL SOURCES:
     :path: Flutter/ephemeral/.symlinks/plugins/pose_detection/macos
 
 SPEC CHECKSUMS:
-  camera_desktop: 700adae0c4ea11846138b7509099ee93800ee473
+  camera_desktop: 8b0acf3142f8bdcfddd923edcb0d9e20f318f385
   file_selector_macos: 9e9e068e90ebee155097d00e89ae91edb2374db7
-  flutter_litert: 80f5f94a6eaba31957f4a6d4b03e80b5a27d909a
+  flutter_litert: 1bbe6e8757c574ab66044233b98353f34eaa7e29
   FlutterMacOS: d0db08ddef1a9af05a5ec4b724367152bb0500b1
   path_provider_foundation: bb55f6dbba17d0dccd6737fe6f7f34fbd0376880
   pose_detection: db93f45a3571558bc921429a28cde41b1d00b306

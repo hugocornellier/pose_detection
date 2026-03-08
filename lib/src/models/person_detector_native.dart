@@ -1,12 +1,9 @@
-import 'dart:io';
 import 'dart:math' as math;
 import 'dart:typed_data';
 import 'package:meta/meta.dart';
 import 'package:opencv_dart/opencv_dart.dart' as cv;
 import 'package:flutter_litert/flutter_litert.dart';
-import '../util/image_utils.dart';
 import '../util/native_image_utils.dart';
-import '../types.dart';
 
 /// A single object detection result from YOLOv8.
 ///
@@ -38,7 +35,6 @@ class YoloV8PersonDetector {
   IsolateInterpreter? _iso;
   Interpreter? _interpreter;
   bool _isInitialized = false;
-  bool _useIsolateInterpreter = true;
   late int _inW;
   late int _inH;
 
@@ -67,9 +63,8 @@ class YoloV8PersonDetector {
         'packages/pose_detection/assets/models/yolov8n_float32.tflite';
     if (_isInitialized) await dispose();
 
-    final InterpreterOptions options = _createInterpreterOptions(
-      performanceConfig,
-    );
+    final (options, newDelegate) = InterpreterFactory.create(performanceConfig);
+    _delegate = newDelegate;
 
     final Interpreter itp = await Interpreter.fromAsset(
       assetPath,
@@ -89,119 +84,9 @@ class YoloV8PersonDetector {
       _outShapes.add(List<int>.from(t.shape));
     }
 
-    _useIsolateInterpreter = _delegate == null;
-    if (_useIsolateInterpreter) {
-      _iso = await IsolateInterpreter.create(address: itp.address);
-    }
+    _iso = await InterpreterFactory.createIsolateIfNeeded(itp, _delegate);
 
     _isInitialized = true;
-  }
-
-  /// Creates interpreter options with delegates based on performance configuration.
-  ///
-  /// ## Platform Behavior
-  ///
-  /// | Mode | macOS/Linux | Windows | iOS | Android |
-  /// |------|-------------|---------|-----|---------|
-  /// | disabled | CPU | CPU | CPU | CPU |
-  /// | xnnpack | XNNPACK | CPU* | CPU* | CPU* |
-  /// | gpu | CPU | CPU | Metal | OpenGL** |
-  /// | auto | XNNPACK | CPU | Metal | CPU |
-  ///
-  /// *Falls back to CPU (XNNPACK not supported on this platform)
-  /// **Experimental, may crash on some devices
-  InterpreterOptions _createInterpreterOptions(PerformanceConfig? config) {
-    final options = InterpreterOptions();
-
-    _delegate?.delete();
-    _delegate = null;
-
-    final effectiveConfig = config ?? const PerformanceConfig();
-
-    final threadCount =
-        effectiveConfig.numThreads?.clamp(0, 8) ??
-        math.min(4, Platform.numberOfProcessors);
-
-    if (effectiveConfig.mode == PerformanceMode.disabled) {
-      options.threads = threadCount;
-      return options;
-    }
-
-    if (effectiveConfig.mode == PerformanceMode.auto) {
-      return _createAutoModeOptions(options, threadCount);
-    }
-
-    if (effectiveConfig.mode == PerformanceMode.xnnpack) {
-      return _createXnnpackOptions(options, threadCount);
-    }
-
-    if (effectiveConfig.mode == PerformanceMode.gpu) {
-      return _createGpuOptions(options, threadCount);
-    }
-
-    options.threads = threadCount;
-    return options;
-  }
-
-  /// Creates options for auto mode - selects best delegate per platform.
-  InterpreterOptions _createAutoModeOptions(
-    InterpreterOptions options,
-    int threadCount,
-  ) {
-    if (Platform.isMacOS || Platform.isLinux) {
-      return _createXnnpackOptions(options, threadCount);
-    }
-
-    if (Platform.isIOS) {
-      return _createGpuOptions(options, threadCount);
-    }
-
-    options.threads = threadCount;
-    return options;
-  }
-
-  /// Creates options with XNNPACK delegate (desktop only).
-  InterpreterOptions _createXnnpackOptions(
-    InterpreterOptions options,
-    int threadCount,
-  ) {
-    options.threads = threadCount;
-
-    if (!Platform.isMacOS && !Platform.isLinux) {
-      return options;
-    }
-
-    try {
-      final xnnpackDelegate = XNNPackDelegate(
-        options: XNNPackDelegateOptions(numThreads: threadCount),
-      );
-      options.addDelegate(xnnpackDelegate);
-      _delegate = xnnpackDelegate;
-    } catch (_) {}
-
-    return options;
-  }
-
-  /// Creates options with GPU delegate.
-  InterpreterOptions _createGpuOptions(
-    InterpreterOptions options,
-    int threadCount,
-  ) {
-    options.threads = threadCount;
-
-    if (!Platform.isIOS && !Platform.isAndroid) {
-      return options;
-    }
-
-    try {
-      final gpuDelegate = Platform.isIOS
-          ? GpuDelegate()
-          : GpuDelegateV2() as Delegate;
-      options.addDelegate(gpuDelegate);
-      _delegate = gpuDelegate;
-    } catch (_) {}
-
-    return options;
   }
 
   /// Returns true if the detector has been initialized and is ready to use.
@@ -529,7 +414,7 @@ class YoloV8PersonDetector {
     ];
     final List<List<double>> boxes = <List<double>>[];
     for (final List<double> b in boxesLtr) {
-      boxes.add(ImageUtils.scaleFromLetterbox(b, r, dw, dh));
+      boxes.add(scaleFromLetterbox(b, r, dw, dh));
     }
     final double iw = imageWidth.toDouble();
     final double ih = imageHeight.toDouble();
