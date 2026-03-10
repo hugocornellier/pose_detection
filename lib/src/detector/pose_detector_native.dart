@@ -1,10 +1,11 @@
 import 'dart:typed_data';
 
+import 'package:flutter_litert/flutter_litert.dart';
 import 'package:opencv_dart/opencv_dart.dart' as cv;
-import 'types.dart';
-import 'util/native_image_utils.dart';
-import 'models/person_detector_native.dart';
-import 'models/pose_landmark_model_native.dart';
+import '../types.dart';
+import '../util/native_image_utils.dart';
+import '../models/person_detector_native.dart';
+import '../models/pose_landmark_model_native.dart';
 
 /// Helper class to store preprocessing data for each detected person.
 ///
@@ -12,7 +13,7 @@ import 'models/pose_landmark_model_native.dart';
 /// needed to convert landmark coordinates back to original image space.
 class _PersonCropData {
   /// The original YOLO detection result.
-  final YoloDetection detection;
+  final Detection detection;
 
   /// The resized/letterboxed 256x256 cv.Mat ready for landmark extraction (Native path).
   final cv.Mat? letterboxedMat;
@@ -306,7 +307,7 @@ class PoseDetector {
       );
     }
 
-    final List<YoloDetection> dets = await _yolo.detect(
+    final List<Detection> dets = await _yolo.detect(
       mat,
       imageWidth: imageWidth,
       imageHeight: imageHeight,
@@ -321,7 +322,7 @@ class PoseDetector {
     }
 
     final List<_PersonCropData> cropDataList = <_PersonCropData>[];
-    for (final YoloDetection d in dets) {
+    for (final Detection d in dets) {
       final double x1 = d.bboxXYXY[0].clamp(0.0, imageWidth.toDouble());
       final double y1 = d.bboxXYXY[1].clamp(0.0, imageHeight.toDouble());
       final double x2 = d.bboxXYXY[2].clamp(0.0, imageWidth.toDouble());
@@ -394,12 +395,12 @@ class PoseDetector {
 
   /// Builds box-only results (no landmarks).
   List<Pose> _buildBoxOnlyResults(
-    List<YoloDetection> dets,
+    List<Detection> dets,
     int imageWidth,
     int imageHeight,
   ) {
     final List<Pose> out = <Pose>[];
-    for (final YoloDetection d in dets) {
+    for (final Detection d in dets) {
       out.add(
         Pose(
           boundingBox: BoundingBox(

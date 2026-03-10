@@ -1,6 +1,11 @@
+## 1.0.7
+
+* Update `camera_desktop` 1.0.1 -> 1.0.3
+
 ## 1.0.6
 
-* Refactor to use `flutter_litert` 1.1.0 shared utilities (`InterpreterFactory`, `InterpreterPool`, `PerformanceConfig`)
+* Update `flutter_litert` -> 1.2.0
+* Refactor to use `flutter_litert` shared utilities (`InterpreterFactory`, `InterpreterPool`, `PerformanceConfig`)
 
 ## 1.0.5
 

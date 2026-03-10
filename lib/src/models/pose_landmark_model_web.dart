@@ -57,6 +57,7 @@ class PoseLandmarkModelRunner {
     _isInitialized = true;
   }
 
+  /// Returns the asset path for the given BlazePose model variant.
   String _getModelPath(PoseLandmarkModel model) {
     switch (model) {
       case PoseLandmarkModel.lite:

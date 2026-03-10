@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:opencv_dart/opencv_dart.dart' as cv;
@@ -106,8 +105,11 @@ class PoseLandmarkModelRunner {
         flatInputBuffer: Float32List(256 * 256 * 3),
         outputLandmarks: [List<double>.filled(195, 0.0, growable: false)],
         outputScore: [List<double>.filled(1, 0.0, growable: false)],
-        outputMask: _createTensor4D(1, 256, 256, 1),
-        outputHeatmap: _createTensor4D(1, 64, 64, 39),
+        outputMask:
+            allocTensorShape([1, 256, 256, 1])
+                as List<List<List<List<double>>>>,
+        outputHeatmap:
+            allocTensorShape([1, 64, 64, 39]) as List<List<List<List<double>>>>,
         outputWorld: [List<double>.filled(117, 0.0, growable: false)],
       );
     }
@@ -115,28 +117,7 @@ class PoseLandmarkModelRunner {
     _isInitialized = true;
   }
 
-  /// Creates a pre-allocated 4D tensor with the specified dimensions.
-  static List<List<List<List<double>>>> _createTensor4D(
-    int dim1,
-    int dim2,
-    int dim3,
-    int dim4,
-  ) {
-    return List.generate(
-      dim1,
-      (_) => List.generate(
-        dim2,
-        (_) => List.generate(
-          dim3,
-          (_) => List<double>.filled(dim4, 0.0, growable: false),
-          growable: false,
-        ),
-        growable: false,
-      ),
-      growable: false,
-    );
-  }
-
+  /// Returns the asset path for the given BlazePose model variant.
   String _getModelPath(PoseLandmarkModel model) {
     switch (model) {
       case PoseLandmarkModel.lite:
@@ -217,26 +198,20 @@ class PoseLandmarkModelRunner {
   /// Normalizes pixel values to [0.0, 1.0] range (BlazePose uses 0-1, not -1 to 1).
   /// Handles BGR to RGB conversion.
   void _matToInputBuffer(cv.Mat mat, Float32List buffer) {
-    final int h = mat.rows;
-    final int w = mat.cols;
-    final int totalPixels = h * w;
-    final Uint8List data = mat.data;
-
-    const double scale = 1.0 / 255.0;
-    for (int i = 0, j = 0; i < totalPixels * 3; i += 3, j += 3) {
-      buffer[j] = data[i + 2] * scale;
-      buffer[j + 1] = data[i + 1] * scale;
-      buffer[j + 2] = data[i] * scale;
-    }
+    bgrBytesToRgbFloat32(
+      bytes: mat.data,
+      totalPixels: mat.rows * mat.cols,
+      buffer: buffer,
+    );
   }
 
+  /// Parses raw model outputs into structured [PoseLandmarks].
   PoseLandmarks _parseLandmarks(
     List<dynamic> landmarksData,
     List<dynamic> scoreData,
     List<dynamic> worldData,
   ) {
-    double sigmoid(double x) => 1.0 / (1.0 + math.exp(-x));
-    double clamp01(double v) => v.isNaN
+    double clamp01NaN(double v) => v.isNaN
         ? 0.0
         : v < 0.0
         ? 0.0
@@ -248,8 +223,8 @@ class PoseLandmarkModelRunner {
 
     for (int i = 0; i < 33; i++) {
       final int base = i * 5;
-      final double x = clamp01((raw[base + 0] as double) / 256.0);
-      final double y = clamp01((raw[base + 1] as double) / 256.0);
+      final double x = clamp01NaN((raw[base + 0] as double) / 256.0);
+      final double y = clamp01NaN((raw[base + 1] as double) / 256.0);
       final double z = raw[base + 2] as double;
       final double visibility = sigmoid(raw[base + 3] as double);
       final double presence = sigmoid(raw[base + 4] as double);

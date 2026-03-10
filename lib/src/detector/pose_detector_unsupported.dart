@@ -1,7 +1,7 @@
 // ignore_for_file: public_member_api_docs
 
 import 'dart:typed_data';
-import 'types.dart';
+import '../types.dart';
 
 class PoseDetector {
   final PoseMode mode;

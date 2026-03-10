@@ -707,4 +707,318 @@ void main() {
       await detector.dispose();
     });
   });
+
+  group('PoseDetector - detect() bytes API', () {
+    test('should detect poses from image bytes', () async {
+      final detector = PoseDetector(landmarkModel: PoseLandmarkModel.lite);
+      await detector.initialize();
+
+      final ByteData data = await rootBundle.load('assets/samples/pose1.jpg');
+      final Uint8List bytes = data.buffer.asUint8List();
+
+      final List<Pose> results = await detector.detect(bytes);
+
+      expect(results, isNotEmpty);
+
+      for (final pose in results) {
+        expect(pose.boundingBox, isNotNull);
+        expect(pose.boundingBox.right, greaterThan(pose.boundingBox.left));
+        expect(pose.boundingBox.bottom, greaterThan(pose.boundingBox.top));
+        expect(pose.score, greaterThan(0));
+        expect(pose.score, lessThanOrEqualTo(1.0));
+        expect(pose.hasLandmarks, true);
+        expect(pose.landmarks.length, 33);
+        expect(pose.imageWidth, greaterThan(0));
+        expect(pose.imageHeight, greaterThan(0));
+      }
+
+      await detector.dispose();
+    });
+
+    test('should throw when called with invalid bytes', () async {
+      final detector = PoseDetector(landmarkModel: PoseLandmarkModel.lite);
+      await detector.initialize();
+
+      // Invalid bytes produce an undecodable Mat which causes an error internally
+      expect(
+        () => detector.detect(Uint8List.fromList([0, 1, 2, 3])),
+        throwsA(anything),
+      );
+
+      await detector.dispose();
+    });
+
+    test(
+      'should handle JPEG bytes and produce matching results to detectFromMat',
+      () async {
+        final detector = PoseDetector(landmarkModel: PoseLandmarkModel.lite);
+        await detector.initialize();
+
+        final ByteData data = await rootBundle.load('assets/samples/pose2.jpg');
+        final Uint8List bytes = data.buffer.asUint8List();
+
+        final List<Pose> bytesResults = await detector.detect(bytes);
+
+        final cv.Mat mat = cv.imdecode(bytes, cv.IMREAD_COLOR);
+        final List<Pose> matResults = await detector.detectFromMat(
+          mat,
+          imageWidth: mat.cols,
+          imageHeight: mat.rows,
+        );
+        mat.dispose();
+
+        expect(bytesResults.length, matResults.length);
+
+        for (int i = 0; i < bytesResults.length; i++) {
+          expect(
+            (bytesResults[i].score - matResults[i].score).abs(),
+            lessThan(0.01),
+          );
+          expect(
+            bytesResults[i].landmarks.length,
+            matResults[i].landmarks.length,
+          );
+        }
+
+        await detector.dispose();
+      },
+    );
+  });
+
+  group('PoseDetector - Error Recovery', () {
+    test('should recover after empty-result input', () async {
+      final detector = PoseDetector(landmarkModel: PoseLandmarkModel.lite);
+      await detector.initialize();
+
+      // A 1x1 black image is valid but produces no detections
+      final cv.Mat tiny = cv.Mat.zeros(1, 1, cv.MatType.CV_8UC3);
+      final List<Pose> emptyResults = await detector.detectFromMat(
+        tiny,
+        imageWidth: 1,
+        imageHeight: 1,
+      );
+      tiny.dispose();
+      expect(emptyResults, isNotNull);
+
+      // Should work normally after a no-detection run
+      final ByteData data = await rootBundle.load('assets/samples/pose1.jpg');
+      final Uint8List bytes = data.buffer.asUint8List();
+      final cv.Mat mat = cv.imdecode(bytes, cv.IMREAD_COLOR);
+      final List<Pose> results = await detector.detectFromMat(
+        mat,
+        imageWidth: mat.cols,
+        imageHeight: mat.rows,
+      );
+
+      expect(results, isNotEmpty);
+
+      mat.dispose();
+      await detector.dispose();
+    });
+  });
+
+  group('PoseDetector - Result Consistency', () {
+    test('should produce deterministic results', () async {
+      final detector = PoseDetector(landmarkModel: PoseLandmarkModel.lite);
+      await detector.initialize();
+
+      final ByteData data = await rootBundle.load('assets/samples/pose1.jpg');
+      final Uint8List bytes = data.buffer.asUint8List();
+      final cv.Mat mat1 = cv.imdecode(bytes, cv.IMREAD_COLOR);
+      final cv.Mat mat2 = cv.imdecode(bytes, cv.IMREAD_COLOR);
+
+      final List<Pose> results1 = await detector.detectFromMat(
+        mat1,
+        imageWidth: mat1.cols,
+        imageHeight: mat1.rows,
+      );
+      final List<Pose> results2 = await detector.detectFromMat(
+        mat2,
+        imageWidth: mat2.cols,
+        imageHeight: mat2.rows,
+      );
+
+      expect(results1.length, results2.length);
+
+      for (int i = 0; i < results1.length; i++) {
+        expect(
+          (results1[i].score - results2[i].score).abs(),
+          lessThan(0.01),
+          reason: 'Scores differ for pose $i',
+        );
+        expect(
+          results1[i].landmarks.length,
+          results2[i].landmarks.length,
+          reason: 'Landmark counts differ for pose $i',
+        );
+        for (int j = 0; j < results1[i].landmarks.length; j++) {
+          expect(
+            (results1[i].landmarks[j].x - results2[i].landmarks[j].x).abs(),
+            lessThan(1.0),
+            reason: 'Landmark x positions differ at index $j for pose $i',
+          );
+          expect(
+            (results1[i].landmarks[j].y - results2[i].landmarks[j].y).abs(),
+            lessThan(1.0),
+            reason: 'Landmark y positions differ at index $j for pose $i',
+          );
+        }
+      }
+
+      mat1.dispose();
+      mat2.dispose();
+      await detector.dispose();
+    });
+  });
+
+  group('PoseDetector - Additional Configuration', () {
+    test('should respect detectorIou parameter', () async {
+      final detector = PoseDetector(
+        landmarkModel: PoseLandmarkModel.lite,
+        detectorIou: 0.8,
+      );
+      await detector.initialize();
+
+      final ByteData data = await rootBundle.load('assets/samples/pose1.jpg');
+      final Uint8List bytes = data.buffer.asUint8List();
+      final cv.Mat mat = cv.imdecode(bytes, cv.IMREAD_COLOR);
+      final List<Pose> results = await detector.detectFromMat(
+        mat,
+        imageWidth: mat.cols,
+        imageHeight: mat.rows,
+      );
+
+      // Should still function and return valid poses
+      expect(results, isNotNull);
+      for (final pose in results) {
+        expect(pose.score, greaterThan(0));
+        expect(pose.score, lessThanOrEqualTo(1.0));
+        expect(pose.imageWidth, greaterThan(0));
+        expect(pose.imageHeight, greaterThan(0));
+      }
+
+      mat.dispose();
+      await detector.dispose();
+    });
+
+    test('should work with useNativePreprocessing disabled', () async {
+      final detector = PoseDetector(
+        landmarkModel: PoseLandmarkModel.lite,
+        useNativePreprocessing: false,
+      );
+      await detector.initialize();
+
+      final ByteData data = await rootBundle.load('assets/samples/pose1.jpg');
+      final Uint8List bytes = data.buffer.asUint8List();
+      final cv.Mat mat = cv.imdecode(bytes, cv.IMREAD_COLOR);
+      final List<Pose> results = await detector.detectFromMat(
+        mat,
+        imageWidth: mat.cols,
+        imageHeight: mat.rows,
+      );
+
+      expect(results, isNotEmpty);
+
+      for (final pose in results) {
+        expect(pose.boundingBox, isNotNull);
+        expect(pose.score, greaterThan(0));
+        expect(pose.score, lessThanOrEqualTo(1.0));
+        if (pose.hasLandmarks) {
+          expect(pose.landmarks.length, 33);
+        }
+      }
+
+      mat.dispose();
+      await detector.dispose();
+    });
+  });
+
+  group('PoseDetector - Landmark Validation', () {
+    late PoseDetector detector;
+    late List<Pose> poses;
+
+    setUpAll(() async {
+      detector = PoseDetector(landmarkModel: PoseLandmarkModel.lite);
+      await detector.initialize();
+
+      final ByteData data = await rootBundle.load('assets/samples/pose1.jpg');
+      final Uint8List bytes = data.buffer.asUint8List();
+      final cv.Mat mat = cv.imdecode(bytes, cv.IMREAD_COLOR);
+      poses = await detector.detectFromMat(
+        mat,
+        imageWidth: mat.cols,
+        imageHeight: mat.rows,
+      );
+      mat.dispose();
+    });
+
+    tearDownAll(() async {
+      await detector.dispose();
+    });
+
+    test('should have z-coordinates on all landmarks', () {
+      expect(poses, isNotEmpty);
+      final pose = poses.first;
+      expect(pose.hasLandmarks, true);
+
+      for (final landmark in pose.landmarks) {
+        // z is a non-nullable double; just verify it is finite
+        expect(
+          landmark.z.isNaN,
+          false,
+          reason: 'z is NaN for ${landmark.type}',
+        );
+        expect(
+          landmark.z.isInfinite,
+          false,
+          reason: 'z is infinite for ${landmark.type}',
+        );
+      }
+    });
+
+    test('should have visibility scores in valid range', () {
+      expect(poses, isNotEmpty);
+      final pose = poses.first;
+      expect(pose.hasLandmarks, true);
+
+      for (final landmark in pose.landmarks) {
+        expect(
+          landmark.visibility,
+          greaterThanOrEqualTo(0.0),
+          reason: 'visibility below 0 for ${landmark.type}',
+        );
+        expect(
+          landmark.visibility,
+          lessThanOrEqualTo(1.0),
+          reason: 'visibility above 1.0 for ${landmark.type}',
+        );
+      }
+    });
+
+    test('should handle portrait orientation images', () async {
+      // pose4.jpg is 740x1036 (portrait)
+      final ByteData data = await rootBundle.load('assets/samples/pose4.jpg');
+      final Uint8List bytes = data.buffer.asUint8List();
+      final cv.Mat mat = cv.imdecode(bytes, cv.IMREAD_COLOR);
+
+      final List<Pose> results = await detector.detectFromMat(
+        mat,
+        imageWidth: mat.cols,
+        imageHeight: mat.rows,
+      );
+
+      expect(results, isNotNull);
+
+      for (final pose in results) {
+        expect(pose.imageWidth, greaterThan(0));
+        expect(pose.imageHeight, greaterThan(0));
+        // Portrait image: height should be greater than width
+        expect(pose.imageHeight, greaterThan(pose.imageWidth));
+        expect(pose.boundingBox.right, greaterThan(pose.boundingBox.left));
+        expect(pose.boundingBox.bottom, greaterThan(pose.boundingBox.top));
+      }
+
+      mat.dispose();
+    });
+  });
 }

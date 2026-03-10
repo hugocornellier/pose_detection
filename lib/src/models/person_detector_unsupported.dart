@@ -1,18 +1,6 @@
 // ignore_for_file: public_member_api_docs
 
-import '../types.dart';
-
-class YoloDetection {
-  final int cls;
-  final double score;
-  final List<double> bboxXYXY;
-
-  YoloDetection({
-    required this.cls,
-    required this.score,
-    required this.bboxXYXY,
-  });
-}
+import 'package:flutter_litert/flutter_litert.dart';
 
 class YoloV8PersonDetector {
   static const int cocoPersonClassId = 0;
@@ -30,7 +18,7 @@ class YoloV8PersonDetector {
 
   Future<void> dispose() => throw UnsupportedError('Not supported');
 
-  Future<List<YoloDetection>> detect(
+  Future<List<Detection>> detect(
     Object imageOrMat, {
     required int imageWidth,
     required int imageHeight,

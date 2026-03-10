@@ -7,9 +7,9 @@ import 'dart:typed_data';
 import 'package:flutter_litert/flutter_litert.dart';
 import 'package:web/web.dart' as web;
 
-import 'types.dart';
-import 'models/person_detector_web.dart';
-import 'models/pose_landmark_model_web.dart';
+import '../types.dart';
+import '../models/person_detector_web.dart';
+import '../models/pose_landmark_model_web.dart';
 
 /// Web implementation of the on-device pose detector.
 ///
@@ -174,7 +174,7 @@ class PoseDetector {
     final int imageHeight = htmlImage.naturalHeight;
 
     // Stage 1: Person detection
-    final List<YoloDetection> dets = await _yolo.detect(
+    final List<Detection> dets = await _yolo.detect(
       htmlImage,
       imageWidth: imageWidth,
       imageHeight: imageHeight,
@@ -192,7 +192,7 @@ class PoseDetector {
     final List<Pose> results = <Pose>[];
     final web.CanvasRenderingContext2D ctx = _cropCtx!;
 
-    for (final YoloDetection d in dets) {
+    for (final Detection d in dets) {
       final int x1 = d.bboxXYXY[0].clamp(0.0, imageWidth.toDouble()).toInt();
       final int y1 = d.bboxXYXY[1].clamp(0.0, imageHeight.toDouble()).toInt();
       final int x2 = d.bboxXYXY[2].clamp(0.0, imageWidth.toDouble()).toInt();
@@ -357,12 +357,12 @@ class PoseDetector {
 
   /// Builds box-only results (no landmarks).
   List<Pose> _buildBoxOnlyResults(
-    List<YoloDetection> dets,
+    List<Detection> dets,
     int imageWidth,
     int imageHeight,
   ) {
     final List<Pose> out = <Pose>[];
-    for (final YoloDetection d in dets) {
+    for (final Detection d in dets) {
       out.add(
         Pose(
           boundingBox: BoundingBox(

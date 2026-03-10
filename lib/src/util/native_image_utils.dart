@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 import 'package:opencv_dart/opencv_dart.dart' as cv;
+import 'package:flutter_litert/flutter_litert.dart';
 
 /// Native image processing utilities using OpenCV.
 ///
@@ -20,35 +21,30 @@ class NativeImageUtils {
   /// Returns a tuple of (letterboxed Mat, scale ratio, padLeft, padTop).
   /// Caller must dispose the returned Mat.
   static (cv.Mat, double, int, int) letterbox(cv.Mat src, int tw, int th) {
-    final int w = src.cols;
-    final int h = src.rows;
-
-    final double r = (tw / w) < (th / h) ? (tw / w) : (th / h);
-    final int nw = (w * r).round();
-    final int nh = (h * r).round();
+    final p = computeLetterboxParams(
+      srcWidth: src.cols,
+      srcHeight: src.rows,
+      targetWidth: tw,
+      targetHeight: th,
+    );
 
     final cv.Mat resized = cv.resize(src, (
-      nw,
-      nh,
+      p.newWidth,
+      p.newHeight,
     ), interpolation: cv.INTER_LINEAR);
-
-    final int dw = (tw - nw) ~/ 2;
-    final int dh = (th - nh) ~/ 2;
-    final int padRight = tw - nw - dw;
-    final int padBottom = th - nh - dh;
 
     final cv.Mat padded = cv.copyMakeBorder(
       resized,
-      dh,
-      padBottom,
-      dw,
-      padRight,
+      p.padTop,
+      p.padBottom,
+      p.padLeft,
+      p.padRight,
       cv.BORDER_CONSTANT,
       value: cv.Scalar(114, 114, 114, 0),
     );
     resized.dispose();
 
-    return (padded, r, dw, dh);
+    return (padded, p.scale, p.padLeft, p.padTop);
   }
 
   /// Applies letterbox preprocessing to 256x256 dimensions.
@@ -99,21 +95,11 @@ class NativeImageUtils {
   ///
   /// Returns Float32List tensor in NHWC format (flattened).
   static Float32List matToTensorYolo(cv.Mat mat, {Float32List? buffer}) {
-    final int h = mat.rows;
-    final int w = mat.cols;
-    final int totalPixels = h * w;
-
-    final Float32List tensor = buffer ?? Float32List(totalPixels * 3);
-    final Uint8List data = mat.data;
-
-    const double scale = 1.0 / 255.0;
-    for (int i = 0, j = 0; i < totalPixels * 3; i += 3, j += 3) {
-      tensor[j] = data[i + 2] * scale;
-      tensor[j + 1] = data[i + 1] * scale;
-      tensor[j + 2] = data[i] * scale;
-    }
-
-    return tensor;
+    return bgrBytesToRgbFloat32(
+      bytes: mat.data,
+      totalPixels: mat.rows * mat.cols,
+      buffer: buffer,
+    );
   }
 
   /// Crops a rectangular region from a cv.Mat.

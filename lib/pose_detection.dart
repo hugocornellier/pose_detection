@@ -41,7 +41,7 @@
 library;
 
 export 'src/types.dart';
-export 'src/pose_detector.dart' show PoseDetector;
+export 'src/detector/pose_detector.dart' show PoseDetector;
 export 'src/dart_registration.dart';
 
-export 'src/opencv_exports.dart';
+export 'src/exports/opencv_exports.dart';
