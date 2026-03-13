@@ -39,6 +39,7 @@ Future main() async {
   for (final Pose pose in results) {
     final BoundingBox bbox = pose.boundingBox;
     print('Bounding box: (${bbox.left}, ${bbox.top}) → (${bbox.right}, ${bbox.bottom})');
+    print('Size: ${bbox.width} x ${bbox.height}, center: (${bbox.center.x}, ${bbox.center.y})');
 
     if (pose.hasLandmarks) {
       // Iterate over landmarks

@@ -1,13 +1,13 @@
 import 'dart:async';
 import 'dart:developer' as developer;
 import 'dart:js_interop';
-import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:flutter_litert/flutter_litert.dart';
 import 'package:web/web.dart' as web;
 
 import '../types.dart';
+import '../util/pose_helpers.dart';
 import '../models/person_detector_web.dart';
 import '../models/pose_landmark_model_web.dart';
 
@@ -70,9 +70,6 @@ class PoseDetector {
   /// Performance configuration (accepted for API compatibility, ignored on web).
   final PerformanceConfig performanceConfig;
 
-  /// Whether to use native preprocessing (accepted for API compatibility, ignored on web).
-  final bool useNativePreprocessing;
-
   bool _isInitialized = false;
 
   /// Canvas for person crop/resize to 256x256 for landmark extraction.
@@ -90,7 +87,6 @@ class PoseDetector {
   /// - [minLandmarkScore]: Minimum landmark confidence score (0.0-1.0). Default: 0.5
   /// - [interpreterPoolSize]: Ignored on web (always 1).
   /// - [performanceConfig]: Ignored on web (always CPU/WASM).
-  /// - [useNativePreprocessing]: Ignored on web (always uses Canvas API).
   PoseDetector({
     this.mode = PoseMode.boxesAndLandmarks,
     this.landmarkModel = PoseLandmarkModel.heavy,
@@ -100,7 +96,6 @@ class PoseDetector {
     this.minLandmarkScore = 0.5,
     int interpreterPoolSize = 1,
     this.performanceConfig = PerformanceConfig.disabled,
-    this.useNativePreprocessing = true,
   }) : interpreterPoolSize = 1 {
     _lm = PoseLandmarkModelRunner(poolSize: 1);
   }
@@ -185,7 +180,7 @@ class PoseDetector {
     );
 
     if (mode == PoseMode.boxes) {
-      return _buildBoxOnlyResults(dets, imageWidth, imageHeight);
+      return buildBoxOnlyPoses(dets, imageWidth, imageHeight);
     }
 
     // Stage 2: Landmark extraction for each detection
@@ -201,11 +196,17 @@ class PoseDetector {
       final int cropHeight = (y2 - y1).clamp(1, imageHeight);
 
       // Match the reference web demo: exact bbox crop + letterbox to 256x256.
-      final double ratio = math.min(256.0 / cropHeight, 256.0 / cropWidth);
-      final int resizedWidth = (cropWidth * ratio).round();
-      final int resizedHeight = (cropHeight * ratio).round();
-      final int padX = (256 - resizedWidth) ~/ 2;
-      final int padY = (256 - resizedHeight) ~/ 2;
+      final lb = computeLetterboxParams(
+        srcWidth: cropWidth,
+        srcHeight: cropHeight,
+        targetWidth: 256,
+        targetHeight: 256,
+      );
+      final double ratio = lb.scale;
+      final int padX = lb.padLeft;
+      final int padY = lb.padTop;
+      final int resizedWidth = lb.newWidth;
+      final int resizedHeight = lb.newHeight;
 
       ctx.fillStyle = 'rgb(114,114,114)'.toJS;
       ctx.fillRect(0, 0, 256, 256);
@@ -242,11 +243,11 @@ class PoseDetector {
           );
           results.add(
             Pose(
-              boundingBox: BoundingBox(
-                left: d.bboxXYXY[0],
-                top: d.bboxXYXY[1],
-                right: d.bboxXYXY[2],
-                bottom: d.bboxXYXY[3],
+              boundingBox: BoundingBox.ltrb(
+                d.bboxXYXY[0],
+                d.bboxXYXY[1],
+                d.bboxXYXY[2],
+                d.bboxXYXY[3],
               ),
               score: d.score,
               landmarks: pts,
@@ -255,20 +256,7 @@ class PoseDetector {
             ),
           );
         } else {
-          results.add(
-            Pose(
-              boundingBox: BoundingBox(
-                left: d.bboxXYXY[0],
-                top: d.bboxXYXY[1],
-                right: d.bboxXYXY[2],
-                bottom: d.bboxXYXY[3],
-              ),
-              score: d.score,
-              landmarks: const <PoseLandmark>[],
-              imageWidth: imageWidth,
-              imageHeight: imageHeight,
-            ),
-          );
+          results.add(buildBoxOnlyPose(d, imageWidth, imageHeight));
         }
       } catch (e, stackTrace) {
         assert(() {
@@ -281,20 +269,7 @@ class PoseDetector {
           );
           return true;
         }());
-        results.add(
-          Pose(
-            boundingBox: BoundingBox(
-              left: d.bboxXYXY[0],
-              top: d.bboxXYXY[1],
-              right: d.bboxXYXY[2],
-              bottom: d.bboxXYXY[3],
-            ),
-            score: d.score,
-            landmarks: const <PoseLandmark>[],
-            imageWidth: imageWidth,
-            imageHeight: imageHeight,
-          ),
-        );
+        results.add(buildBoxOnlyPose(d, imageWidth, imageHeight));
       }
     }
 
@@ -353,32 +328,6 @@ class PoseDetector {
     } finally {
       web.URL.revokeObjectURL(url);
     }
-  }
-
-  /// Builds box-only results (no landmarks).
-  List<Pose> _buildBoxOnlyResults(
-    List<Detection> dets,
-    int imageWidth,
-    int imageHeight,
-  ) {
-    final List<Pose> out = <Pose>[];
-    for (final Detection d in dets) {
-      out.add(
-        Pose(
-          boundingBox: BoundingBox(
-            left: d.bboxXYXY[0],
-            top: d.bboxXYXY[1],
-            right: d.bboxXYXY[2],
-            bottom: d.bboxXYXY[3],
-          ),
-          score: d.score,
-          landmarks: const <PoseLandmark>[],
-          imageWidth: imageWidth,
-          imageHeight: imageHeight,
-        ),
-      );
-    }
-    return out;
   }
 
   /// Transforms letterboxed 256x256 normalized landmarks back to original image space.

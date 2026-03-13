@@ -1,9 +1,9 @@
-import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:opencv_dart/opencv_dart.dart' as cv;
 import 'package:flutter_litert/flutter_litert.dart';
 import '../types.dart';
+import '../util/pose_helpers.dart';
 
 /// Pre-allocated inference buffers for one pool slot.
 ///
@@ -90,7 +90,7 @@ class PoseLandmarkModelRunner {
   }) async {
     if (_isInitialized) await dispose();
 
-    final String path = _getModelPath(model);
+    final String path = poseLandmarkModelPath(model);
 
     await _pool.initialize((options, _) async {
       final interpreter = await Interpreter.fromAsset(path, options: options);
@@ -115,18 +115,6 @@ class PoseLandmarkModelRunner {
     }
 
     _isInitialized = true;
-  }
-
-  /// Returns the asset path for the given BlazePose model variant.
-  String _getModelPath(PoseLandmarkModel model) {
-    switch (model) {
-      case PoseLandmarkModel.lite:
-        return 'packages/pose_detection/assets/models/pose_landmark_lite.tflite';
-      case PoseLandmarkModel.full:
-        return 'packages/pose_detection/assets/models/pose_landmark_full.tflite';
-      case PoseLandmarkModel.heavy:
-        return 'packages/pose_detection/assets/models/pose_landmark_heavy.tflite';
-    }
   }
 
   /// Returns true if the model runner has been initialized and is ready to use.
@@ -169,7 +157,11 @@ class PoseLandmarkModelRunner {
 
     return _pool.withInterpreter((interp, iso) async {
       final buf = _buffers[interp]!;
-      _matToInputBuffer(mat, buf.flatInputBuffer);
+      bgrBytesToRgbFloat32(
+        bytes: mat.data,
+        totalPixels: mat.rows * mat.cols,
+        buffer: buf.flatInputBuffer,
+      );
 
       final outputs = {
         0: buf.outputLandmarks,
@@ -185,62 +177,7 @@ class PoseLandmarkModelRunner {
         interp.runForMultipleInputs([buf.flatInputBuffer.buffer], outputs);
       }
 
-      return _parseLandmarks(
-        buf.outputLandmarks,
-        buf.outputScore,
-        buf.outputWorld,
-      );
+      return parsePoseLandmarks(buf.outputLandmarks, buf.outputScore);
     });
-  }
-
-  /// Converts a cv.Mat to a Float32List tensor for BlazePose input.
-  ///
-  /// Normalizes pixel values to [0.0, 1.0] range (BlazePose uses 0-1, not -1 to 1).
-  /// Handles BGR to RGB conversion.
-  void _matToInputBuffer(cv.Mat mat, Float32List buffer) {
-    bgrBytesToRgbFloat32(
-      bytes: mat.data,
-      totalPixels: mat.rows * mat.cols,
-      buffer: buffer,
-    );
-  }
-
-  /// Parses raw model outputs into structured [PoseLandmarks].
-  PoseLandmarks _parseLandmarks(
-    List<dynamic> landmarksData,
-    List<dynamic> scoreData,
-    List<dynamic> worldData,
-  ) {
-    double clamp01NaN(double v) => v.isNaN
-        ? 0.0
-        : v < 0.0
-        ? 0.0
-        : (v > 1.0 ? 1.0 : v);
-
-    final double score = sigmoid(scoreData[0][0] as double);
-    final List<dynamic> raw = landmarksData[0] as List<dynamic>;
-    final List<PoseLandmark> lm = <PoseLandmark>[];
-
-    for (int i = 0; i < 33; i++) {
-      final int base = i * 5;
-      final double x = clamp01NaN((raw[base + 0] as double) / 256.0);
-      final double y = clamp01NaN((raw[base + 1] as double) / 256.0);
-      final double z = raw[base + 2] as double;
-      final double visibility = sigmoid(raw[base + 3] as double);
-      final double presence = sigmoid(raw[base + 4] as double);
-      final double vis = (visibility * presence).clamp(0.0, 1.0);
-
-      lm.add(
-        PoseLandmark(
-          type: PoseLandmarkType.values[i],
-          x: x,
-          y: y,
-          z: z,
-          visibility: vis,
-        ),
-      );
-    }
-
-    return PoseLandmarks(landmarks: lm, score: score);
   }
 }

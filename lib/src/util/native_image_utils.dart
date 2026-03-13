@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'dart:typed_data';
 import 'package:opencv_dart/opencv_dart.dart' as cv;
 import 'package:flutter_litert/flutter_litert.dart';
@@ -47,43 +48,6 @@ class NativeImageUtils {
     return (padded, p.scale, p.padLeft, p.padTop);
   }
 
-  /// Applies letterbox preprocessing to 256x256 dimensions.
-  ///
-  /// Convenience method for BlazePose landmark model preprocessing.
-  static (cv.Mat, double, int, int) letterbox256(cv.Mat src) {
-    return letterbox(src, 256, 256);
-  }
-
-  /// Resizes a cv.Mat directly to 256x256 without letterboxing.
-  ///
-  /// This is used for BlazePose landmark model which expects the person
-  /// to fill the entire 256x256 input (no padding).
-  ///
-  /// Parameters:
-  /// - [src]: Source cv.Mat image (any size)
-  ///
-  /// Returns a tuple of (resized Mat, scaleX, scaleY) where scales are
-  /// the ratios from original to 256x256.
-  /// Caller must dispose the returned Mat.
-  static (cv.Mat, double, double) resize256(cv.Mat src) {
-    final int w = src.cols;
-    final int h = src.rows;
-    final double scaleX = 256.0 / w;
-    final double scaleY = 256.0 / h;
-    final cv.Mat resized = cv.resize(src, (
-      256,
-      256,
-    ), interpolation: cv.INTER_LINEAR);
-    return (resized, scaleX, scaleY);
-  }
-
-  /// Applies letterbox preprocessing to 640x640 dimensions.
-  ///
-  /// Convenience method for YOLO detection model preprocessing.
-  static (cv.Mat, double, int, int) letterbox640(cv.Mat src) {
-    return letterbox(src, 640, 640);
-  }
-
   /// Converts a letterboxed cv.Mat to a normalized Float32List tensor.
   ///
   /// Normalizes pixel values to [0.0, 1.0] range for YOLO models.
@@ -100,26 +64,6 @@ class NativeImageUtils {
       totalPixels: mat.rows * mat.cols,
       buffer: buffer,
     );
-  }
-
-  /// Crops a rectangular region from a cv.Mat.
-  ///
-  /// Parameters:
-  /// - [src]: Source cv.Mat image
-  /// - [x]: Left coordinate in pixels
-  /// - [y]: Top coordinate in pixels
-  /// - [width]: Width of crop in pixels
-  /// - [height]: Height of crop in pixels
-  ///
-  /// Returns cropped cv.Mat. Caller must dispose.
-  static cv.Mat crop(cv.Mat src, int x, int y, int width, int height) {
-    final int x1 = x.clamp(0, src.cols - 1);
-    final int y1 = y.clamp(0, src.rows - 1);
-    final int x2 = (x + width).clamp(x1 + 1, src.cols);
-    final int y2 = (y + height).clamp(y1 + 1, src.rows);
-
-    final cv.Rect rect = cv.Rect(x1, y1, x2 - x1, y2 - y1);
-    return src.region(rect);
   }
 
   /// Extracts a rotated square region from a cv.Mat using warpAffine.
@@ -146,7 +90,7 @@ class NativeImageUtils {
     final int sizeInt = size.round();
     if (sizeInt <= 0) return null;
 
-    final double angleDegrees = -theta * 180.0 / 3.141592653589793;
+    final double angleDegrees = -theta * 180.0 / math.pi;
 
     final cv.Mat rotMat = cv.getRotationMatrix2D(
       cv.Point2f(cx, cy),
@@ -170,21 +114,5 @@ class NativeImageUtils {
 
     rotMat.dispose();
     return output;
-  }
-
-  /// Decodes image bytes to cv.Mat.
-  ///
-  /// Uses native OpenCV imdecode for SIMD-accelerated decoding.
-  ///
-  /// Parameters:
-  /// - [bytes]: Encoded image data (JPEG, PNG, etc.)
-  ///
-  /// Returns decoded cv.Mat in BGR format, or null if decoding fails.
-  static cv.Mat? decodeImage(Uint8List bytes) {
-    try {
-      return cv.imdecode(bytes, cv.IMREAD_COLOR);
-    } catch (_) {
-      return null;
-    }
   }
 }

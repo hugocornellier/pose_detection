@@ -1,27 +1,20 @@
 import 'dart:typed_data';
-import 'package:meta/meta.dart';
 import 'package:opencv_dart/opencv_dart.dart' as cv;
 import 'package:flutter_litert/flutter_litert.dart';
 import '../util/native_image_utils.dart';
+import 'person_detector_base.dart';
 
 /// YOLOv8n-based person detector for Stage 1 of the pose detection pipeline.
 ///
 /// Detects persons in images and returns bounding boxes. Uses the YOLOv8n model
 /// trained on COCO dataset with 640x640 input resolution. Runs asynchronously
 /// via IsolateInterpreter for better performance.
-class YoloV8PersonDetector {
+class YoloV8PersonDetector extends PersonDetectorBase {
   IsolateInterpreter? _iso;
-  Interpreter? _interpreter;
-  bool _isInitialized = false;
-  late int _inW;
-  late int _inH;
+  Delegate? _delegate;
 
   /// COCO dataset class ID for the "person" class.
   static const int cocoPersonClassId = 0;
-  final _outShapes = <List<int>>[];
-  Float32List? _inputBuffer;
-  Delegate? _delegate;
-  Map<int, Object>? _cachedOutputs;
 
   /// Initializes the YOLOv8 person detector by loading the model.
   ///
@@ -39,7 +32,7 @@ class YoloV8PersonDetector {
   Future<void> initialize({PerformanceConfig? performanceConfig}) async {
     const String assetPath =
         'packages/pose_detection/assets/models/yolov8n_float32.tflite';
-    if (_isInitialized) await dispose();
+    if (isInitializedFlag) await dispose();
 
     final (options, newDelegate) = InterpreterFactory.create(performanceConfig);
     _delegate = newDelegate;
@@ -48,27 +41,24 @@ class YoloV8PersonDetector {
       assetPath,
       options: options,
     );
-    _interpreter = itp;
+    interpreter = itp;
     itp.allocateTensors();
 
     final Tensor inTensor = itp.getInputTensor(0);
     final List<int> inShape = inTensor.shape;
-    _inH = inShape[1];
-    _inW = inShape[2];
+    inH = inShape[1];
+    inW = inShape[2];
 
-    _outShapes.clear();
+    outShapes.clear();
     final List<Tensor> outs = itp.getOutputTensors();
     for (final Tensor t in outs) {
-      _outShapes.add(List<int>.from(t.shape));
+      outShapes.add(List<int>.from(t.shape));
     }
 
     _iso = await InterpreterFactory.createIsolateIfNeeded(itp, _delegate);
 
-    _isInitialized = true;
+    isInitializedFlag = true;
   }
-
-  /// Returns true if the detector has been initialized and is ready to use.
-  bool get isInitialized => _isInitialized;
 
   /// Disposes the detector and releases all resources.
   ///
@@ -78,47 +68,9 @@ class YoloV8PersonDetector {
   Future<void> dispose() async {
     _iso?.close();
     _iso = null;
-    _interpreter?.close();
-    _interpreter = null;
     _delegate?.delete();
     _delegate = null;
-    _cachedOutputs = null;
-    _isInitialized = false;
-  }
-
-  /// Creates pre-allocated output buffers based on cached output shapes.
-  Map<int, Object> _createOutputBuffers() => createOutputBuffers(_outShapes);
-
-  /// Zeros out pre-allocated output buffers for reuse.
-  void _zeroOutputBuffers(Map<int, Object> outputs) =>
-      zeroOutputBuffers(outputs, _outShapes);
-
-  /// Exposes detection output decoding for tests.
-  @visibleForTesting
-  List<Map<String, dynamic>> decodeOutputsForTest(List<dynamic> outputs) {
-    return decodeAndSplitOutputs(outputs);
-  }
-
-  /// Configures internal state for unit tests without loading native assets.
-  @visibleForTesting
-  void debugConfigureForTest({
-    required int inputWidth,
-    required int inputHeight,
-    required List<List<int>> outputShapes,
-    Interpreter? interpreter,
-    IsolateInterpreter? isolate,
-    Float32List? inputBuffer,
-    bool initialized = true,
-  }) {
-    _inW = inputWidth;
-    _inH = inputHeight;
-    _outShapes
-      ..clear()
-      ..addAll(outputShapes.map((s) => List<int>.from(s)));
-    _interpreter = interpreter;
-    _iso = isolate;
-    _inputBuffer = inputBuffer;
-    _isInitialized = initialized;
+    disposeBase();
   }
 
   /// Detects persons in a cv.Mat using native OpenCV preprocessing.
@@ -145,41 +97,38 @@ class YoloV8PersonDetector {
     int maxDet = 10,
     bool personOnly = true,
   }) async {
-    if (!_isInitialized || _interpreter == null) {
+    if (!isInitializedFlag || interpreter == null) {
       throw StateError('YoloV8PersonDetector not initialized.');
     }
 
     final (cv.Mat letter, double r, int dw, int dh) =
-        NativeImageUtils.letterbox(mat, _inW, _inH);
+        NativeImageUtils.letterbox(mat, inW, inH);
 
-    final int inputSize = _inH * _inW * 3;
-    _inputBuffer ??= Float32List(inputSize);
-    if (_inputBuffer!.length != inputSize) {
-      _inputBuffer = Float32List(inputSize);
-    }
-    NativeImageUtils.matToTensorYolo(letter, buffer: _inputBuffer);
+    final int inputSize = inH * inW * 3;
+    inputBuffer ??= Float32List(inputSize);
+    NativeImageUtils.matToTensorYolo(letter, buffer: inputBuffer);
     letter.dispose();
 
-    final int inputCount = _interpreter!.getInputTensors().length;
+    final int inputCount = interpreter!.getInputTensors().length;
     final List<Object> inputs = List<Object>.filled(
       inputCount,
-      _inputBuffer!.buffer,
+      inputBuffer!.buffer,
       growable: false,
     );
 
-    _cachedOutputs ??= _createOutputBuffers();
-    _zeroOutputBuffers(_cachedOutputs!);
+    cachedOutputs ??= createOutputBuffers(outShapes);
+    zeroOutputBuffers(cachedOutputs!, outShapes);
 
     if (_iso != null) {
-      await _iso!.runForMultipleInputs(inputs, _cachedOutputs!);
+      await _iso!.runForMultipleInputs(inputs, cachedOutputs!);
     } else {
-      _interpreter!.runForMultipleInputs(inputs, _cachedOutputs!);
+      interpreter!.runForMultipleInputs(inputs, cachedOutputs!);
     }
 
     return postProcessDetections(
-      outputs: _cachedOutputs!.values.toList(),
-      inputWidth: _inW,
-      inputHeight: _inH,
+      outputs: cachedOutputs!.values.toList(),
+      inputWidth: inW,
+      inputHeight: inH,
       r: r,
       dw: dw,
       dh: dh,

@@ -5,9 +5,7 @@ import 'dart:typed_data';
 import '../types.dart';
 
 class PoseLandmarkModelRunner {
-  final int _poolSize;
-
-  PoseLandmarkModelRunner({int poolSize = 1}) : _poolSize = poolSize {
+  PoseLandmarkModelRunner({int poolSize = 1}) {
     throw UnsupportedError(
       'PoseLandmarkModelRunner is not supported on this platform.',
     );
@@ -15,7 +13,7 @@ class PoseLandmarkModelRunner {
 
   bool get isInitialized => false;
 
-  int get poolSize => _poolSize;
+  int get poolSize => 1;
 
   Future<void> initialize(
     PoseLandmarkModel model, {

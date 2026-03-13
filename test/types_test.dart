@@ -169,18 +169,18 @@ void main() {
       expect(lm.xNorm(640), 0.0);
     });
 
-    test('toPixel returns truncated integer coordinates', () {
+    test('toPixel returns double coordinates', () {
       final lm = makeLandmark(x: 123.9, y: 456.7);
       final point = lm.toPixel(640, 480);
-      expect(point.x, 123);
-      expect(point.y, 456);
+      expect(point.x, 123.9);
+      expect(point.y, 456.7);
     });
 
     test('toPixel with whole-number coordinates', () {
       final lm = makeLandmark(x: 200.0, y: 150.0);
       final point = lm.toPixel(640, 480);
-      expect(point.x, 200);
-      expect(point.y, 150);
+      expect(point.x, 200.0);
+      expect(point.y, 150.0);
     });
 
     test('visibility can be 0.0', () {
@@ -233,12 +233,7 @@ void main() {
   // ---------------------------------------------------------------------------
   group('BoundingBox', () {
     test('constructor stores all fields', () {
-      const bbox = BoundingBox(
-        left: 10.5,
-        top: 20.3,
-        right: 100.7,
-        bottom: 200.1,
-      );
+      final bbox = BoundingBox.ltrb(10.5, 20.3, 100.7, 200.1);
       expect(bbox.left, 10.5);
       expect(bbox.top, 20.3);
       expect(bbox.right, 100.7);
@@ -246,7 +241,7 @@ void main() {
     });
 
     test('accepts zero coordinates', () {
-      const bbox = BoundingBox(left: 0.0, top: 0.0, right: 0.0, bottom: 0.0);
+      final bbox = BoundingBox.ltrb(0.0, 0.0, 0.0, 0.0);
       expect(bbox.left, 0.0);
       expect(bbox.top, 0.0);
       expect(bbox.right, 0.0);
@@ -254,12 +249,7 @@ void main() {
     });
 
     test('accepts negative coordinates', () {
-      const bbox = BoundingBox(
-        left: -10.0,
-        top: -20.0,
-        right: -5.0,
-        bottom: -1.0,
-      );
+      final bbox = BoundingBox.ltrb(-10.0, -20.0, -5.0, -1.0);
       expect(bbox.left, -10.0);
       expect(bbox.top, -20.0);
       expect(bbox.right, -5.0);
@@ -267,12 +257,7 @@ void main() {
     });
 
     test('right is greater than left for a typical box', () {
-      const bbox = BoundingBox(
-        left: 50.0,
-        top: 30.0,
-        right: 150.0,
-        bottom: 200.0,
-      );
+      final bbox = BoundingBox.ltrb(50.0, 30.0, 150.0, 200.0);
       expect(bbox.right, greaterThan(bbox.left));
       expect(bbox.bottom, greaterThan(bbox.top));
     });
@@ -292,12 +277,7 @@ void main() {
 
     Pose makePoseWithLandmarks(List<PoseLandmark> landmarks) {
       return Pose(
-        boundingBox: const BoundingBox(
-          left: 10.0,
-          top: 20.0,
-          right: 200.0,
-          bottom: 400.0,
-        ),
+        boundingBox: BoundingBox.ltrb(10.0, 20.0, 200.0, 400.0),
         score: 0.85,
         landmarks: landmarks,
         imageWidth: 640,
@@ -306,16 +286,11 @@ void main() {
     }
 
     test('constructor stores all fields', () {
-      const bbox = BoundingBox(
-        left: 5.0,
-        top: 10.0,
-        right: 300.0,
-        bottom: 450.0,
-      );
-      const pose = Pose(
+      final bbox = BoundingBox.ltrb(5.0, 10.0, 300.0, 450.0);
+      final pose = Pose(
         boundingBox: bbox,
         score: 0.92,
-        landmarks: [],
+        landmarks: const [],
         imageWidth: 640,
         imageHeight: 480,
       );
@@ -384,10 +359,10 @@ void main() {
     });
 
     test('score field stores confidence value', () {
-      const pose = Pose(
-        boundingBox: BoundingBox(left: 0, top: 0, right: 100, bottom: 100),
+      final pose = Pose(
+        boundingBox: BoundingBox.ltrb(0, 0, 100, 100),
         score: 0.73,
-        landmarks: [],
+        landmarks: const [],
         imageWidth: 640,
         imageHeight: 480,
       );
@@ -395,10 +370,10 @@ void main() {
     });
 
     test('imageWidth and imageHeight are accessible', () {
-      const pose = Pose(
-        boundingBox: BoundingBox(left: 0, top: 0, right: 100, bottom: 100),
+      final pose = Pose(
+        boundingBox: BoundingBox.ltrb(0, 0, 100, 100),
         score: 0.5,
-        landmarks: [],
+        landmarks: const [],
         imageWidth: 1280,
         imageHeight: 720,
       );
@@ -412,10 +387,10 @@ void main() {
     });
 
     test('toString contains score formatted to 3 decimals', () {
-      const pose = Pose(
-        boundingBox: BoundingBox(left: 0, top: 0, right: 100, bottom: 100),
+      final pose = Pose(
+        boundingBox: BoundingBox.ltrb(0, 0, 100, 100),
         score: 0.850,
-        landmarks: [],
+        landmarks: const [],
         imageWidth: 640,
         imageHeight: 480,
       );

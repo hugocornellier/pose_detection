@@ -1,25 +1,19 @@
 import 'dart:js_interop';
-import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:web/web.dart' as web;
 import 'package:flutter_litert/flutter_litert.dart';
+import '../util/web_image_utils.dart';
+import 'person_detector_base.dart';
 
 /// Web implementation of YOLOv8n person detector.
 ///
 /// Uses Canvas API for image preprocessing instead of OpenCV.
 /// Runs on CPU/WASM (no GPU delegates on web).
 /// Uses [Interpreter] directly (no [IsolateInterpreter] on web).
-class YoloV8PersonDetector {
-  Interpreter? _interpreter;
-  bool _isInitialized = false;
-  late int _inW;
-  late int _inH;
-  final _outShapes = <List<int>>[];
-  Float32List? _inputBuffer;
+class YoloV8PersonDetector extends PersonDetectorBase {
   web.HTMLCanvasElement? _canvasElement;
   web.CanvasRenderingContext2D? _canvasCtx;
-  Map<int, Object>? _cachedOutputs;
 
   /// COCO dataset class ID for the "person" class.
   static const int cocoPersonClassId = 0;
@@ -39,54 +33,45 @@ class YoloV8PersonDetector {
   Future<void> initialize({PerformanceConfig? performanceConfig}) async {
     const String assetPath =
         'packages/pose_detection/assets/models/yolov8n_float32.tflite';
-    if (_isInitialized) await dispose();
+    if (isInitializedFlag) await dispose();
 
     final options = InterpreterOptions();
-    final interpreter = await Interpreter.fromAsset(
-      assetPath,
-      options: options,
-    );
-    _interpreter = interpreter;
-    interpreter.allocateTensors();
+    final itp = await Interpreter.fromAsset(assetPath, options: options);
+    interpreter = itp;
+    itp.allocateTensors();
 
-    final Tensor inTensor = interpreter.getInputTensor(0);
+    final Tensor inTensor = itp.getInputTensor(0);
     final List<int> inShape = inTensor.shape;
-    _inH = inShape[1];
-    _inW = inShape[2];
+    inH = inShape[1];
+    inW = inShape[2];
 
-    _outShapes.clear();
-    final List<Tensor> outs = interpreter.getOutputTensors();
+    outShapes.clear();
+    final List<Tensor> outs = itp.getOutputTensors();
     for (final Tensor t in outs) {
-      _outShapes.add(List<int>.from(t.shape));
+      outShapes.add(List<int>.from(t.shape));
     }
 
-    _inputBuffer = Float32List(_inH * _inW * 3);
+    inputBuffer = Float32List(inH * inW * 3);
 
     // Create canvas for letterbox preprocessing
     _canvasElement = web.HTMLCanvasElement();
-    _canvasElement!.width = _inW;
-    _canvasElement!.height = _inH;
+    _canvasElement!.width = inW;
+    _canvasElement!.height = inH;
     _canvasCtx =
         _canvasElement!.getContext('2d') as web.CanvasRenderingContext2D;
 
-    _isInitialized = true;
+    isInitializedFlag = true;
   }
-
-  /// Returns true if the detector has been initialized and is ready to use.
-  bool get isInitialized => _isInitialized;
 
   /// Disposes the detector and releases all resources.
   ///
   /// Closes the interpreter, clears canvas buffer, and releases output buffers.
   /// After disposal, [initialize] must be called again before using the detector.
   Future<void> dispose() async {
-    _interpreter?.close();
-    _interpreter = null;
     _canvasElement = null;
     _canvasCtx = null;
-    _inputBuffer = null;
-    _cachedOutputs = null;
-    _isInitialized = false;
+    inputBuffer = null;
+    disposeBase();
   }
 
   /// Detects persons in an HTML image element using Canvas API preprocessing.
@@ -114,47 +99,46 @@ class YoloV8PersonDetector {
     int maxDet = 10,
     bool personOnly = true,
   }) async {
-    if (!_isInitialized || _interpreter == null) {
+    if (!isInitializedFlag || interpreter == null) {
       throw StateError('YoloV8PersonDetector not initialized.');
     }
 
     // GPU-accelerated letterbox via Canvas drawImage
-    final double r = math.min(_inH / imageHeight, _inW / imageWidth);
-    final int nw = (imageWidth * r).round();
-    final int nh = (imageHeight * r).round();
-    final int dw = (_inW - nw) ~/ 2;
-    final int dh = (_inH - nh) ~/ 2;
+    final lb = computeLetterboxParams(
+      srcWidth: imageWidth,
+      srcHeight: imageHeight,
+      targetWidth: inW,
+      targetHeight: inH,
+    );
+    final int dw = lb.padLeft;
+    final int dh = lb.padTop;
+    final int nw = lb.newWidth;
+    final int nh = lb.newHeight;
 
     final web.CanvasRenderingContext2D ctx = _canvasCtx!;
     ctx.fillStyle = 'rgb(114,114,114)'.toJS;
-    ctx.fillRect(0, 0, _inW, _inH);
+    ctx.fillRect(0, 0, inW, inH);
     ctx.drawImage(htmlImage, 0, 0, imageWidth, imageHeight, dw, dh, nw, nh);
 
     // Extract pixel data
-    final web.ImageData imageData = ctx.getImageData(0, 0, _inW, _inH);
+    final web.ImageData imageData = ctx.getImageData(0, 0, inW, inH);
     final rgba = imageData.data.toDart;
 
     // Normalize RGBA -> RGB [0,1]
-    final Float32List inputFlat = _inputBuffer!;
-    const double norm = 1.0 / 255.0;
-    int dst = 0;
-    for (int src = 0; src < rgba.length; src += 4) {
-      inputFlat[dst++] = rgba[src] * norm; // R
-      inputFlat[dst++] = rgba[src + 1] * norm; // G
-      inputFlat[dst++] = rgba[src + 2] * norm; // B
-    }
+    final Float32List inputFlat = inputBuffer!;
+    rgbaToRgbFloat32(Uint8List.view(rgba.buffer), inputFlat);
 
     // Run inference
-    _cachedOutputs ??= _createOutputBuffers();
-    _zeroOutputBuffers(_cachedOutputs!);
+    cachedOutputs ??= createOutputBuffers(outShapes);
+    zeroOutputBuffers(cachedOutputs!, outShapes);
 
-    _interpreter!.runForMultipleInputs([inputFlat.buffer], _cachedOutputs!);
+    interpreter!.runForMultipleInputs([inputFlat.buffer], cachedOutputs!);
 
     return postProcessDetections(
-      outputs: _cachedOutputs!.values.toList(),
-      inputWidth: _inW,
-      inputHeight: _inH,
-      r: r,
+      outputs: cachedOutputs!.values.toList(),
+      inputWidth: inW,
+      inputHeight: inH,
+      r: lb.scale,
       dw: dw,
       dh: dh,
       imageWidth: imageWidth,
@@ -165,21 +149,5 @@ class YoloV8PersonDetector {
       maxDet: maxDet,
       filterClassId: personOnly ? cocoPersonClassId : null,
     );
-  }
-
-  // ---------------------------------------------------------------------------
-  // Private helper methods (pure Dart math, no platform dependencies)
-  // ---------------------------------------------------------------------------
-
-  /// Creates pre-allocated output buffers based on cached output shapes.
-  Map<int, Object> _createOutputBuffers() => createOutputBuffers(_outShapes);
-
-  /// Zeros out pre-allocated output buffers for reuse.
-  void _zeroOutputBuffers(Map<int, Object> outputs) =>
-      zeroOutputBuffers(outputs, _outShapes);
-
-  /// Exposes detection output decoding for tests.
-  List<Map<String, dynamic>> decodeOutputsForTest(List<dynamic> outputs) {
-    return decodeAndSplitOutputs(outputs);
   }
 }

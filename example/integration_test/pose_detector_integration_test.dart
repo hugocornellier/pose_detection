@@ -409,8 +409,8 @@ void main() {
 
       final point = landmark.toPixel(pose.imageWidth, pose.imageHeight);
 
-      expect(point.x, equals(landmark.x.toInt()));
-      expect(point.y, equals(landmark.y.toInt()));
+      expect(point.x, equals(landmark.x));
+      expect(point.y, equals(landmark.y));
     });
 
     test('should access bounding box properties', () {
@@ -735,15 +735,13 @@ void main() {
       await detector.dispose();
     });
 
-    test('should throw when called with invalid bytes', () async {
+    test('should return empty list when called with invalid bytes', () async {
       final detector = PoseDetector(landmarkModel: PoseLandmarkModel.lite);
       await detector.initialize();
 
-      // Invalid bytes produce an undecodable Mat which causes an error internally
-      expect(
-        () => detector.detect(Uint8List.fromList([0, 1, 2, 3])),
-        throwsA(anything),
-      );
+      // Invalid bytes produce an undecodable (empty) Mat, so detect returns no poses
+      final result = await detector.detect(Uint8List.fromList([0, 1, 2, 3]));
+      expect(result, isEmpty);
 
       await detector.dispose();
     });
@@ -901,11 +899,8 @@ void main() {
       await detector.dispose();
     });
 
-    test('should work with useNativePreprocessing disabled', () async {
-      final detector = PoseDetector(
-        landmarkModel: PoseLandmarkModel.lite,
-        useNativePreprocessing: false,
-      );
+    test('should work with lite landmark model', () async {
+      final detector = PoseDetector(landmarkModel: PoseLandmarkModel.lite);
       await detector.initialize();
 
       final ByteData data = await rootBundle.load('assets/samples/pose1.jpg');

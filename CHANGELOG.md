@@ -1,3 +1,14 @@
+## 2.0.0
+
+**Breaking:** `Point` now uses `double` coordinates. `BoundingBox` is now a 4-corner Point-based type.
+
+* Use shared `Point` and `BoundingBox` from `flutter_litert` 2.0.0
+* `toPixel()` now returns full-precision `double` coordinates (was truncating to `int`)
+* Extract `PersonDetectorBase` shared between native and web detectors
+* Simplify model classes and detector implementations
+* Remove integration tests from unit test suite
+* Remove dead test helpers (`test_config.dart`)
+
 ## 1.0.7
 
 * Update `camera_desktop` 1.0.1 -> 1.0.3

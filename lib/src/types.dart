@@ -1,5 +1,8 @@
+import 'package:flutter_litert/flutter_litert.dart'
+    show BoundingBox, LandmarkMixin;
+
 export 'package:flutter_litert/flutter_litert.dart'
-    show PerformanceMode, PerformanceConfig;
+    show PerformanceMode, PerformanceConfig, Point, BoundingBox;
 
 /// BlazePose model variant for landmark extraction.
 ///
@@ -46,14 +49,16 @@ class PoseLandmarks {
 ///
 /// Coordinates are in the original image space (pixels).
 /// The [z] coordinate represents depth relative to the body center (not absolute depth).
-class PoseLandmark {
+class PoseLandmark with LandmarkMixin {
   /// The body part this landmark represents (nose, leftShoulder, etc.)
   final PoseLandmarkType type;
 
   /// X coordinate in pixels (original image space)
+  @override
   final double x;
 
   /// Y coordinate in pixels (original image space)
+  @override
   final double y;
 
   /// Z coordinate representing depth relative to hips midpoint (not absolute depth)
@@ -70,17 +75,6 @@ class PoseLandmark {
     required this.z,
     required this.visibility,
   });
-
-  /// Converts x coordinate to normalized range (0.0 to 1.0)
-  double xNorm(int imageWidth) => (x / imageWidth).clamp(0.0, 1.0);
-
-  /// Converts y coordinate to normalized range (0.0 to 1.0)
-  double yNorm(int imageHeight) => (y / imageHeight).clamp(0.0, 1.0);
-
-  /// Converts landmark coordinates to integer pixel point
-  Point toPixel(int imageWidth, int imageHeight) {
-    return Point(x.toInt(), y.toInt());
-  }
 }
 
 /// Body part types for the 33 BlazePose landmarks.
@@ -208,45 +202,6 @@ enum PoseLandmarkType {
   rightFootIndex,
 }
 
-/// 2D integer pixel coordinate.
-class Point {
-  /// X coordinate in pixels
-  final int x;
-
-  /// Y coordinate in pixels
-  final int y;
-
-  /// Creates a 2D pixel coordinate at position ([x], [y]).
-  Point(this.x, this.y);
-}
-
-/// Axis-aligned bounding box in pixel coordinates.
-///
-/// Coordinates are in the original image space (not normalized).
-class BoundingBox {
-  /// Left edge x-coordinate in pixels
-  final double left;
-
-  /// Top edge y-coordinate in pixels
-  final double top;
-
-  /// Right edge x-coordinate in pixels
-  final double right;
-
-  /// Bottom edge y-coordinate in pixels
-  final double bottom;
-
-  /// Creates an axis-aligned bounding box with the specified edges.
-  ///
-  /// All coordinates are in pixels in the original image space.
-  const BoundingBox({
-    required this.left,
-    required this.top,
-    required this.right,
-    required this.bottom,
-  });
-}
-
 /// Defines the standard skeleton connections between BlazePose landmarks.
 ///
 /// Each connection is a pair of [PoseLandmarkType] values representing
@@ -345,11 +300,10 @@ class Pose {
 
   /// Gets a specific landmark by type, or null if not found
   PoseLandmark? getLandmark(PoseLandmarkType type) {
-    try {
-      return landmarks.firstWhere((l) => l.type == type);
-    } catch (_) {
-      return null;
+    for (final l in landmarks) {
+      if (l.type == type) return l;
     }
+    return null;
   }
 
   /// Returns true if this pose has landmarks

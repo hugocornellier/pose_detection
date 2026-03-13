@@ -1,6 +1,5 @@
 // ignore_for_file: implementation_imports
 
-import 'dart:math' as math;
 import 'dart:js_interop';
 import 'dart:js_interop_unsafe';
 import 'dart:typed_data';
@@ -9,6 +8,8 @@ import 'package:flutter/services.dart';
 import 'package:flutter_litert/src/web/js_interop/tfjs_tensor.dart';
 import 'package:flutter_litert/src/web/model.dart' as litert_web;
 import '../types.dart';
+import '../util/pose_helpers.dart';
+import '../util/web_image_utils.dart';
 
 /// Web implementation of BlazePose landmark extraction model runner.
 ///
@@ -47,7 +48,7 @@ class PoseLandmarkModelRunner {
   }) async {
     if (_isInitialized) await dispose();
 
-    final path = _getModelPath(model);
+    final path = poseLandmarkModelPath(model);
     final ByteData rawAssetFile = await rootBundle.load(path);
     final litert_web.Model loadedModel = await litert_web.Model.fromBuffer(
       rawAssetFile.buffer.asUint8List(),
@@ -55,18 +56,6 @@ class PoseLandmarkModelRunner {
     _model = loadedModel;
     _inputBufferFlat = Float32List(256 * 256 * 3);
     _isInitialized = true;
-  }
-
-  /// Returns the asset path for the given BlazePose model variant.
-  String _getModelPath(PoseLandmarkModel model) {
-    switch (model) {
-      case PoseLandmarkModel.lite:
-        return 'packages/pose_detection/assets/models/pose_landmark_lite.tflite';
-      case PoseLandmarkModel.full:
-        return 'packages/pose_detection/assets/models/pose_landmark_full.tflite';
-      case PoseLandmarkModel.heavy:
-        return 'packages/pose_detection/assets/models/pose_landmark_heavy.tflite';
-    }
   }
 
   /// Returns true if the model runner has been initialized and is ready to use.
@@ -105,14 +94,7 @@ class PoseLandmarkModelRunner {
 
     // Convert RGBA to normalized RGB float32
     final inputFlat = _inputBufferFlat!;
-    const norm = 1.0 / 255.0;
-    int dst = 0;
-    for (int src = 0; src < rgbaData.length; src += 4) {
-      inputFlat[dst++] = rgbaData[src] * norm; // R
-      inputFlat[dst++] = rgbaData[src + 1] * norm; // G
-      inputFlat[dst++] = rgbaData[src + 2] * norm; // B
-      // Skip alpha (src + 3)
-    }
+    rgbaToRgbFloat32(rgbaData, inputFlat);
 
     final JSTensor inputTensor = JSTensor(
       inputFlat,
@@ -138,10 +120,9 @@ class PoseLandmarkModelRunner {
     }
 
     try {
-      return _parseLandmarks(
+      return parsePoseLandmarks(
         landmarksData as List<dynamic>,
         scoreData as List<dynamic>,
-        worldData as List<dynamic>,
       );
     } finally {
       _disposeOutputTensors(rawOutput);
@@ -224,49 +205,5 @@ class PoseLandmarkModelRunner {
         } catch (_) {}
       }
     } catch (_) {}
-  }
-
-  /// Parses raw model outputs into structured [PoseLandmarks].
-  ///
-  /// Applies sigmoid activation to score, visibility, and presence values.
-  /// Normalizes x/y coordinates from 256x256 pixel space to [0, 1] range.
-  PoseLandmarks _parseLandmarks(
-    List<dynamic> landmarksData,
-    List<dynamic> scoreData,
-    List<dynamic> worldData,
-  ) {
-    double sigmoid(double x) => 1.0 / (1.0 + math.exp(-x));
-    double clamp01(double v) => v.isNaN
-        ? 0.0
-        : v < 0.0
-        ? 0.0
-        : (v > 1.0 ? 1.0 : v);
-    const double norm256 = 1.0 / 256.0;
-
-    final double score = sigmoid((scoreData[0][0] as num).toDouble());
-    final List<dynamic> raw = landmarksData[0] as List<dynamic>;
-    final List<PoseLandmark> lm = <PoseLandmark>[];
-
-    for (int i = 0; i < 33; i++) {
-      final int base = i * 5;
-      final double x = clamp01((raw[base + 0] as num).toDouble() * norm256);
-      final double y = clamp01((raw[base + 1] as num).toDouble() * norm256);
-      final double z = (raw[base + 2] as num).toDouble();
-      final double visibility = sigmoid((raw[base + 3] as num).toDouble());
-      final double presence = sigmoid((raw[base + 4] as num).toDouble());
-      final double vis = (visibility * presence).clamp(0.0, 1.0);
-
-      lm.add(
-        PoseLandmark(
-          type: PoseLandmarkType.values[i],
-          x: x,
-          y: y,
-          z: z,
-          visibility: vis,
-        ),
-      );
-    }
-
-    return PoseLandmarks(landmarks: lm, score: score);
   }
 }

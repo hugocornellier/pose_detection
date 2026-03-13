@@ -12,7 +12,6 @@ class PoseDetector {
   final double minLandmarkScore;
   final int interpreterPoolSize;
   final PerformanceConfig performanceConfig;
-  final bool useNativePreprocessing;
 
   PoseDetector({
     this.mode = PoseMode.boxesAndLandmarks,
@@ -23,7 +22,6 @@ class PoseDetector {
     this.minLandmarkScore = 0.5,
     this.interpreterPoolSize = 1,
     this.performanceConfig = PerformanceConfig.disabled,
-    this.useNativePreprocessing = true,
   }) {
     throw UnsupportedError('PoseDetector is not supported on this platform.');
   }

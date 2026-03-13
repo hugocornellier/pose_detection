@@ -4,6 +4,7 @@ import 'package:flutter_litert/flutter_litert.dart';
 import 'package:opencv_dart/opencv_dart.dart' as cv;
 import '../types.dart';
 import '../util/native_image_utils.dart';
+import '../util/pose_helpers.dart';
 import '../models/person_detector_native.dart';
 import '../models/pose_landmark_model_native.dart';
 
@@ -18,16 +19,6 @@ class _PersonCropData {
   /// The resized/letterboxed 256x256 cv.Mat ready for landmark extraction (Native path).
   final cv.Mat? letterboxedMat;
 
-  /// Scale ratio used in letterbox preprocessing (uniform scale).
-  /// For resize mode, this is set to 1.0 and cropWidth/cropHeight are used instead.
-  final double scaleRatio;
-
-  /// Left padding added during letterboxing (0 for resize mode).
-  final int padLeft;
-
-  /// Top padding added during letterboxing (0 for resize mode).
-  final int padTop;
-
   /// X coordinate of crop origin in original image.
   final int cropX;
 
@@ -40,20 +31,13 @@ class _PersonCropData {
   /// Height of crop in original image (for resize mode inverse transform).
   final int cropHeight;
 
-  /// Whether this crop was preprocessed with resize (true) or letterbox (false).
-  final bool useResize;
-
   _PersonCropData({
     required this.detection,
     this.letterboxedMat,
-    required this.scaleRatio,
-    required this.padLeft,
-    required this.padTop,
     required this.cropX,
     required this.cropY,
     this.cropWidth = 0,
     this.cropHeight = 0,
-    this.useResize = false,
   });
 
   /// Disposes native resources if using native preprocessing.
@@ -164,16 +148,6 @@ class PoseDetector {
   /// ```
   final PerformanceConfig performanceConfig;
 
-  /// Whether to use native OpenCV preprocessing for faster image processing.
-  ///
-  /// When enabled, uses SIMD-accelerated OpenCV operations for:
-  /// - Letterbox preprocessing (5-15x faster)
-  /// - Image cropping (10-30x faster)
-  /// - Tensor conversion (3-5x faster)
-  ///
-  /// Default: true (recommended for best performance)
-  final bool useNativePreprocessing;
-
   bool _isInitialized = false;
 
   /// Creates a pose detector with the specified configuration.
@@ -187,8 +161,6 @@ class PoseDetector {
   /// - [minLandmarkScore]: Minimum landmark confidence score (0.0-1.0). Default: 0.5
   /// - [interpreterPoolSize]: Number of landmark model interpreter instances (1-10). Default: 1
   /// - [performanceConfig]: TensorFlow Lite performance configuration. Default: no acceleration
-  /// - [useNativePreprocessing]: Whether to use OpenCV for faster preprocessing. Default: true
-  ///
   /// **Performance Configuration:**
   /// ```dart
   /// // Default (no acceleration, backward compatible)
@@ -221,7 +193,6 @@ class PoseDetector {
     this.minLandmarkScore = 0.5,
     int interpreterPoolSize = 1,
     this.performanceConfig = PerformanceConfig.disabled,
-    this.useNativePreprocessing = true,
   }) : interpreterPoolSize = performanceConfig.mode == PerformanceMode.disabled
            ? interpreterPoolSize
            : 1 {
@@ -270,6 +241,7 @@ class PoseDetector {
   /// Throws [StateError] if called before [initialize].
   Future<List<Pose>> detect(Uint8List imageBytes) async {
     final cv.Mat mat = cv.imdecode(imageBytes, cv.IMREAD_COLOR);
+    if (mat.isEmpty) return <Pose>[];
     try {
       return await detectFromMat(
         mat,
@@ -318,7 +290,7 @@ class PoseDetector {
     );
 
     if (mode == PoseMode.boxes) {
-      return _buildBoxOnlyResults(dets, imageWidth, imageHeight);
+      return buildBoxOnlyPoses(dets, imageWidth, imageHeight);
     }
 
     final List<_PersonCropData> cropDataList = <_PersonCropData>[];
@@ -357,14 +329,10 @@ class PoseDetector {
         _PersonCropData(
           detection: d,
           letterboxedMat: resized,
-          scaleRatio: 1.0,
-          padLeft: 0,
-          padTop: 0,
           cropX: sqX1.round(),
           cropY: sqY1.round(),
           cropWidth: side.round(),
           cropHeight: side.round(),
-          useResize: true,
         ),
       );
     }
@@ -393,32 +361,6 @@ class PoseDetector {
     return results;
   }
 
-  /// Builds box-only results (no landmarks).
-  List<Pose> _buildBoxOnlyResults(
-    List<Detection> dets,
-    int imageWidth,
-    int imageHeight,
-  ) {
-    final List<Pose> out = <Pose>[];
-    for (final Detection d in dets) {
-      out.add(
-        Pose(
-          boundingBox: BoundingBox(
-            left: d.bboxXYXY[0],
-            top: d.bboxXYXY[1],
-            right: d.bboxXYXY[2],
-            bottom: d.bboxXYXY[3],
-          ),
-          score: d.score,
-          landmarks: const <PoseLandmark>[],
-          imageWidth: imageWidth,
-          imageHeight: imageHeight,
-        ),
-      );
-    }
-    return out;
-  }
-
   /// Builds full results with landmarks from crop data.
   List<Pose> _buildLandmarkResults(
     List<_PersonCropData> cropDataList,
@@ -431,35 +373,21 @@ class PoseDetector {
       final _PersonCropData data = cropDataList[i];
       final PoseLandmarks? lms = allLandmarks[i];
 
-      if (lms == null || lms.score < minLandmarkScore) continue;
+      if (lms == null || lms.score < minLandmarkScore) {
+        results.add(buildBoxOnlyPose(data.detection, imageWidth, imageHeight));
+        continue;
+      }
 
       final List<PoseLandmark> pts = <PoseLandmark>[];
       for (final PoseLandmark lm in lms.landmarks) {
-        double xOrig, yOrig;
-
-        if (data.useResize) {
-          xOrig = (data.cropX + lm.x * data.cropWidth).clamp(
-            0.0,
-            imageWidth.toDouble(),
-          );
-          yOrig = (data.cropY + lm.y * data.cropHeight).clamp(
-            0.0,
-            imageHeight.toDouble(),
-          );
-        } else {
-          final double xp = lm.x * 256.0;
-          final double yp = lm.y * 256.0;
-          final double xCrop = (xp - data.padLeft) / data.scaleRatio;
-          final double yCrop = (yp - data.padTop) / data.scaleRatio;
-          xOrig = (data.cropX.toDouble() + xCrop).clamp(
-            0.0,
-            imageWidth.toDouble(),
-          );
-          yOrig = (data.cropY.toDouble() + yCrop).clamp(
-            0.0,
-            imageHeight.toDouble(),
-          );
-        }
+        final double xOrig = (data.cropX + lm.x * data.cropWidth).clamp(
+          0.0,
+          imageWidth.toDouble(),
+        );
+        final double yOrig = (data.cropY + lm.y * data.cropHeight).clamp(
+          0.0,
+          imageHeight.toDouble(),
+        );
 
         pts.add(
           PoseLandmark(
@@ -474,11 +402,11 @@ class PoseDetector {
 
       results.add(
         Pose(
-          boundingBox: BoundingBox(
-            left: data.detection.bboxXYXY[0],
-            top: data.detection.bboxXYXY[1],
-            right: data.detection.bboxXYXY[2],
-            bottom: data.detection.bboxXYXY[3],
+          boundingBox: BoundingBox.ltrb(
+            data.detection.bboxXYXY[0],
+            data.detection.bboxXYXY[1],
+            data.detection.bboxXYXY[2],
+            data.detection.bboxXYXY[3],
           ),
           score: data.detection.score,
           landmarks: pts,
