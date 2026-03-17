@@ -1,3 +1,7 @@
+## 2.0.1
+
+* Fix Xcode build warnings by declaring PrivacyInfo.xcprivacy as a resource bundle in iOS and macOS podspecs
+
 ## 2.0.0
 
 **Breaking:** `Point` now uses `double` coordinates. `BoundingBox` is now a 4-corner Point-based type.
