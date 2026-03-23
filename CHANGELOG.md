@@ -1,3 +1,7 @@
+## 2.0.2
+
+* Update flutter_litert 2.0.5 -> 2.0.6 
+
 ## 2.0.1
 
 * Fix Xcode build warnings by declaring PrivacyInfo.xcprivacy as a resource bundle in iOS and macOS podspecs
