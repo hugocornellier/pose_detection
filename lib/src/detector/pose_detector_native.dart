@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter_litert/flutter_litert.dart';
@@ -193,7 +194,16 @@ class PoseDetector {
       await dispose();
     }
     await _lm.initialize(landmarkModel, performanceConfig: performanceConfig);
-    await _yolo.initialize(performanceConfig: performanceConfig);
+    // Use XNNPACK (CPU+SIMD) for YOLO person detector on iOS instead of Metal.
+    // Metal GPU delegate produces inconsistent detection counts for YOLOv8n
+    // due to floating-point precision differences (10 detections vs 2 for the
+    // same image). XNNPACK gives 2-5x CPU speedup while maintaining consistent
+    // results. Landmark model still uses Metal for maximum speed.
+    final yoloConfig =
+        (Platform.isIOS && performanceConfig.mode == PerformanceMode.auto)
+        ? PerformanceConfig.xnnpack()
+        : performanceConfig;
+    await _yolo.initialize(performanceConfig: yoloConfig);
     _isInitialized = true;
   }
 

@@ -1,3 +1,7 @@
+## 2.0.6
+
+* Fixed Metal GPU delegate producing inconsistent detection counts on iOS
+
 ## 2.0.5
 
 * Update documentation
