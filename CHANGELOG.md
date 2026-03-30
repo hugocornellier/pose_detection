@@ -1,3 +1,16 @@
+## 2.0.5
+
+* Update documentation
+
+## 2.0.4
+
+* Update flutter_litert 2.0.8 -> 2.0.10
+
+## 2.0.3
+
+* Enable auto hardware acceleration by default (XNNPACK on all native platforms, Metal GPU on iOS)
+* Update flutter_litert 2.0.6 -> 2.0.8
+
 ## 2.0.2
 
 * Update flutter_litert 2.0.5 -> 2.0.6 
