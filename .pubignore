@@ -49,3 +49,6 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Screenshots (referenced via GitHub URLs in README)
+assets/screenshots/

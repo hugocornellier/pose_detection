@@ -1,3 +1,7 @@
+## 2.0.7
+
+* Update flutter_litert 2.0.10 -> 2.0.11
+
 ## 2.0.6
 
 * Fixed Metal GPU delegate producing inconsistent detection counts on iOS

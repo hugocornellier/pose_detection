@@ -45,7 +45,7 @@ void main() {
   });
 
   // ---------------------------------------------------------------------------
-  // PoseLandmarkType enum — 33 values, MediaPipe indices
+  // PoseLandmarkType enum, 33 values, MediaPipe indices
   // ---------------------------------------------------------------------------
   group('PoseLandmarkType enum', () {
     test('has 33 values', () {

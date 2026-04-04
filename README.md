@@ -123,12 +123,12 @@ The package automatically selects the best acceleration strategy for each platfo
 | **Android** | XNNPACK | 2-5x | ARM NEON SIMD acceleration |
 | **Windows** | XNNPACK | 2-5x | SIMD vectorization (AVX on x86) |
 
-No configuration needed - just call `initialize()` and you get the optimal performance for your platform.
+No configuration needed, just call `initialize()` and you get the optimal performance for your platform.
 
 ### Advanced Performance Configuration
 
 ```dart
-// Auto mode (default) - optimal for each platform
+// Auto mode (default), optimal for each platform
 await detector.initialize();
 
 // Force XNNPACK (all native platforms)
@@ -226,7 +226,7 @@ Every pose contains up to 33 landmarks that align with the BlazePose specificati
 - rightFootIndex
 
 ```dart
-// Example - how to access specific landmarks
+// Example: how to access specific landmarks
 // PoseLandmarkType can be any of the 33 landmarks listed above.
 final PoseLandmark? leftHip = pose.getLandmark(PoseLandmarkType.leftHip);
 if (leftHip != null && leftHip.visibility > 0.5) {

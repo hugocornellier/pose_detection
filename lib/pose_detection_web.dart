@@ -4,6 +4,6 @@ import 'package:flutter_web_plugins/flutter_web_plugins.dart';
 class PoseDetectionWeb {
   /// Registers the web implementation with Flutter's plugin registrar.
   static void registerWith(Registrar registrar) {
-    // No-op — uses conditional imports, not platform channels.
+    // No-op, uses conditional imports, not platform channels.
   }
 }
