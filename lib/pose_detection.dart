@@ -45,3 +45,6 @@ export 'src/detector/pose_detector.dart' show PoseDetector;
 export 'src/dart_registration.dart';
 
 export 'src/exports/opencv_exports.dart';
+
+export 'package:flutter_litert/flutter_litert.dart'
+    show packYuv420, YuvPlane, YuvLayout, PackedYuv;

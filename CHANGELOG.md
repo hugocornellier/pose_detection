@@ -1,3 +1,14 @@
+## 2.1.0
+
+* Fix live camera in the example app on Android (previously detections were sideways and unreliable):
+  * Apply rotation to raw landscape camera frames before detection so the pose detector sees upright people. `_rotationFlagForFrame` handles all four device orientations (portrait up/down, landscape left/right) via a combined `sensorOrientation` + `DeviceOrientation` formula.
+  * Mirror the overlay on Android front camera to match `CameraPreview`'s auto-mirrored preview texture.
+  * Replace the per-pixel Dart YUV loop with `flutter_litert`'s shared `packYuv420` helper + native `cv.cvtColor` on mobile (iOS NV12, Android NV21 / I420).
+  * Replace the per-pixel Dart BGRA→BGR / RGBA→BGR loop with native `cv.cvtColor` on desktop (macOS / Linux).
+* Align example app live-camera layout with `face_detection_tflite`: Material+Row top bar (replaces AppBar), flip-camera button, FPS + detection-time display, rotating top bar in landscape with safe-area padding, and a settings popup housing pose-specific controls (landmark-model chips: Lite / Full / Heavy).
+* Re-export `packYuv420`, `YuvPlane`, `YuvLayout`, and `PackedYuv` from `flutter_litert` through the `pose_detection` barrel.
+* Update `flutter_litert` to `^2.2.0`.
+
 ## 2.0.10
 
 * Update flutter_litert -> 2.1.0

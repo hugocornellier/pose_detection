@@ -1,11 +1,14 @@
+import 'dart:async';
 import 'dart:io';
-import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:pose_detection/pose_detection.dart';
 import 'package:camera/camera.dart';
 import 'package:opencv_dart/opencv_dart.dart' as cv;
+import 'package:sensors_plus/sensors_plus.dart';
 
 void main() {
   runApp(const PoseDetectionApp());
@@ -611,7 +614,7 @@ class CameraScreen extends StatefulWidget {
 class _CameraScreenState extends State<CameraScreen> {
   CameraController? _cameraController;
   bool _isImageStreamStarted = false;
-  final PoseDetector _poseDetector = PoseDetector(
+  PoseDetector _poseDetector = PoseDetector(
     mode: PoseMode.boxesAndLandmarks,
     landmarkModel:
         PoseLandmarkModel.lite, // Use lite for better real-time performance
@@ -628,6 +631,17 @@ class _CameraScreenState extends State<CameraScreen> {
   bool _isDisposed = false;
   String? _errorMessage;
   Size? _cameraSize;
+  int? _sensorOrientation;
+  bool _isFrontCamera = false;
+
+  List<CameraDescription> _availableCameras = const [];
+  bool _isSwitchingCamera = false;
+  String _deviceOrientation = 'Portrait Up';
+  int _fps = 0;
+  DateTime? _lastFpsUpdate;
+  int _framesSinceLastUpdate = 0;
+  int _detectionTimeMs = 0;
+  StreamSubscription<AccelerometerEvent>? _accelerometerSub;
 
   // Performance: Use ValueNotifier for efficient pose overlay updates
   // This avoids full widget rebuilds - only the CustomPaint repaints
@@ -641,11 +655,30 @@ class _CameraScreenState extends State<CameraScreen> {
   int _detectionCount = 0;
   double _avgProcessingTimeMs = 0;
 
+  // Pose-specific settings
+  PoseLandmarkModel _landmarkModel = PoseLandmarkModel.lite;
+
   @override
   void initState() {
     super.initState();
     _initializePoseDetector();
     _initCamera();
+
+    if (!kIsWeb && (Platform.isAndroid || Platform.isIOS)) {
+      _accelerometerSub = accelerometerEventStream().listen((event) {
+        final next = event.x.abs() > event.y.abs()
+            ? (event.x > 0 ? 'Landscape Left' : 'Landscape Right')
+            : (event.y > 0 ? 'Portrait Up' : 'Portrait Down');
+        if (next == 'Portrait Down' &&
+            (_deviceOrientation == 'Landscape Left' ||
+                _deviceOrientation == 'Landscape Right')) {
+          return;
+        }
+        if (next != _deviceOrientation && mounted) {
+          setState(() => _deviceOrientation = next);
+        }
+      });
+    }
   }
 
   Future<void> _initializePoseDetector() async {
@@ -678,30 +711,14 @@ class _CameraScreenState extends State<CameraScreen> {
         return;
       }
 
+      _availableCameras = cameras;
+
       final camera = cameras.firstWhere(
         (c) => c.lensDirection == CameraLensDirection.front,
         orElse: () => cameras.first,
       );
 
-      _cameraController = CameraController(
-        camera,
-        ResolutionPreset.medium,
-        enableAudio: false,
-        imageFormatGroup: ImageFormatGroup.yuv420,
-      );
-
-      await _cameraController!.initialize();
-      if (!mounted) return;
-
-      _cameraSize = Size(
-        _cameraController!.value.previewSize!.height,
-        _cameraController!.value.previewSize!.width,
-      );
-
-      await _cameraController!.startImageStream(_processCameraImage);
-      _isImageStreamStarted = true;
-
-      setState(() {});
+      await _startControllerFor(camera, markInitialized: false);
     } catch (e) {
       if (mounted) {
         setState(() => _errorMessage = 'Camera init failed: $e');
@@ -709,103 +726,480 @@ class _CameraScreenState extends State<CameraScreen> {
     }
   }
 
-  /// Converts a CameraImage to BGR cv.Mat for OpenCV processing.
-  ///
-  /// Handles:
-  /// - Desktop BGRA (macOS via camera_desktop): single plane, BGRA byte order
-  /// - Desktop RGBA (Linux via camera_desktop): single plane, RGBA byte order
-  /// - iOS NV12: 2 planes, YUV420
-  /// - Android I420: 3 planes, YUV420
+  Future<void> _startControllerFor(
+    CameraDescription camera, {
+    required bool markInitialized,
+  }) async {
+    final controller = CameraController(
+      camera,
+      ResolutionPreset.medium,
+      enableAudio: false,
+      imageFormatGroup: ImageFormatGroup.yuv420,
+    );
+
+    await controller.initialize();
+
+    if (!mounted) {
+      await controller.dispose();
+      return;
+    }
+
+    _cameraController = controller;
+
+    setState(() {
+      _sensorOrientation = controller.description.sensorOrientation;
+      _isFrontCamera =
+          controller.description.lensDirection == CameraLensDirection.front;
+      _cameraSize = Size(
+        controller.value.previewSize!.height,
+        controller.value.previewSize!.width,
+      );
+    });
+
+    await controller.startImageStream(_processCameraImage);
+    _isImageStreamStarted = true;
+  }
+
+  bool get _canSwitchCamera {
+    if (kIsWeb) return false;
+    if (!(Platform.isAndroid || Platform.isIOS)) return false;
+    final hasFront = _availableCameras.any(
+      (c) => c.lensDirection == CameraLensDirection.front,
+    );
+    final hasBack = _availableCameras.any(
+      (c) => c.lensDirection == CameraLensDirection.back,
+    );
+    return hasFront && hasBack;
+  }
+
+  Future<void> _switchCamera() async {
+    if (_isSwitchingCamera) return;
+    if (!_canSwitchCamera) return;
+
+    final target = _isFrontCamera
+        ? CameraLensDirection.back
+        : CameraLensDirection.front;
+    final next = _availableCameras.firstWhere(
+      (c) => c.lensDirection == target,
+      orElse: () => _availableCameras.first,
+    );
+
+    setState(() => _isSwitchingCamera = true);
+    try {
+      final prev = _cameraController;
+      if (prev != null) {
+        if (_isImageStreamStarted) {
+          try {
+            await prev.stopImageStream();
+          } catch (_) {}
+          _isImageStreamStarted = false;
+        }
+        await prev.dispose();
+      }
+      _poseNotifier.value = [];
+
+      await _startControllerFor(next, markInitialized: false);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Error switching camera: $e')));
+      }
+    } finally {
+      if (mounted) setState(() => _isSwitchingCamera = false);
+    }
+  }
+
+  void _updateFps() {
+    _framesSinceLastUpdate++;
+    final now = DateTime.now();
+    if (_lastFpsUpdate != null) {
+      final diff = now.difference(_lastFpsUpdate!).inMilliseconds;
+      if (diff >= 1000 && mounted) {
+        setState(() {
+          _fps = (_framesSinceLastUpdate * 1000 / diff).round();
+          _framesSinceLastUpdate = 0;
+          _lastFpsUpdate = now;
+        });
+      }
+    } else {
+      _lastFpsUpdate = now;
+    }
+  }
+
+  int get _barQuarterTurns {
+    switch (_deviceOrientation) {
+      case 'Landscape Left':
+        return 1;
+      case 'Landscape Right':
+        return 3;
+      default:
+        return 0;
+    }
+  }
+
+  Widget _buildCameraTopBar() {
+    final canPop = Navigator.of(context).canPop();
+    final isMobile = !kIsWeb && (Platform.isAndroid || Platform.isIOS);
+
+    final fpsText = SizedBox(
+      width: 70,
+      child: Text(
+        'FPS: $_fps',
+        style: const TextStyle(color: Colors.white, fontSize: 14),
+        textAlign: isMobile ? TextAlign.left : TextAlign.right,
+      ),
+    );
+    const separator = Text(
+      ' | ',
+      style: TextStyle(color: Colors.white, fontSize: 14),
+    );
+    final msText = SizedBox(
+      width: 70,
+      child: Text(
+        '${_detectionTimeMs}ms',
+        style: const TextStyle(color: Colors.white, fontSize: 14),
+      ),
+    );
+
+    return Material(
+      color: Colors.black.withAlpha(179),
+      elevation: 4,
+      child: SizedBox(
+        height: kToolbarHeight,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 4),
+          child: Row(
+            children: [
+              if (canPop)
+                IconButton(
+                  tooltip: 'Back',
+                  color: Colors.white,
+                  icon: const Icon(Icons.arrow_back),
+                  onPressed: () => Navigator.of(context).maybePop(),
+                ),
+              if (isMobile) ...[
+                const SizedBox(width: 8),
+                fpsText,
+                separator,
+                msText,
+                const Spacer(),
+              ] else
+                const Expanded(
+                  child: Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 8),
+                    child: Text(
+                      'Live Pose Detection',
+                      style: TextStyle(color: Colors.white, fontSize: 18),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ),
+              if (_canSwitchCamera)
+                IconButton(
+                  tooltip: _isFrontCamera
+                      ? 'Switch to back camera'
+                      : 'Switch to front camera',
+                  color: Colors.white,
+                  icon: Icon(
+                    Platform.isIOS
+                        ? Icons.flip_camera_ios
+                        : Icons.flip_camera_android,
+                  ),
+                  onPressed: _isSwitchingCamera ? null : _switchCamera,
+                ),
+              PopupMenuButton<void>(
+                tooltip: 'Settings',
+                icon: const Icon(Icons.settings, color: Colors.white),
+                color: Colors.blueGrey[900],
+                padding: EdgeInsets.zero,
+                itemBuilder: (context) => [
+                  PopupMenuItem<void>(
+                    enabled: false,
+                    padding: EdgeInsets.zero,
+                    child: StatefulBuilder(
+                      builder: (context, setMenuState) {
+                        return _buildSettingsMenuContent(setMenuState);
+                      },
+                    ),
+                  ),
+                ],
+              ),
+              if (!isMobile) ...[
+                const SizedBox(width: 8),
+                fpsText,
+                separator,
+                msText,
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSettingsMenuContent(StateSetter setMenuState) {
+    void update(VoidCallback fn) {
+      setState(fn);
+      setMenuState(() {});
+    }
+
+    Widget chip<T>({
+      required T value,
+      required T current,
+      required String label,
+      required VoidCallback onTap,
+    }) {
+      final isSelected = current == value;
+      return GestureDetector(
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          decoration: BoxDecoration(
+            color: isSelected ? Colors.blue : Colors.white12,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Text(
+            label,
+            style: TextStyle(
+              color: isSelected ? Colors.white : Colors.white70,
+              fontSize: 12,
+              fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+            ),
+          ),
+        ),
+      );
+    }
+
+    const sectionLabelStyle = TextStyle(
+      color: Colors.white60,
+      fontSize: 10,
+      fontWeight: FontWeight.w600,
+      letterSpacing: 1.2,
+    );
+
+    return SizedBox(
+      width: 260,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('LANDMARK MODEL', style: sectionLabelStyle),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: [
+                for (final (v, label) in const [
+                  (PoseLandmarkModel.lite, 'Lite'),
+                  (PoseLandmarkModel.full, 'Full'),
+                  (PoseLandmarkModel.heavy, 'Heavy'),
+                ])
+                  chip<PoseLandmarkModel>(
+                    value: v,
+                    current: _landmarkModel,
+                    label: label,
+                    onTap: () async {
+                      if (v == _landmarkModel) return;
+                      update(() => _landmarkModel = v);
+                      await _reinitPoseDetector();
+                      if (mounted) setMenuState(() {});
+                    },
+                  ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _positionedTopBar(int turns) {
+    final bar = _buildCameraTopBar();
+    final padding = MediaQuery.of(context).padding;
+    if (turns == 0) {
+      return Positioned(
+        top: padding.top,
+        left: padding.left,
+        right: padding.right,
+        child: bar,
+      );
+    }
+    return Positioned(
+      top: padding.top,
+      bottom: padding.bottom,
+      left: turns == 3 ? padding.left : null,
+      right: turns == 1 ? padding.right : null,
+      width: kToolbarHeight,
+      child: RotatedBox(quarterTurns: turns, child: bar),
+    );
+  }
+
+  Future<void> _reinitPoseDetector() async {
+    final old = _poseDetector;
+    await old.dispose();
+    _poseDetector = PoseDetector(
+      mode: PoseMode.boxesAndLandmarks,
+      landmarkModel: _landmarkModel,
+      detectorConf: 0.7,
+      detectorIou: 0.4,
+      maxDetections: 5,
+      minLandmarkScore: 0.5,
+      performanceConfig: const PerformanceConfig.xnnpack(),
+    );
+    await _poseDetector.initialize();
+  }
+
+  int? _rotationFlagForFrame({required int width, required int height}) {
+    final int? sensor = _sensorOrientation;
+    if (sensor == null) return null;
+
+    // iOS: the camera plugin pre-rotates the image stream per
+    // AVCaptureConnection.videoOrientation, so the historical portrait-only
+    // rotation path still applies.
+    if (Platform.isIOS) {
+      final bool isPortrait =
+          MediaQuery.of(context).orientation == Orientation.portrait;
+      if (!isPortrait) return null;
+      if (height >= width) return null;
+      if (sensor == 90) return cv.ROTATE_90_CLOCKWISE;
+      if (sensor == 270) return cv.ROTATE_90_COUNTERCLOCKWISE;
+      return null;
+    }
+
+    // Android: combined formula covering all four device orientations.
+    // `sensorOrientation` is the clockwise rotation needed to display the
+    // raw sensor buffer upright in the device's natural orientation;
+    // `deviceRotation` is how far the device is rotated clockwise from
+    // natural (portraitUp=0, landscapeLeft=90, portraitDown=180,
+    // landscapeRight=270; per Flutter's DeviceOrientation enum).
+    if (Platform.isAndroid) {
+      final DeviceOrientation d =
+          _cameraController?.value.deviceOrientation ??
+          DeviceOrientation.portraitUp;
+      final int deviceRotation = switch (d) {
+        DeviceOrientation.portraitUp => 0,
+        DeviceOrientation.landscapeLeft => 90,
+        DeviceOrientation.portraitDown => 180,
+        DeviceOrientation.landscapeRight => 270,
+      };
+
+      final int total = _isFrontCamera
+          ? (sensor + deviceRotation) % 360
+          : (sensor - deviceRotation + 360) % 360;
+
+      return switch (total) {
+        90 => cv.ROTATE_90_CLOCKWISE,
+        180 => cv.ROTATE_180,
+        270 => cv.ROTATE_90_COUNTERCLOCKWISE,
+        _ => null,
+      };
+    }
+
+    // Desktop / web: camera_desktop delivers already-upright frames.
+    return null;
+  }
+
   cv.Mat? _convertCameraImageToMat(CameraImage image) {
     try {
-      final int w = image.width;
-      final int h = image.height;
+      final int width = image.width;
+      final int height = image.height;
 
-      // Desktop: single-plane 4-channel packed format
+      // Desktop: camera_desktop provides single-plane 4-channel packed format
       if (image.planes.length == 1 &&
           (image.planes[0].bytesPerPixel ?? 1) >= 4) {
         final bytes = image.planes[0].bytes;
         final stride = image.planes[0].bytesPerRow;
-        final bgr = Uint8List(w * h * 3);
 
-        int dstIdx = 0;
-        for (int y = 0; y < h; y++) {
-          final rowStart = y * stride;
-          for (int x = 0; x < w; x++) {
-            final srcIdx = rowStart + x * 4;
-            if (Platform.isMacOS) {
-              // BGRA: B=0, G=1, R=2, A=3
-              bgr[dstIdx] = bytes[srcIdx];
-              bgr[dstIdx + 1] = bytes[srcIdx + 1];
-              bgr[dstIdx + 2] = bytes[srcIdx + 2];
-            } else {
-              // RGBA: R=0, G=1, B=2, A=3
-              bgr[dstIdx] = bytes[srcIdx + 2];
-              bgr[dstIdx + 1] = bytes[srcIdx + 1];
-              bgr[dstIdx + 2] = bytes[srcIdx];
-            }
-            dstIdx += 3;
-          }
+        // Create a 4-channel Mat directly from camera bytes (handles stride)
+        final matCols = stride ~/ 4;
+        final bgraOrRgba = cv.Mat.fromList(
+          height,
+          matCols,
+          cv.MatType.CV_8UC4,
+          bytes,
+        );
+        // Crop out stride padding if present
+        final cropped = matCols != width
+            ? bgraOrRgba.region(cv.Rect(0, 0, width, height))
+            : bgraOrRgba;
+
+        // Native SIMD-accelerated color conversion
+        final colorCode = Platform.isMacOS
+            ? cv.COLOR_BGRA2BGR
+            : cv.COLOR_RGBA2BGR;
+        cv.Mat mat = cv.cvtColor(cropped, colorCode);
+
+        if (!identical(cropped, bgraOrRgba)) cropped.dispose();
+        bgraOrRgba.dispose();
+
+        final rotationFlag = _rotationFlagForFrame(
+          width: width,
+          height: height,
+        );
+        if (rotationFlag != null) {
+          final rotated = cv.rotate(mat, rotationFlag);
+          mat.dispose();
+          return rotated;
         }
-        return cv.Mat.fromList(h, w, cv.MatType.CV_8UC3, bgr);
+        return mat;
       }
 
-      // Mobile: YUV420 format
-      final yRowStride = image.planes[0].bytesPerRow;
-      final yPixelStride = image.planes[0].bytesPerPixel ?? 1;
-      final bgr = Uint8List(w * h * 3);
+      // Mobile: YUV420. Pack Y+UV into a contiguous buffer via flutter_litert's
+      // shared `packYuv420`, then hand to OpenCV for native cvtColor.
+      final p0 = image.planes[0];
+      final p1 = image.planes.length > 1 ? image.planes[1] : null;
+      final p2 = image.planes.length > 2 ? image.planes[2] : null;
+      if (p1 == null) return null;
 
-      void writePixel(int x, int y, int yp, int up, int vp) {
-        int r = (yp + vp * 1436 / 1024 - 179).round().clamp(0, 255);
-        int g = (yp - up * 46549 / 131072 + 44 - vp * 93604 / 131072 + 91)
-            .round()
-            .clamp(0, 255);
-        int b = (yp + up * 1814 / 1024 - 227).round().clamp(0, 255);
-        final idx = (y * w + x) * 3;
-        bgr[idx] = b;
-        bgr[idx + 1] = g;
-        bgr[idx + 2] = r;
+      final packed = packYuv420(
+        width: width,
+        height: height,
+        y: (
+          bytes: p0.bytes,
+          rowStride: p0.bytesPerRow,
+          pixelStride: p0.bytesPerPixel ?? 1,
+        ),
+        u: (
+          bytes: p1.bytes,
+          rowStride: p1.bytesPerRow,
+          pixelStride: p1.bytesPerPixel ?? 1,
+        ),
+        v: p2 == null
+            ? null
+            : (
+                bytes: p2.bytes,
+                rowStride: p2.bytesPerRow,
+                pixelStride: p2.bytesPerPixel ?? 1,
+              ),
+      );
+      if (packed == null) return null;
+
+      final int cvtCode = switch (packed.layout) {
+        YuvLayout.nv12 => cv.COLOR_YUV2BGR_NV12,
+        YuvLayout.nv21 => cv.COLOR_YUV2BGR_NV21,
+        YuvLayout.i420 => cv.COLOR_YUV2BGR_I420,
+      };
+      final cv.Mat yuvMat = cv.Mat.fromList(
+        packed.height + packed.height ~/ 2,
+        packed.width,
+        cv.MatType.CV_8UC1,
+        packed.bytes,
+      );
+      cv.Mat mat = cv.cvtColor(yuvMat, cvtCode);
+      yuvMat.dispose();
+
+      // Rotate image for portrait mode so pose detector sees upright people.
+      final rotationFlag = _rotationFlagForFrame(width: width, height: height);
+      if (rotationFlag != null) {
+        final rotated = cv.rotate(mat, rotationFlag);
+        mat.dispose();
+        return rotated;
       }
 
-      if (image.planes.length == 2) {
-        // iOS NV12
-        final uvRowStride = image.planes[1].bytesPerRow;
-        final uvPixelStride = image.planes[1].bytesPerPixel ?? 2;
-        for (int y = 0; y < h; y++) {
-          for (int x = 0; x < w; x++) {
-            final uvIdx = uvPixelStride * (x ~/ 2) + uvRowStride * (y ~/ 2);
-            final yIdx = y * yRowStride + x * yPixelStride;
-            writePixel(
-              x,
-              y,
-              image.planes[0].bytes[yIdx],
-              image.planes[1].bytes[uvIdx],
-              image.planes[1].bytes[uvIdx + 1],
-            );
-          }
-        }
-      } else if (image.planes.length >= 3) {
-        // Android I420
-        final uvRowStride = image.planes[1].bytesPerRow;
-        final uvPixelStride = image.planes[1].bytesPerPixel ?? 1;
-        for (int y = 0; y < h; y++) {
-          for (int x = 0; x < w; x++) {
-            final uvIdx = uvPixelStride * (x ~/ 2) + uvRowStride * (y ~/ 2);
-            final yIdx = y * yRowStride + x * yPixelStride;
-            writePixel(
-              x,
-              y,
-              image.planes[0].bytes[yIdx],
-              image.planes[1].bytes[uvIdx],
-              image.planes[2].bytes[uvIdx],
-            );
-          }
-        }
-      } else {
-        return null;
-      }
-
-      return cv.Mat.fromList(h, w, cv.MatType.CV_8UC3, bgr);
+      return mat;
     } catch (_) {
       return null;
     }
@@ -824,13 +1218,6 @@ class _CameraScreenState extends State<CameraScreen> {
     final int startTime = now;
 
     try {
-      // Set camera size once (for overlay coordinate mapping)
-      if (_cameraSize == null && mounted && !_isDisposed) {
-        setState(() {
-          _cameraSize = Size(image.width.toDouble(), image.height.toDouble());
-        });
-      }
-
       cv.Mat? mat = _convertCameraImageToMat(image);
       if (mat == null) {
         _isProcessing = false;
@@ -840,6 +1227,15 @@ class _CameraScreenState extends State<CameraScreen> {
       if (_isDisposed) {
         mat.dispose();
         return;
+      }
+
+      // Track size based on actual post-rotation Mat dims so the overlay
+      // coordinate space matches what the detector sees.
+      final Size matSize = Size(mat.cols.toDouble(), mat.rows.toDouble());
+      if (_cameraSize != matSize && mounted && !_isDisposed) {
+        setState(() {
+          _cameraSize = matSize;
+        });
       }
 
       // Downscale for performance, the detection model internally resizes
@@ -878,6 +1274,10 @@ class _CameraScreenState extends State<CameraScreen> {
       _avgProcessingTimeMs =
           (_avgProcessingTimeMs * (_detectionCount - 1) + processingTime) /
           _detectionCount;
+      if (mounted && !_isDisposed) {
+        setState(() => _detectionTimeMs = processingTime);
+      }
+      _updateFps();
     } catch (e) {
       // Silently ignore errors to maintain camera feed
     } finally {
@@ -888,6 +1288,7 @@ class _CameraScreenState extends State<CameraScreen> {
   @override
   void dispose() {
     _isDisposed = true;
+    _accelerometerSub?.cancel();
     _poseNotifier.dispose();
 
     if (_isImageStreamStarted) {
@@ -903,27 +1304,12 @@ class _CameraScreenState extends State<CameraScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final turns = _barQuarterTurns;
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Live Pose Detection'),
-        actions: [
-          if (_isInitialized && _cameraController != null)
-            Padding(
-              padding: const EdgeInsets.all(8.0),
-              child: Center(
-                // Use ValueListenableBuilder for pose count too
-                child: ValueListenableBuilder<List<Pose>>(
-                  valueListenable: _poseNotifier,
-                  builder: (context, poses, _) => Text(
-                    '${poses.length} pose(s)',
-                    style: const TextStyle(fontSize: 16),
-                  ),
-                ),
-              ),
-            ),
-        ],
+      body: Stack(
+        fit: StackFit.expand,
+        children: [_buildBody(), _positionedTopBar(turns)],
       ),
-      body: _buildBody(),
     );
   }
 
@@ -989,6 +1375,8 @@ class _CameraScreenState extends State<CameraScreen> {
                         painter: CameraPoseOverlayPainter(
                           poses: poses,
                           cameraSize: _cameraSize!,
+                          mirrorHorizontally:
+                              Platform.isAndroid && _isFrontCamera,
                         ),
                       );
                     },
@@ -1029,8 +1417,13 @@ class _CameraScreenState extends State<CameraScreen> {
 class CameraPoseOverlayPainter extends CustomPainter {
   final List<Pose> poses;
   final Size cameraSize;
+  final bool mirrorHorizontally;
 
-  CameraPoseOverlayPainter({required this.poses, required this.cameraSize});
+  CameraPoseOverlayPainter({
+    required this.poses,
+    required this.cameraSize,
+    required this.mirrorHorizontally,
+  });
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -1046,12 +1439,17 @@ class CameraPoseOverlayPainter extends CustomPainter {
     final double scaleY = size.height / imageHeight;
 
     for (final pose in poses) {
-      _drawBbox(canvas, pose, scaleX, scaleY, 0, 0);
+      _drawBbox(canvas, pose, scaleX, scaleY, 0, 0, size);
       if (pose.hasLandmarks) {
-        _drawConnections(canvas, pose, scaleX, scaleY, 0, 0);
-        _drawLandmarks(canvas, pose, scaleX, scaleY, 0, 0);
+        _drawConnections(canvas, pose, scaleX, scaleY, 0, 0, size);
+        _drawLandmarks(canvas, pose, scaleX, scaleY, 0, 0, size);
       }
     }
+  }
+
+  double _mirrorX(double x, double scaleX, double offsetX, Size size) {
+    final mapped = x * scaleX + offsetX;
+    return mirrorHorizontally ? size.width - mapped : mapped;
   }
 
   void _drawConnections(
@@ -1061,6 +1459,7 @@ class CameraPoseOverlayPainter extends CustomPainter {
     double scaleY,
     double offsetX,
     double offsetY,
+    Size size,
   ) {
     final Paint paint = Paint()
       ..color = Colors.green.withValues(alpha: 0.8)
@@ -1076,8 +1475,14 @@ class CameraPoseOverlayPainter extends CustomPainter {
           start.visibility > 0.5 &&
           end.visibility > 0.5) {
         canvas.drawLine(
-          Offset(start.x * scaleX + offsetX, start.y * scaleY + offsetY),
-          Offset(end.x * scaleX + offsetX, end.y * scaleY + offsetY),
+          Offset(
+            _mirrorX(start.x, scaleX, offsetX, size),
+            start.y * scaleY + offsetY,
+          ),
+          Offset(
+            _mirrorX(end.x, scaleX, offsetX, size),
+            end.y * scaleY + offsetY,
+          ),
           paint,
         );
       }
@@ -1091,11 +1496,12 @@ class CameraPoseOverlayPainter extends CustomPainter {
     double scaleY,
     double offsetX,
     double offsetY,
+    Size size,
   ) {
     for (final PoseLandmark l in pose.landmarks) {
       if (l.visibility > 0.5) {
         final Offset center = Offset(
-          l.x * scaleX + offsetX,
+          _mirrorX(l.x, scaleX, offsetX, size),
           l.y * scaleY + offsetY,
         );
         final Paint glow = Paint()..color = Colors.blue.withValues(alpha: 0.3);
@@ -1115,6 +1521,7 @@ class CameraPoseOverlayPainter extends CustomPainter {
     double scaleY,
     double offsetX,
     double offsetY,
+    Size size,
   ) {
     final Paint boxPaint = Paint()
       ..color = Colors.orangeAccent.withValues(alpha: 0.9)
@@ -1125,17 +1532,23 @@ class CameraPoseOverlayPainter extends CustomPainter {
       ..color = Colors.orangeAccent.withValues(alpha: 0.08)
       ..style = PaintingStyle.fill;
 
-    final double x1 = pose.boundingBox.left * scaleX + offsetX;
+    final double x1 = _mirrorX(pose.boundingBox.left, scaleX, offsetX, size);
     final double y1 = pose.boundingBox.top * scaleY + offsetY;
-    final double x2 = pose.boundingBox.right * scaleX + offsetX;
+    final double x2 = _mirrorX(pose.boundingBox.right, scaleX, offsetX, size);
     final double y2 = pose.boundingBox.bottom * scaleY + offsetY;
-    final Rect rect = Rect.fromLTRB(x1, y1, x2, y2);
+    final Rect rect = Rect.fromLTRB(
+      x1 < x2 ? x1 : x2,
+      y1,
+      x1 < x2 ? x2 : x1,
+      y2,
+    );
     canvas.drawRect(rect, fillPaint);
     canvas.drawRect(rect, boxPaint);
   }
 
   @override
   bool shouldRepaint(CameraPoseOverlayPainter oldDelegate) {
+    if (mirrorHorizontally != oldDelegate.mirrorHorizontally) return true;
     // Only repaint if poses actually changed
     if (poses.length != oldDelegate.poses.length) return true;
     if (poses.isEmpty) return false;
