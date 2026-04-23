@@ -147,30 +147,20 @@ void main() {
           final Uint8List bytes = data.buffer.asUint8List();
 
           final cv.Mat mat = cv.imdecode(bytes, cv.IMREAD_COLOR);
-          final int imageWidth = mat.cols;
-          final int imageHeight = mat.rows;
 
           final List<int> timings = [];
           int detectionCount = 0;
 
           // Warmup
           for (int i = 0; i < warmupIterations; i++) {
-            final results = await detector.detectFromMat(
-              mat,
-              imageWidth: imageWidth,
-              imageHeight: imageHeight,
-            );
+            final results = await detector.detectFromMat(mat);
             if (i == 0) detectionCount = results.length;
           }
 
           // Timed iterations
           for (int i = 0; i < iterations; i++) {
             final stopwatch = Stopwatch()..start();
-            await detector.detectFromMat(
-              mat,
-              imageWidth: imageWidth,
-              imageHeight: imageHeight,
-            );
+            await detector.detectFromMat(mat);
             stopwatch.stop();
             timings.add(stopwatch.elapsedMilliseconds);
           }

@@ -33,14 +33,36 @@ class YoloV8PersonDetector extends PersonDetectorBase {
     const String assetPath =
         'packages/pose_detection/assets/models/yolov8n_float32.tflite';
     if (isInitializedFlag) await dispose();
+    await _initWith(
+      (options) => Interpreter.fromAsset(assetPath, options: options),
+      performanceConfig,
+      useIsolateInterpreter: true,
+    );
+  }
 
+  /// Initializes from pre-loaded model bytes (used inside a background isolate
+  /// where Flutter asset loading is not available).
+  Future<void> initializeFromBuffer(
+    Uint8List modelBytes, {
+    PerformanceConfig? performanceConfig,
+  }) async {
+    if (isInitializedFlag) await dispose();
+    await _initWith(
+      (options) async => Interpreter.fromBuffer(modelBytes, options: options),
+      performanceConfig,
+      useIsolateInterpreter: false,
+    );
+  }
+
+  Future<void> _initWith(
+    Future<Interpreter> Function(InterpreterOptions) loader,
+    PerformanceConfig? performanceConfig, {
+    required bool useIsolateInterpreter,
+  }) async {
     final (options, newDelegate) = InterpreterFactory.create(performanceConfig);
     _delegate = newDelegate;
 
-    final Interpreter itp = await Interpreter.fromAsset(
-      assetPath,
-      options: options,
-    );
+    final Interpreter itp = await loader(options);
     interpreter = itp;
     itp.allocateTensors();
 
@@ -55,7 +77,9 @@ class YoloV8PersonDetector extends PersonDetectorBase {
       outShapes.add(List<int>.from(t.shape));
     }
 
-    _iso = await InterpreterFactory.createIsolateIfNeeded(itp, _delegate);
+    if (useIsolateInterpreter) {
+      _iso = await InterpreterFactory.createIsolateIfNeeded(itp, _delegate);
+    }
 
     isInitializedFlag = true;
   }

@@ -4,6 +4,28 @@ import 'package:pose_detection/pose_detection.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
+  group('PoseDetector model version', () {
+    test('default modelVersion is non-empty and package-scoped', () {
+      expect(PoseDetector.modelVersion, isNotEmpty);
+      expect(PoseDetector.modelVersion, contains('pose_detection:3.0.0'));
+      expect(PoseDetector.modelVersion, PoseDetector.modelVersionFor());
+    });
+
+    test('modelVersionFor changes with detector configuration', () {
+      final base = PoseDetector.modelVersionFor();
+
+      expect(PoseDetector.modelVersionFor(mode: PoseMode.boxes), isNot(base));
+      expect(
+        PoseDetector.modelVersionFor(landmarkModel: PoseLandmarkModel.lite),
+        isNot(base),
+      );
+      expect(
+        PoseDetector.modelVersionFor(landmarkModel: PoseLandmarkModel.full),
+        isNot(base),
+      );
+    });
+  });
+
   // ---------------------------------------------------------------------------
   // PoseLandmarkModel enum
   // ---------------------------------------------------------------------------

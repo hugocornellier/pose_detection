@@ -36,6 +36,23 @@ import '../models/pose_landmark_model_web.dart';
 /// await detector.dispose();
 /// ```
 class PoseDetector {
+  static const String _packageVersion = '3.0.0';
+  static const String _pipelineVersion = 'pipeline_v1';
+
+  /// Version key for the default pose detection pipeline.
+  static const String modelVersion =
+      'pose_detection:$_packageVersion:mode=boxesAndLandmarks:'
+      'landmarkModel=heavy:$_pipelineVersion';
+
+  /// Builds a version key for a specific pose detector configuration.
+  static String modelVersionFor({
+    PoseMode mode = PoseMode.boxesAndLandmarks,
+    PoseLandmarkModel landmarkModel = PoseLandmarkModel.heavy,
+  }) {
+    return 'pose_detection:$_packageVersion:mode=${mode.name}:'
+        'landmarkModel=${landmarkModel.name}:$_pipelineVersion';
+  }
+
   final YoloV8PersonDetector _yolo = YoloV8PersonDetector();
   late final PoseLandmarkModelRunner _lm;
 
@@ -100,6 +117,34 @@ class PoseDetector {
     _lm = PoseLandmarkModelRunner(poolSize: 1);
   }
 
+  /// Creates and initializes a pose detector in one step.
+  ///
+  /// Convenience factory that combines [PoseDetector.new] and [initialize].
+  /// Accepts the same parameters as the constructor.
+  static Future<PoseDetector> create({
+    PoseMode mode = PoseMode.boxesAndLandmarks,
+    PoseLandmarkModel landmarkModel = PoseLandmarkModel.heavy,
+    double detectorConf = 0.5,
+    double detectorIou = 0.45,
+    int maxDetections = 10,
+    double minLandmarkScore = 0.5,
+    int interpreterPoolSize = 1,
+    PerformanceConfig performanceConfig = PerformanceConfig.disabled,
+  }) async {
+    final detector = PoseDetector(
+      mode: mode,
+      landmarkModel: landmarkModel,
+      detectorConf: detectorConf,
+      detectorIou: detectorIou,
+      maxDetections: maxDetections,
+      minLandmarkScore: minLandmarkScore,
+      interpreterPoolSize: interpreterPoolSize,
+      performanceConfig: performanceConfig,
+    );
+    await detector.initialize();
+    return detector;
+  }
+
   /// Initializes the pose detector by loading TensorFlow Lite models.
   ///
   /// On web, this also initializes the TFLite.js WASM runtime via [initializeWeb].
@@ -126,6 +171,9 @@ class PoseDetector {
 
     _isInitialized = true;
   }
+
+  /// Returns true if the detector has been initialized and is ready to use.
+  bool get isReady => _isInitialized;
 
   /// Returns true if the detector has been initialized and is ready to use.
   bool get isInitialized => _isInitialized;
@@ -276,17 +324,29 @@ class PoseDetector {
     return results;
   }
 
-  /// API-compatibility stub for native-only OpenCV input.
-  ///
-  /// The web build does not support `cv.Mat` input. Use [detect] with encoded
-  /// image bytes instead.
-  Future<List<Pose>> detectFromMat(
-    Object mat, {
-    required int imageWidth,
-    required int imageHeight,
-  }) {
+  /// Not supported on web. Use [detect] with encoded image bytes instead.
+  Future<List<Pose>> detectFromFilepath(String path) {
+    throw UnsupportedError(
+      'detectFromFilepath is not supported on web. Use detect(imageBytes) instead.',
+    );
+  }
+
+  /// Not supported on web. Use [detect] with encoded image bytes instead.
+  Future<List<Pose>> detectFromMat(Object mat) {
     throw UnsupportedError(
       'detectFromMat is not supported on web. Use detect(imageBytes) instead.',
+    );
+  }
+
+  /// Not supported on web. Use [detect] with encoded image bytes instead.
+  Future<List<Pose>> detectFromMatBytes(
+    Uint8List bytes, {
+    required int width,
+    required int height,
+    int matType = 16,
+  }) {
+    throw UnsupportedError(
+      'detectFromMatBytes is not supported on web. Use detect(imageBytes) instead.',
     );
   }
 

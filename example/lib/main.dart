@@ -134,16 +134,7 @@ class StillImageScreen extends StatefulWidget {
 }
 
 class _StillImageScreenState extends State<StillImageScreen> {
-  final PoseDetector _poseDetector = PoseDetector(
-    mode: PoseMode.boxesAndLandmarks,
-    landmarkModel: PoseLandmarkModel.heavy,
-    detectorConf: 0.6,
-    detectorIou: 0.4,
-    maxDetections: 10,
-    minLandmarkScore: 0.5,
-    performanceConfig:
-        const PerformanceConfig.xnnpack(), // Enable XNNPACK for 2-5x speedup
-  );
+  PoseDetector? _poseDetector;
   final ImagePicker _picker = ImagePicker();
 
   bool _isInitialized = false;
@@ -165,7 +156,15 @@ class _StillImageScreenState extends State<StillImageScreen> {
     });
 
     try {
-      await _poseDetector.initialize();
+      _poseDetector = await PoseDetector.create(
+        mode: PoseMode.boxesAndLandmarks,
+        landmarkModel: PoseLandmarkModel.heavy,
+        detectorConf: 0.6,
+        detectorIou: 0.4,
+        maxDetections: 10,
+        minLandmarkScore: 0.5,
+        performanceConfig: const PerformanceConfig.xnnpack(),
+      );
       setState(() {
         _isInitialized = true;
         _isProcessing = false;
@@ -191,7 +190,7 @@ class _StillImageScreenState extends State<StillImageScreen> {
       });
 
       final Uint8List bytes = await _imageFile!.readAsBytes();
-      final List<Pose> results = await _poseDetector.detect(bytes);
+      final List<Pose> results = await _poseDetector!.detect(bytes);
 
       setState(() {
         _results = results;
@@ -240,7 +239,7 @@ class _StillImageScreenState extends State<StillImageScreen> {
 
   @override
   void dispose() {
-    _poseDetector.dispose();
+    _poseDetector?.dispose();
     super.dispose();
   }
 
@@ -614,17 +613,7 @@ class CameraScreen extends StatefulWidget {
 class _CameraScreenState extends State<CameraScreen> {
   CameraController? _cameraController;
   bool _isImageStreamStarted = false;
-  PoseDetector _poseDetector = PoseDetector(
-    mode: PoseMode.boxesAndLandmarks,
-    landmarkModel:
-        PoseLandmarkModel.lite, // Use lite for better real-time performance
-    detectorConf: 0.7,
-    detectorIou: 0.4,
-    maxDetections: 5,
-    minLandmarkScore: 0.5,
-    performanceConfig:
-        const PerformanceConfig.xnnpack(), // Enable XNNPACK for real-time performance
-  );
+  PoseDetector? _poseDetector;
 
   bool _isInitialized = false;
   bool _isProcessing = false;
@@ -685,7 +674,15 @@ class _CameraScreenState extends State<CameraScreen> {
     try {
       if (_isDisposed) return;
 
-      await _poseDetector.initialize();
+      _poseDetector = await PoseDetector.create(
+        mode: PoseMode.boxesAndLandmarks,
+        landmarkModel: PoseLandmarkModel.lite,
+        detectorConf: 0.7,
+        detectorIou: 0.4,
+        maxDetections: 5,
+        minLandmarkScore: 0.5,
+        performanceConfig: const PerformanceConfig.xnnpack(),
+      );
 
       if (_isDisposed) return;
 
@@ -1038,9 +1035,8 @@ class _CameraScreenState extends State<CameraScreen> {
   }
 
   Future<void> _reinitPoseDetector() async {
-    final old = _poseDetector;
-    await old.dispose();
-    _poseDetector = PoseDetector(
+    await _poseDetector?.dispose();
+    _poseDetector = await PoseDetector.create(
       mode: PoseMode.boxesAndLandmarks,
       landmarkModel: _landmarkModel,
       detectorConf: 0.7,
@@ -1049,7 +1045,6 @@ class _CameraScreenState extends State<CameraScreen> {
       minLandmarkScore: 0.5,
       performanceConfig: const PerformanceConfig.xnnpack(),
     );
-    await _poseDetector.initialize();
   }
 
   int? _rotationFlagForFrame({required int width, required int height}) {
@@ -1253,11 +1248,7 @@ class _CameraScreenState extends State<CameraScreen> {
       }
 
       // Use detectFromMat for direct cv.Mat input - no image decoding needed
-      final List<Pose> poses = await _poseDetector.detectFromMat(
-        mat,
-        imageWidth: mat.cols,
-        imageHeight: mat.rows,
-      );
+      final List<Pose> poses = await _poseDetector!.detectFromMat(mat);
 
       // Clean up native Mat resource
       mat.dispose();
@@ -1298,7 +1289,7 @@ class _CameraScreenState extends State<CameraScreen> {
     }
     _cameraController?.dispose();
 
-    _poseDetector.dispose();
+    _poseDetector?.dispose();
     super.dispose();
   }
 

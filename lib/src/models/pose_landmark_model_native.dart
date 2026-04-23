@@ -89,15 +89,49 @@ class PoseLandmarkModelRunner {
     PerformanceConfig? performanceConfig,
   }) async {
     if (_isInitialized) await dispose();
-
     final String path = poseLandmarkModelPath(model);
+    await _initWith(
+      (options) => Interpreter.fromAsset(path, options: options),
+      performanceConfig: performanceConfig,
+      useIsolateInterpreter: true,
+    );
+  }
 
-    await _pool.initialize((options, _) async {
-      final interpreter = await Interpreter.fromAsset(path, options: options);
-      interpreter.resizeInputTensor(0, [1, 256, 256, 3]);
-      interpreter.allocateTensors();
-      return interpreter;
-    }, performanceConfig: performanceConfig);
+  /// Initializes from pre-loaded model bytes (used inside a background isolate
+  /// where Flutter asset loading is not available).
+  Future<void> initializeFromBuffer(
+    Uint8List modelBytes, {
+    PerformanceConfig? performanceConfig,
+  }) async {
+    if (_isInitialized) await dispose();
+    await _initWith(
+      (options) async {
+        final interpreter = Interpreter.fromBuffer(
+          modelBytes,
+          options: options,
+        );
+        return interpreter;
+      },
+      performanceConfig: performanceConfig,
+      useIsolateInterpreter: false,
+    );
+  }
+
+  Future<void> _initWith(
+    Future<Interpreter> Function(InterpreterOptions) loader, {
+    PerformanceConfig? performanceConfig,
+    bool useIsolateInterpreter = true,
+  }) async {
+    await _pool.initialize(
+      (options, _) async {
+        final interpreter = await loader(options);
+        interpreter.resizeInputTensor(0, [1, 256, 256, 3]);
+        interpreter.allocateTensors();
+        return interpreter;
+      },
+      performanceConfig: performanceConfig,
+      useIsolateInterpreter: useIsolateInterpreter,
+    );
 
     _buffers.clear();
     for (final interp in _pool.interpreters) {

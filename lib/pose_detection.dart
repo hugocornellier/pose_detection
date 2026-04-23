@@ -8,6 +8,10 @@
 /// ```dart
 /// import 'package:pose_detection/pose_detection.dart';
 ///
+/// // One-step construction
+/// final detector = await PoseDetector.create();
+///
+/// // Or two-step, if you need to configure between construction and init
 /// final detector = PoseDetector();
 /// await detector.initialize();
 ///
@@ -24,7 +28,7 @@
 /// ```
 ///
 /// **Main Classes:**
-/// - [PoseDetector]: Main API for pose detection
+/// - [PoseDetector]: Main API for pose detection (runs inference in a background isolate)
 /// - [Pose]: Detected person with bounding box and optional 33 landmarks
 /// - [PoseLandmark]: Single body keypoint with 3D coordinates and visibility
 /// - [PoseLandmarkType]: Enum of 33 body parts (nose, shoulders, knees, etc.)

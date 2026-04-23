@@ -75,6 +75,24 @@ class PoseLandmark with LandmarkMixin {
     required this.z,
     required this.visibility,
   });
+
+  /// Serializes this landmark to a map for isolate message passing.
+  Map<String, dynamic> toMap() => {
+    'type': type.index,
+    'x': x,
+    'y': y,
+    'z': z,
+    'visibility': visibility,
+  };
+
+  /// Deserializes a [PoseLandmark] from a map produced by [toMap].
+  static PoseLandmark fromMap(Map<String, dynamic> map) => PoseLandmark(
+    type: PoseLandmarkType.values[map['type'] as int],
+    x: (map['x'] as num).toDouble(),
+    y: (map['y'] as num).toDouble(),
+    z: (map['z'] as num).toDouble(),
+    visibility: (map['visibility'] as num).toDouble(),
+  );
 }
 
 /// Body part types for the 33 BlazePose landmarks.
@@ -297,6 +315,28 @@ class Pose {
     required this.imageWidth,
     required this.imageHeight,
   });
+
+  /// Serializes this pose to a map for isolate message passing.
+  Map<String, dynamic> toMap() => {
+    'boundingBox': boundingBox.toMap(),
+    'score': score,
+    'landmarks': landmarks.map((l) => l.toMap()).toList(),
+    'imageWidth': imageWidth,
+    'imageHeight': imageHeight,
+  };
+
+  /// Deserializes a [Pose] from a map produced by [toMap].
+  static Pose fromMap(Map<String, dynamic> map) => Pose(
+    boundingBox: BoundingBox.fromMap(
+      map['boundingBox'] as Map<String, dynamic>,
+    ),
+    score: (map['score'] as num).toDouble(),
+    landmarks: (map['landmarks'] as List<dynamic>)
+        .map((l) => PoseLandmark.fromMap(Map<String, dynamic>.from(l as Map)))
+        .toList(),
+    imageWidth: map['imageWidth'] as int,
+    imageHeight: map['imageHeight'] as int,
+  );
 
   /// Gets a specific landmark by type, or null if not found
   PoseLandmark? getLandmark(PoseLandmarkType type) {

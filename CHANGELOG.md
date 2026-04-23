@@ -1,3 +1,18 @@
+## 3.0.0
+
+**Breaking:** `PoseDetector.detectFromMat` signature changed. `detectFromMat(cv.Mat, {required int imageWidth, required int imageHeight})` is now `detectFromMat(cv.Mat)`. Dimensions are read from the Mat directly. Existing callers must drop the `imageWidth` and `imageHeight` named arguments.
+
+* All inference now runs in a dedicated background isolate, keeping the UI thread free. Previously, inference ran on the calling thread.
+* Add `PoseDetector.create({...})` one-step factory (mirrors `FaceDetector.create` and `HandDetector.create`).
+* Add `detectFromFilepath(String path)` — reads the file and delegates to `detect`.
+* Add `detectFromMatBytes(Uint8List, {required int width, required int height, int matType})` zero-copy fast path via `TransferableTypedData`.
+* Add `initializeFromBuffers({required Uint8List yoloBytes, required Uint8List landmarkBytes})` for callers that load model bytes independently of Flutter's asset system.
+* Add `isReady` getter as an alias for `isInitialized`.
+
+## 2.1.1
+
+* Add public `PoseDetector.modelVersion` and `PoseDetector.modelVersionFor(...)` APIs for downstream cache invalidation.
+
 ## 2.1.0
 
 * Fix live camera in the example app on Android (previously detections were sideways and unreliable):

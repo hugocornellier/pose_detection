@@ -24,12 +24,11 @@ import 'dart:typed_data';
 import 'package:pose_detection/pose_detection.dart';
 
 Future main() async {
-  // Set mode/model then initialize
-  final PoseDetector detector = PoseDetector(
+  // One-step construction and initialization
+  final PoseDetector detector = await PoseDetector.create(
     mode: PoseMode.boxesAndLandmarks,
     landmarkModel: PoseLandmarkModel.heavy,
   );
-  await detector.initialize();
 
   // Load and detect from image bytes
   final Uint8List imageBytes = await File('image.jpg').readAsBytes();
@@ -61,7 +60,35 @@ Future main() async {
 }
 ```
 
+Alternatively, construct and initialize separately if you need to configure between steps:
+
+```dart
+final PoseDetector detector = PoseDetector(
+  mode: PoseMode.boxesAndLandmarks,
+  landmarkModel: PoseLandmarkModel.heavy,
+);
+await detector.initialize();
+```
+
 Refer to the [sample code](https://pub.dev/packages/pose_detection/example) on the pub.dev example tab for a more in-depth example.
+
+## Migration Guide
+
+### 3.0.0: `detectFromMat` signature change
+
+The `imageWidth` and `imageHeight` named arguments have been removed. Dimensions are now read directly from the Mat.
+
+```dart
+// Before (2.x)
+final poses = await detector.detectFromMat(
+  mat,
+  imageWidth: mat.cols,
+  imageHeight: mat.rows,
+);
+
+// After (3.0)
+final poses = await detector.detectFromMat(mat);
+```
 
 ## Web (Flutter Web)
 
@@ -340,11 +367,7 @@ await detector.initialize();
 
 // Process each frame (convert camera frame to cv.Mat first)
 void processFrame(cv.Mat mat) async {
-  final results = await detector.detectFromMat(
-    mat,
-    imageWidth: mat.cols,
-    imageHeight: mat.rows,
-  );
+  final results = await detector.detectFromMat(mat);
   // Update UI with results
 }
 

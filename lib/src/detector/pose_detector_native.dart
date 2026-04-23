@@ -1,50 +1,44 @@
+import 'dart:async';
 import 'dart:io';
+import 'dart:isolate';
 import 'dart:typed_data';
 
+import 'package:flutter/services.dart';
 import 'package:flutter_litert/flutter_litert.dart';
 import 'package:opencv_dart/opencv_dart.dart' as cv;
+
 import '../types.dart';
-import '../util/native_image_utils.dart';
-import '../util/pose_helpers.dart';
-import '../models/person_detector_native.dart';
-import '../models/pose_landmark_model_native.dart';
+import '../isolate/pose_detector_core.dart';
 
-/// Helper class to store preprocessing data for each detected person.
-///
-/// Contains the detection info, preprocessed image, and transformation parameters
-/// needed to convert landmark coordinates back to original image space.
-class _PersonCropData {
-  /// The original YOLO detection result.
-  final Detection detection;
+/// Startup payload transferred to the background isolate via [Isolate.spawn].
+class _IsolateStartupData {
+  final SendPort sendPort;
+  final TransferableTypedData yoloBytes;
+  final TransferableTypedData landmarkBytes;
+  final String modeName;
+  final String landmarkModelName;
+  final double detectorConf;
+  final double detectorIou;
+  final int maxDetections;
+  final double minLandmarkScore;
+  final int interpreterPoolSize;
+  final String performanceModeName;
+  final int? numThreads;
 
-  /// The resized/letterboxed 256x256 cv.Mat ready for landmark extraction (Native path).
-  final cv.Mat? letterboxedMat;
-
-  /// X coordinate of crop origin in original image.
-  final int cropX;
-
-  /// Y coordinate of crop origin in original image.
-  final int cropY;
-
-  /// Width of crop in original image (for resize mode inverse transform).
-  final int cropWidth;
-
-  /// Height of crop in original image (for resize mode inverse transform).
-  final int cropHeight;
-
-  _PersonCropData({
-    required this.detection,
-    this.letterboxedMat,
-    required this.cropX,
-    required this.cropY,
-    this.cropWidth = 0,
-    this.cropHeight = 0,
+  _IsolateStartupData({
+    required this.sendPort,
+    required this.yoloBytes,
+    required this.landmarkBytes,
+    required this.modeName,
+    required this.landmarkModelName,
+    required this.detectorConf,
+    required this.detectorIou,
+    required this.maxDetections,
+    required this.minLandmarkScore,
+    required this.interpreterPoolSize,
+    required this.performanceModeName,
+    required this.numThreads,
   });
-
-  /// Disposes native resources if using native preprocessing.
-  void dispose() {
-    letterboxedMat?.dispose();
-  }
 }
 
 /// On-device pose detection and landmark estimation using TensorFlow Lite.
@@ -52,6 +46,8 @@ class _PersonCropData {
 /// Implements a two-stage pipeline:
 /// 1. YOLOv8n person detector to find bounding boxes
 /// 2. BlazePose model to extract 33 body keypoints per detected person
+///
+/// All inference runs in a background isolate, keeping the UI thread free.
 ///
 /// Usage:
 /// ```dart
@@ -64,110 +60,64 @@ class _PersonCropData {
 /// await detector.dispose();
 /// ```
 class PoseDetector {
-  final YoloV8PersonDetector _yolo = YoloV8PersonDetector();
-  late final PoseLandmarkModelRunner _lm;
+  static const String _packageVersion = '3.0.0';
+  static const String _pipelineVersion = 'pipeline_v1';
+
+  /// Version key for the default pose detection pipeline.
+  static const String modelVersion =
+      'pose_detection:$_packageVersion:mode=boxesAndLandmarks:'
+      'landmarkModel=heavy:$_pipelineVersion';
+
+  /// Builds a version key for a specific pose detector configuration.
+  static String modelVersionFor({
+    PoseMode mode = PoseMode.boxesAndLandmarks,
+    PoseLandmarkModel landmarkModel = PoseLandmarkModel.heavy,
+  }) {
+    return 'pose_detection:$_packageVersion:mode=${mode.name}:'
+        'landmarkModel=${landmarkModel.name}:$_pipelineVersion';
+  }
 
   /// Detection mode controlling pipeline behavior.
-  ///
-  /// - [PoseMode.boxes]: Fast detection returning only bounding boxes (Stage 1 only)
-  /// - [PoseMode.boxesAndLandmarks]: Full pipeline returning boxes + 33 landmarks (both stages)
   final PoseMode mode;
 
   /// BlazePose model variant to use for landmark extraction.
-  ///
-  /// - [PoseLandmarkModel.lite]: Fastest, good accuracy
-  /// - [PoseLandmarkModel.full]: Balanced speed/accuracy
-  /// - [PoseLandmarkModel.heavy]: Slowest, best accuracy (default)
   final PoseLandmarkModel landmarkModel;
 
   /// Confidence threshold for person detection (0.0 to 1.0).
-  ///
-  /// Only detections with confidence scores above this threshold are returned.
-  /// Lower values detect more persons but may include false positives.
-  /// Default: 0.5
   final double detectorConf;
 
-  /// IoU (Intersection over Union) threshold for Non-Maximum Suppression (0.0 to 1.0).
-  ///
-  /// Controls duplicate detection suppression. Lower values are more aggressive
-  /// at removing overlapping boxes.
-  /// Default: 0.45
+  /// IoU threshold for Non-Maximum Suppression (0.0 to 1.0).
   final double detectorIou;
 
   /// Maximum number of persons to detect per image.
-  ///
-  /// Limits the number of detections returned, keeping only the highest
-  /// confidence detections.
-  /// Default: 10
   final int maxDetections;
 
   /// Minimum confidence score for landmark predictions (0.0 to 1.0).
-  ///
-  /// Poses with landmark scores below this threshold are filtered out.
-  /// Only used when [mode] is [PoseMode.boxesAndLandmarks].
-  /// Default: 0.5
   final double minLandmarkScore;
 
   /// Number of TensorFlow Lite interpreter instances in the landmark model pool.
   ///
-  /// **IMPORTANT:** When XNNPACK is enabled (via [performanceConfig]), this is
-  /// automatically forced to 1 to prevent thread contention and performance spikes.
-  ///
-  /// Controls the number of interpreter instances available for landmark
-  /// extraction. Only relevant when XNNPACK is disabled.
-  ///
-  /// **Performance characteristics:**
-  /// - With XNNPACK enabled: Always pool=1 (forced for stability)
-  /// - With XNNPACK disabled: Can use higher pool sizes
-  ///
-  /// **Memory usage:** ~10MB × poolSize for landmark model instances.
-  ///
-  /// Default: 1 (optimal for XNNPACK stability)
+  /// Forced to 1 when a performance delegate (XNNPACK/auto) is enabled to
+  /// prevent thread contention.
   final int interpreterPoolSize;
 
   /// Performance configuration for TensorFlow Lite inference.
-  ///
-  /// By default, auto mode selects the optimal delegate per platform:
-  /// - iOS: Metal GPU delegate
-  /// - Android/macOS/Linux/Windows: XNNPACK (2-5x SIMD acceleration)
   final PerformanceConfig performanceConfig;
 
-  bool _isInitialized = false;
+  _PoseDetectorWorker? _worker;
 
   /// Creates a pose detector with the specified configuration.
   ///
   /// Parameters:
-  /// - [mode]: Detection mode (boxes only or boxes + landmarks). Default: [PoseMode.boxesAndLandmarks]
+  /// - [mode]: Detection mode. Default: [PoseMode.boxesAndLandmarks]
   /// - [landmarkModel]: BlazePose model variant. Default: [PoseLandmarkModel.heavy]
   /// - [detectorConf]: Person detection confidence threshold (0.0-1.0). Default: 0.5
-  /// - [detectorIou]: NMS IoU threshold for duplicate suppression (0.0-1.0). Default: 0.45
+  /// - [detectorIou]: NMS IoU threshold (0.0-1.0). Default: 0.45
   /// - [maxDetections]: Maximum number of persons to detect. Default: 10
   /// - [minLandmarkScore]: Minimum landmark confidence score (0.0-1.0). Default: 0.5
-  /// - [interpreterPoolSize]: Number of landmark model interpreter instances (1-10). Default: 1
-  /// - [performanceConfig]: TensorFlow Lite performance configuration. Default: auto (optimal per platform)
-  /// **Performance Configuration:**
-  /// ```dart
-  /// // Default (auto acceleration)
-  /// final detector = PoseDetector();
-  ///
-  /// // XNNPACK acceleration (2-5x faster, recommended)
-  /// final detector = PoseDetector(
-  ///   performanceConfig: PerformanceConfig.xnnpack(),
-  /// );
-  ///
-  /// // Custom thread count
-  /// final detector = PoseDetector(
-  ///   performanceConfig: PerformanceConfig.xnnpack(numThreads: 2),
-  /// );
-  /// ```
-  ///
-  /// **Choosing interpreterPoolSize:**
-  /// - When XNNPACK is enabled, pool size is always forced to 1 for stable performance
-  /// - When XNNPACK is disabled, you can use higher pool sizes
-  /// - Each interpreter adds ~10MB memory overhead
-  ///
-  /// **IMPORTANT:** XNNPACK with multiple interpreters causes thread contention and
-  /// performance spikes. The pool size is automatically set to 1 when XNNPACK is enabled.
+  /// - [interpreterPoolSize]: Number of landmark model interpreter instances (1-10). Default: 1.
+  ///   Forced to 1 when a performance delegate is enabled.
+  /// - [performanceConfig]: TensorFlow Lite performance configuration. Default: auto
   PoseDetector({
     this.mode = PoseMode.boxesAndLandmarks,
     this.landmarkModel = PoseLandmarkModel.heavy,
@@ -179,235 +129,391 @@ class PoseDetector {
     this.performanceConfig = const PerformanceConfig(),
   }) : interpreterPoolSize = performanceConfig.mode == PerformanceMode.disabled
            ? interpreterPoolSize
-           : 1 {
-    _lm = PoseLandmarkModelRunner(poolSize: this.interpreterPoolSize);
-  }
+           : 1;
 
-  /// Initializes the pose detector by loading TensorFlow Lite models.
+  /// Creates and initializes a pose detector in one step.
   ///
-  /// Must be called before [detect].
-  /// If already initialized, will dispose existing models and reinitialize.
+  /// Convenience factory that combines [PoseDetector.new] and [initialize].
+  /// Accepts the same parameters as the constructor.
   ///
-  /// Throws an exception if model loading fails.
-  Future<void> initialize() async {
-    if (_isInitialized) {
-      await dispose();
-    }
-    await _lm.initialize(landmarkModel, performanceConfig: performanceConfig);
-    // Use XNNPACK (CPU+SIMD) for YOLO person detector on iOS instead of Metal.
-    // Metal GPU delegate produces inconsistent detection counts for YOLOv8n
-    // due to floating-point precision differences (10 detections vs 2 for the
-    // same image). XNNPACK gives 2-5x CPU speedup while maintaining consistent
-    // results. Landmark model still uses Metal for maximum speed.
-    final yoloConfig =
-        (Platform.isIOS && performanceConfig.mode == PerformanceMode.auto)
-        ? PerformanceConfig.xnnpack()
-        : performanceConfig;
-    await _yolo.initialize(performanceConfig: yoloConfig);
-    _isInitialized = true;
+  /// Example:
+  /// ```dart
+  /// final detector = await PoseDetector.create();
+  ///
+  /// // Equivalent to:
+  /// final detector = PoseDetector();
+  /// await detector.initialize();
+  /// ```
+  static Future<PoseDetector> create({
+    PoseMode mode = PoseMode.boxesAndLandmarks,
+    PoseLandmarkModel landmarkModel = PoseLandmarkModel.heavy,
+    double detectorConf = 0.5,
+    double detectorIou = 0.45,
+    int maxDetections = 10,
+    double minLandmarkScore = 0.5,
+    int interpreterPoolSize = 1,
+    PerformanceConfig performanceConfig = const PerformanceConfig(),
+  }) async {
+    final detector = PoseDetector(
+      mode: mode,
+      landmarkModel: landmarkModel,
+      detectorConf: detectorConf,
+      detectorIou: detectorIou,
+      maxDetections: maxDetections,
+      minLandmarkScore: minLandmarkScore,
+      interpreterPoolSize: interpreterPoolSize,
+      performanceConfig: performanceConfig,
+    );
+    await detector.initialize();
+    return detector;
   }
 
   /// Returns true if the detector has been initialized and is ready to use.
-  bool get isInitialized => _isInitialized;
+  bool get isReady => _worker?.isReady ?? false;
 
-  /// Releases all resources used by the detector.
+  /// Returns true if the detector has been initialized and is ready to use.
+  bool get isInitialized => isReady;
+
+  /// Initializes the pose detector by loading TensorFlow Lite models.
   ///
-  /// Call this when done using the detector to free memory.
-  /// After calling dispose, you must call [initialize] again before detection.
-  Future<void> dispose() async {
-    await _yolo.dispose();
-    await _lm.dispose();
-    _isInitialized = false;
+  /// Must be called before [detect] or [detectFromMat].
+  /// Calling [initialize] twice without [dispose] throws [StateError].
+  Future<void> initialize() async {
+    if (isReady) {
+      throw StateError('PoseDetector already initialized');
+    }
+
+    const yoloPath =
+        'packages/pose_detection/assets/models/yolov8n_float32.tflite';
+    final String landmarkPath =
+        'packages/pose_detection/assets/models/pose_landmark_${landmarkModel.name}.tflite';
+
+    final results = await Future.wait([
+      rootBundle.load(yoloPath),
+      rootBundle.load(landmarkPath),
+    ]);
+
+    final yoloBytes = results[0].buffer.asUint8List();
+    final landmarkBytes = results[1].buffer.asUint8List();
+
+    await initializeFromBuffers(
+      yoloBytes: yoloBytes,
+      landmarkBytes: landmarkBytes,
+    );
   }
 
-  /// Detects poses from encoded image bytes (JPEG, PNG, etc.).
+  /// Initializes the pose detector from pre-loaded model bytes.
   ///
-  /// This is the convenient method for processing images from files or network
-  /// responses. The bytes are decoded internally to a cv.Mat, processed, and
-  /// the decoded Mat is disposed automatically.
+  /// Used when asset loading from the main isolate is not available, or when
+  /// bytes have already been loaded. Spawns the background isolate with the
+  /// provided model data.
   ///
   /// Parameters:
-  /// - [imageBytes]: Encoded image bytes (JPEG, PNG, BMP, etc.)
+  /// - [yoloBytes]: Raw bytes of the YOLOv8n person detection TFLite model
+  /// - [landmarkBytes]: Raw bytes of the BlazePose landmark TFLite model
+  Future<void> initializeFromBuffers({
+    required Uint8List yoloBytes,
+    required Uint8List landmarkBytes,
+  }) async {
+    if (isReady) {
+      throw StateError('PoseDetector already initialized');
+    }
+
+    final worker = _PoseDetectorWorker();
+
+    try {
+      await worker.initialize(
+        yoloBytes: yoloBytes,
+        landmarkBytes: landmarkBytes,
+        mode: mode,
+        landmarkModel: landmarkModel,
+        detectorConf: detectorConf,
+        detectorIou: detectorIou,
+        maxDetections: maxDetections,
+        minLandmarkScore: minLandmarkScore,
+        interpreterPoolSize: interpreterPoolSize,
+        performanceConfig: performanceConfig,
+      );
+    } catch (e) {
+      if (worker.isReady) {
+        await worker.dispose();
+      }
+      rethrow;
+    }
+
+    _worker = worker;
+  }
+
+  /// Detects poses in an image from raw bytes (JPEG, PNG, etc.).
+  ///
+  /// Decodes the image bytes using OpenCV and performs pose detection in a
+  /// background isolate.
   ///
   /// Returns a list of [Pose] objects, one per detected person.
+  /// Returns an empty list if image decoding fails or no persons are detected.
   ///
   /// Throws [StateError] if called before [initialize].
   Future<List<Pose>> detect(Uint8List imageBytes) async {
-    final cv.Mat mat = cv.imdecode(imageBytes, cv.IMREAD_COLOR);
-    if (mat.isEmpty) return <Pose>[];
-    try {
-      return await detectFromMat(
-        mat,
-        imageWidth: mat.cols,
-        imageHeight: mat.rows,
-      );
-    } finally {
-      mat.dispose();
-    }
-  }
-
-  /// Detects poses directly from a cv.Mat without any image encoding/decoding.
-  ///
-  /// This is the most efficient method for real-time camera processing as it
-  /// bypasses all image format conversions. The caller is responsible for
-  /// converting camera frames to cv.Mat in BGR format.
-  ///
-  /// Parameters:
-  /// - [mat]: OpenCV Mat in BGR format (CV_8UC3)
-  /// - [imageWidth]: Original image width (for coordinate mapping)
-  /// - [imageHeight]: Original image height (for coordinate mapping)
-  ///
-  /// Returns a list of [Pose] objects, one per detected person.
-  /// The caller is responsible for disposing the input Mat.
-  ///
-  /// Throws [StateError] if called before [initialize].
-  Future<List<Pose>> detectFromMat(
-    cv.Mat mat, {
-    required int imageWidth,
-    required int imageHeight,
-  }) async {
-    if (!_isInitialized) {
+    if (!isReady) {
       throw StateError(
         'PoseDetector not initialized. Call initialize() first.',
       );
     }
-
-    final List<Detection> dets = await _yolo.detect(
-      mat,
-      imageWidth: imageWidth,
-      imageHeight: imageHeight,
-      confThres: detectorConf,
-      iouThres: detectorIou,
-      maxDet: maxDetections,
-      personOnly: true,
-    );
-
-    if (mode == PoseMode.boxes) {
-      return buildBoxOnlyPoses(dets, imageWidth, imageHeight);
-    }
-
-    final List<_PersonCropData> cropDataList = <_PersonCropData>[];
-    for (final Detection d in dets) {
-      final double x1 = d.bboxXYXY[0].clamp(0.0, imageWidth.toDouble());
-      final double y1 = d.bboxXYXY[1].clamp(0.0, imageHeight.toDouble());
-      final double x2 = d.bboxXYXY[2].clamp(0.0, imageWidth.toDouble());
-      final double y2 = d.bboxXYXY[3].clamp(0.0, imageHeight.toDouble());
-      final double bw = x2 - x1;
-      final double bh = y2 - y1;
-
-      final double cx = (x1 + x2) / 2.0;
-      final double cy = (y1 + y2) / 2.0;
-      final double side = (bw > bh ? bw : bh) * 1.25;
-
-      final cv.Mat? square = NativeImageUtils.extractAlignedSquare(
-        mat,
-        cx,
-        cy,
-        side,
-        0.0,
+    try {
+      final List<dynamic> result = await _worker!.sendRequest<List<dynamic>>(
+        'detect',
+        {
+          'bytes': TransferableTypedData.fromList([imageBytes]),
+        },
       );
-
-      if (square == null) continue;
-
-      final cv.Mat resized = cv.resize(square, (
-        256,
-        256,
-      ), interpolation: cv.INTER_LINEAR);
-      square.dispose();
-
-      final double sqX1 = cx - side / 2.0;
-      final double sqY1 = cy - side / 2.0;
-
-      cropDataList.add(
-        _PersonCropData(
-          detection: d,
-          letterboxedMat: resized,
-          cropX: sqX1.round(),
-          cropY: sqY1.round(),
-          cropWidth: side.round(),
-          cropHeight: side.round(),
-        ),
-      );
+      return _deserializePoses(result);
+    } catch (_) {
+      return <Pose>[];
     }
-
-    final List<PoseLandmarks?> allLandmarks = <PoseLandmarks?>[];
-    for (final _PersonCropData data in cropDataList) {
-      try {
-        final PoseLandmarks lms = await _lm.run(data.letterboxedMat!);
-        allLandmarks.add(lms);
-      } catch (e) {
-        allLandmarks.add(null);
-      }
-    }
-
-    final List<Pose> results = _buildLandmarkResults(
-      cropDataList,
-      allLandmarks,
-      imageWidth,
-      imageHeight,
-    );
-
-    for (final data in cropDataList) {
-      data.dispose();
-    }
-
-    return results;
   }
 
-  /// Builds full results with landmarks from crop data.
-  List<Pose> _buildLandmarkResults(
-    List<_PersonCropData> cropDataList,
-    List<PoseLandmarks?> allLandmarks,
-    int imageWidth,
-    int imageHeight,
-  ) {
-    final List<Pose> results = <Pose>[];
-    for (int i = 0; i < cropDataList.length; i++) {
-      final _PersonCropData data = cropDataList[i];
-      final PoseLandmarks? lms = allLandmarks[i];
+  /// Detects poses in an image file at [path].
+  ///
+  /// Convenience wrapper that reads the file and calls [detect].
+  /// Not available on Flutter Web (uses `dart:io`).
+  ///
+  /// Throws [StateError] if [initialize] has not been called successfully.
+  /// Throws [FileSystemException] if the file cannot be read.
+  Future<List<Pose>> detectFromFilepath(String path) async {
+    final bytes = await File(path).readAsBytes();
+    return detect(bytes);
+  }
 
-      if (lms == null || lms.score < minLandmarkScore) {
-        results.add(buildBoxOnlyPose(data.detection, imageWidth, imageHeight));
-        continue;
-      }
-
-      final List<PoseLandmark> pts = <PoseLandmark>[];
-      for (final PoseLandmark lm in lms.landmarks) {
-        final double xOrig = (data.cropX + lm.x * data.cropWidth).clamp(
-          0.0,
-          imageWidth.toDouble(),
-        );
-        final double yOrig = (data.cropY + lm.y * data.cropHeight).clamp(
-          0.0,
-          imageHeight.toDouble(),
-        );
-
-        pts.add(
-          PoseLandmark(
-            type: lm.type,
-            x: xOrig,
-            y: yOrig,
-            z: lm.z,
-            visibility: lm.visibility,
-          ),
-        );
-      }
-
-      results.add(
-        Pose(
-          boundingBox: BoundingBox.ltrb(
-            data.detection.bboxXYXY[0],
-            data.detection.bboxXYXY[1],
-            data.detection.bboxXYXY[2],
-            data.detection.bboxXYXY[3],
-          ),
-          score: data.detection.score,
-          landmarks: pts,
-          imageWidth: imageWidth,
-          imageHeight: imageHeight,
-        ),
+  /// Detects poses in a pre-decoded [cv.Mat] image.
+  ///
+  /// The Mat's raw pixel data is extracted and transferred to the background
+  /// isolate using zero-copy [TransferableTypedData]. The original Mat is NOT
+  /// disposed by this method — the caller is responsible for disposal.
+  ///
+  /// Throws [StateError] if called before [initialize].
+  Future<List<Pose>> detectFromMat(cv.Mat image) {
+    if (!isReady) {
+      throw StateError(
+        'PoseDetector not initialized. Call initialize() first.',
       );
     }
-    return results;
+    final int rows = image.rows;
+    final int cols = image.cols;
+    final int type = image.type.value;
+    final Uint8List data = image.data;
+    return detectFromMatBytes(data, width: cols, height: rows, matType: type);
+  }
+
+  /// Detects poses from raw pixel bytes without constructing a [cv.Mat] first.
+  ///
+  /// Bytes are transferred via zero-copy [TransferableTypedData] and the Mat
+  /// is reconstructed inside the background isolate.
+  ///
+  /// Parameters:
+  /// - [bytes]: Raw pixel data (typically BGR format, 3 bytes per pixel)
+  /// - [width]: Image width in pixels
+  /// - [height]: Image height in pixels
+  /// - [matType]: OpenCV MatType value (default: CV_8UC3 = 16 for BGR)
+  ///
+  /// Throws [StateError] if called before [initialize].
+  Future<List<Pose>> detectFromMatBytes(
+    Uint8List bytes, {
+    required int width,
+    required int height,
+    int matType = 16,
+  }) async {
+    if (!isReady) {
+      throw StateError(
+        'PoseDetector not initialized. Call initialize() first.',
+      );
+    }
+    final List<dynamic> result = await _worker!.sendRequest<List<dynamic>>(
+      'detectMat',
+      {
+        'bytes': TransferableTypedData.fromList([bytes]),
+        'width': width,
+        'height': height,
+        'matType': matType,
+      },
+    );
+    return _deserializePoses(result);
+  }
+
+  /// Releases all resources used by the detector.
+  Future<void> dispose() async {
+    await _worker?.dispose();
+    _worker = null;
+  }
+
+  List<Pose> _deserializePoses(List<dynamic> result) => result
+      .map((map) => Pose.fromMap(Map<String, dynamic>.from(map as Map)))
+      .toList();
+
+  /// Isolate entry point: initializes [PoseDetectorCore] and listens for requests.
+  @pragma('vm:entry-point')
+  static void _isolateEntry(_IsolateStartupData data) async {
+    final SendPort mainSendPort = data.sendPort;
+    final ReceivePort workerReceivePort = ReceivePort();
+
+    PoseDetectorCore? core;
+
+    try {
+      final yoloBytes = data.yoloBytes.materialize().asUint8List();
+      final landmarkBytes = data.landmarkBytes.materialize().asUint8List();
+
+      final mode = PoseMode.values.firstWhere((m) => m.name == data.modeName);
+      final landmarkModel = PoseLandmarkModel.values.firstWhere(
+        (m) => m.name == data.landmarkModelName,
+      );
+      final performanceMode = PerformanceMode.values.firstWhere(
+        (m) => m.name == data.performanceModeName,
+      );
+
+      core = PoseDetectorCore();
+      await core.initializeFromBuffers(
+        yoloBytes: yoloBytes,
+        landmarkBytes: landmarkBytes,
+        mode: mode,
+        landmarkModel: landmarkModel,
+        detectorConf: data.detectorConf,
+        detectorIou: data.detectorIou,
+        maxDetections: data.maxDetections,
+        minLandmarkScore: data.minLandmarkScore,
+        interpreterPoolSize: data.interpreterPoolSize,
+        performanceConfig: PerformanceConfig(
+          mode: performanceMode,
+          numThreads: data.numThreads,
+        ),
+      );
+
+      mainSendPort.send(workerReceivePort.sendPort);
+    } catch (e, st) {
+      mainSendPort.send({
+        'error': 'Pose detection isolate initialization failed: $e\n$st',
+      });
+      return;
+    }
+
+    workerReceivePort.listen((message) async {
+      if (message is! Map) return;
+
+      final int? id = message['id'] as int?;
+      final String? op = message['op'] as String?;
+
+      if (id == null || op == null) return;
+
+      try {
+        switch (op) {
+          case 'detect':
+            if (core == null) {
+              mainSendPort.send({
+                'id': id,
+                'error': 'PoseDetectorCore not initialized in isolate',
+              });
+              return;
+            }
+            final ByteBuffer bb = (message['bytes'] as TransferableTypedData)
+                .materialize();
+            final Uint8List imageBytes = bb.asUint8List();
+            final cv.Mat mat = cv.imdecode(imageBytes, cv.IMREAD_COLOR);
+            if (mat.isEmpty) {
+              mat.dispose();
+              mainSendPort.send({'id': id, 'result': <dynamic>[]});
+              return;
+            }
+            try {
+              final poses = await core!.detectDirect(
+                mat,
+                imageWidth: mat.cols,
+                imageHeight: mat.rows,
+              );
+              mainSendPort.send({
+                'id': id,
+                'result': poses.map((p) => p.toMap()).toList(),
+              });
+            } finally {
+              mat.dispose();
+            }
+
+          case 'detectMat':
+            if (core == null) {
+              mainSendPort.send({
+                'id': id,
+                'error': 'PoseDetectorCore not initialized in isolate',
+              });
+              return;
+            }
+            final ByteBuffer bb = (message['bytes'] as TransferableTypedData)
+                .materialize();
+            final Uint8List matBytes = bb.asUint8List();
+            final int width = message['width'] as int;
+            final int height = message['height'] as int;
+            final int matTypeValue = message['matType'] as int;
+            final matType = cv.MatType(matTypeValue);
+            final mat = cv.Mat.fromList(height, width, matType, matBytes);
+            try {
+              final poses = await core!.detectDirect(
+                mat,
+                imageWidth: width,
+                imageHeight: height,
+              );
+              mainSendPort.send({
+                'id': id,
+                'result': poses.map((p) => p.toMap()).toList(),
+              });
+            } finally {
+              mat.dispose();
+            }
+
+          case 'dispose':
+            await core?.dispose();
+            core = null;
+            workerReceivePort.close();
+        }
+      } catch (e, st) {
+        mainSendPort.send({'id': id, 'error': '$e\n$st'});
+      }
+    });
+  }
+}
+
+class _PoseDetectorWorker extends IsolateWorkerBase {
+  @override
+  String get workerDisposeOp => 'dispose';
+
+  Future<void> initialize({
+    required Uint8List yoloBytes,
+    required Uint8List landmarkBytes,
+    required PoseMode mode,
+    required PoseLandmarkModel landmarkModel,
+    required double detectorConf,
+    required double detectorIou,
+    required int maxDetections,
+    required double minLandmarkScore,
+    required int interpreterPoolSize,
+    required PerformanceConfig performanceConfig,
+  }) async {
+    await initWorker(
+      (sendPort) => Isolate.spawn(
+        PoseDetector._isolateEntry,
+        _IsolateStartupData(
+          sendPort: sendPort,
+          yoloBytes: TransferableTypedData.fromList([yoloBytes]),
+          landmarkBytes: TransferableTypedData.fromList([landmarkBytes]),
+          modeName: mode.name,
+          landmarkModelName: landmarkModel.name,
+          detectorConf: detectorConf,
+          detectorIou: detectorIou,
+          maxDetections: maxDetections,
+          minLandmarkScore: minLandmarkScore,
+          interpreterPoolSize: interpreterPoolSize,
+          performanceModeName: performanceConfig.mode.name,
+          numThreads: performanceConfig.numThreads,
+        ),
+        debugName: 'PoseDetector',
+      ),
+      timeout: const Duration(seconds: 30),
+      timeoutMessage: 'Pose detection isolate initialization timed out',
+    );
   }
 }
