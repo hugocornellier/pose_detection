@@ -44,7 +44,9 @@ void main() {
     });
 
     test('should initialize with custom configuration', () async {
-      final detector = PoseDetector(
+      final detector = PoseDetector();
+
+      await detector.initialize(
         mode: PoseMode.boxes,
         landmarkModel: PoseLandmarkModel.lite,
         detectorConf: 0.6,
@@ -52,30 +54,40 @@ void main() {
         maxDetections: 5,
         minLandmarkScore: 0.7,
       );
-
-      await detector.initialize();
       expect(detector.isInitialized, true);
-      expect(detector.mode, PoseMode.boxes);
-      expect(detector.landmarkModel, PoseLandmarkModel.lite);
-      expect(detector.detectorConf, 0.6);
-      expect(detector.detectorIou, 0.4);
-      expect(detector.maxDetections, 5);
-      expect(detector.minLandmarkScore, 0.7);
 
       await detector.dispose();
     });
 
-    test('should allow re-initialization', () async {
-      final detector = PoseDetector(landmarkModel: PoseLandmarkModel.lite);
-      await detector.initialize();
+    test('should allow dispose then re-initialize', () async {
+      final detector = PoseDetector();
+      await detector.initialize(landmarkModel: PoseLandmarkModel.lite);
       expect(detector.isInitialized, true);
 
-      // Re-initialize should work
+      await detector.dispose();
+      expect(detector.isInitialized, false);
+
       await detector.initialize();
       expect(detector.isInitialized, true);
 
       await detector.dispose();
     });
+
+    test(
+      'should throw StateError when initialize called twice without dispose',
+      () async {
+        final detector = PoseDetector();
+        await detector.initialize(landmarkModel: PoseLandmarkModel.lite);
+        expect(detector.isInitialized, true);
+
+        await expectLater(
+          () => detector.initialize(),
+          throwsA(isA<StateError>()),
+        );
+
+        await detector.dispose();
+      },
+    );
 
     test('should handle multiple dispose calls', () async {
       final detector = PoseDetector();
@@ -116,11 +128,11 @@ void main() {
     test(
       'should detect people in pose1.jpg with boxesAndLandmarks mode',
       () async {
-        final detector = PoseDetector(
+        final detector = PoseDetector();
+        await detector.initialize(
           mode: PoseMode.boxesAndLandmarks,
           landmarkModel: PoseLandmarkModel.lite,
         );
-        await detector.initialize();
 
         final ByteData data = await rootBundle.load('assets/samples/pose1.jpg');
         final Uint8List bytes = data.buffer.asUint8List();
@@ -156,8 +168,8 @@ void main() {
     );
 
     test('should detect people in pose2.jpg', () async {
-      final detector = PoseDetector(landmarkModel: PoseLandmarkModel.lite);
-      await detector.initialize();
+      final detector = PoseDetector();
+      await detector.initialize(landmarkModel: PoseLandmarkModel.lite);
 
       final ByteData data = await rootBundle.load('assets/samples/pose2.jpg');
       final Uint8List bytes = data.buffer.asUint8List();
@@ -170,8 +182,8 @@ void main() {
     });
 
     test('should detect people in pose3.jpg', () async {
-      final detector = PoseDetector(landmarkModel: PoseLandmarkModel.lite);
-      await detector.initialize();
+      final detector = PoseDetector();
+      await detector.initialize(landmarkModel: PoseLandmarkModel.lite);
 
       final ByteData data = await rootBundle.load('assets/samples/pose3.jpg');
       final Uint8List bytes = data.buffer.asUint8List();
@@ -184,11 +196,11 @@ void main() {
     });
 
     test('should detect people with boxes-only mode', () async {
-      final detector = PoseDetector(
+      final detector = PoseDetector();
+      await detector.initialize(
         mode: PoseMode.boxes,
         landmarkModel: PoseLandmarkModel.lite,
       );
-      await detector.initialize();
 
       final ByteData data = await rootBundle.load('assets/samples/pose1.jpg');
       final Uint8List bytes = data.buffer.asUint8List();
@@ -212,11 +224,11 @@ void main() {
     });
 
     test('should return consistent results on same image', () async {
-      final detector = PoseDetector(
+      final detector = PoseDetector();
+      await detector.initialize(
         landmarkModel: PoseLandmarkModel.lite,
         detectorConf: 0.5,
       );
-      await detector.initialize();
 
       final ByteData data = await rootBundle.load('assets/samples/pose1.jpg');
       final Uint8List bytes = data.buffer.asUint8List();
@@ -242,8 +254,8 @@ void main() {
 
   group('PoseDetector - Different Model Variants', () {
     test('should work with lite model', () async {
-      final detector = PoseDetector(landmarkModel: PoseLandmarkModel.lite);
-      await detector.initialize();
+      final detector = PoseDetector();
+      await detector.initialize(landmarkModel: PoseLandmarkModel.lite);
 
       final ByteData data = await rootBundle.load('assets/samples/pose1.jpg');
       final Uint8List bytes = data.buffer.asUint8List();
@@ -258,8 +270,8 @@ void main() {
     });
 
     test('should work with full model', () async {
-      final detector = PoseDetector(landmarkModel: PoseLandmarkModel.full);
-      await detector.initialize();
+      final detector = PoseDetector();
+      await detector.initialize(landmarkModel: PoseLandmarkModel.full);
 
       final ByteData data = await rootBundle.load('assets/samples/pose1.jpg');
       final Uint8List bytes = data.buffer.asUint8List();
@@ -274,8 +286,8 @@ void main() {
     });
 
     test('should work with heavy model', () async {
-      final detector = PoseDetector(landmarkModel: PoseLandmarkModel.heavy);
-      await detector.initialize();
+      final detector = PoseDetector();
+      await detector.initialize(landmarkModel: PoseLandmarkModel.heavy);
 
       final ByteData data = await rootBundle.load('assets/samples/pose1.jpg');
       final Uint8List bytes = data.buffer.asUint8List();
@@ -295,8 +307,8 @@ void main() {
     late List<Pose> poses;
 
     setUpAll(() async {
-      detector = PoseDetector(landmarkModel: PoseLandmarkModel.lite);
-      await detector.initialize();
+      detector = PoseDetector();
+      await detector.initialize(landmarkModel: PoseLandmarkModel.lite);
 
       final ByteData data = await rootBundle.load('assets/samples/pose1.jpg');
       final Uint8List bytes = data.buffer.asUint8List();
@@ -441,18 +453,18 @@ void main() {
   group('PoseDetector - Configuration Parameters', () {
     test('should respect detectorConf threshold', () async {
       // High confidence threshold
-      final strictDetector = PoseDetector(
+      final strictDetector = PoseDetector();
+      await strictDetector.initialize(
         landmarkModel: PoseLandmarkModel.lite,
         detectorConf: 0.9,
       );
-      await strictDetector.initialize();
 
       // Low confidence threshold
-      final lenientDetector = PoseDetector(
+      final lenientDetector = PoseDetector();
+      await lenientDetector.initialize(
         landmarkModel: PoseLandmarkModel.lite,
         detectorConf: 0.3,
       );
-      await lenientDetector.initialize();
 
       final ByteData data = await rootBundle.load('assets/samples/pose1.jpg');
       final Uint8List bytes = data.buffer.asUint8List();
@@ -472,11 +484,11 @@ void main() {
     });
 
     test('should respect maxDetections parameter', () async {
-      final detector = PoseDetector(
+      final detector = PoseDetector();
+      await detector.initialize(
         landmarkModel: PoseLandmarkModel.lite,
         maxDetections: 1,
       );
-      await detector.initialize();
 
       final ByteData data = await rootBundle.load('assets/samples/pose1.jpg');
       final Uint8List bytes = data.buffer.asUint8List();
@@ -491,11 +503,11 @@ void main() {
     });
 
     test('should respect minLandmarkScore parameter', () async {
-      final detector = PoseDetector(
+      final detector = PoseDetector();
+      await detector.initialize(
         landmarkModel: PoseLandmarkModel.lite,
-        minLandmarkScore: 0.9, // Very high threshold
+        minLandmarkScore: 0.9,
       );
-      await detector.initialize();
 
       final ByteData data = await rootBundle.load('assets/samples/pose1.jpg');
       final Uint8List bytes = data.buffer.asUint8List();
@@ -520,8 +532,8 @@ void main() {
 
   group('PoseDetector - Multiple Images', () {
     test('should process multiple images sequentially', () async {
-      final detector = PoseDetector(landmarkModel: PoseLandmarkModel.lite);
-      await detector.initialize();
+      final detector = PoseDetector();
+      await detector.initialize(landmarkModel: PoseLandmarkModel.lite);
 
       final images = [
         'assets/samples/pose1.jpg',
@@ -543,8 +555,8 @@ void main() {
     });
 
     test('should handle different image sizes', () async {
-      final detector = PoseDetector(landmarkModel: PoseLandmarkModel.lite);
-      await detector.initialize();
+      final detector = PoseDetector();
+      await detector.initialize(landmarkModel: PoseLandmarkModel.lite);
 
       final images = [
         'assets/samples/pose4.jpg',
@@ -576,8 +588,8 @@ void main() {
 
   group('PoseDetector - Edge Cases', () {
     test('should handle empty landmarks list in boxes mode', () async {
-      final detector = PoseDetector(mode: PoseMode.boxes);
-      await detector.initialize();
+      final detector = PoseDetector();
+      await detector.initialize(mode: PoseMode.boxes);
 
       final ByteData data = await rootBundle.load('assets/samples/pose1.jpg');
       final Uint8List bytes = data.buffer.asUint8List();
@@ -597,8 +609,8 @@ void main() {
     });
 
     test('should handle 1x1 image', () async {
-      final detector = PoseDetector(landmarkModel: PoseLandmarkModel.lite);
-      await detector.initialize();
+      final detector = PoseDetector();
+      await detector.initialize(landmarkModel: PoseLandmarkModel.lite);
 
       final cv.Mat mat = cv.Mat.zeros(1, 1, cv.MatType.CV_8UC3);
       final List<Pose> results = await detector.detectFromMat(mat);
@@ -611,8 +623,8 @@ void main() {
     });
 
     test('Pose.toString() should not crash', () async {
-      final detector = PoseDetector(landmarkModel: PoseLandmarkModel.lite);
-      await detector.initialize();
+      final detector = PoseDetector();
+      await detector.initialize(landmarkModel: PoseLandmarkModel.lite);
 
       final ByteData data = await rootBundle.load('assets/samples/pose1.jpg');
       final Uint8List bytes = data.buffer.asUint8List();
@@ -634,8 +646,8 @@ void main() {
 
   group('PoseDetector - detect() bytes API', () {
     test('should detect poses from image bytes', () async {
-      final detector = PoseDetector(landmarkModel: PoseLandmarkModel.lite);
-      await detector.initialize();
+      final detector = PoseDetector();
+      await detector.initialize(landmarkModel: PoseLandmarkModel.lite);
 
       final ByteData data = await rootBundle.load('assets/samples/pose1.jpg');
       final Uint8List bytes = data.buffer.asUint8List();
@@ -659,13 +671,15 @@ void main() {
       await detector.dispose();
     });
 
-    test('should return empty list when called with invalid bytes', () async {
-      final detector = PoseDetector(landmarkModel: PoseLandmarkModel.lite);
-      await detector.initialize();
+    test('should throw when called with invalid bytes', () async {
+      final detector = PoseDetector();
+      await detector.initialize(landmarkModel: PoseLandmarkModel.lite);
 
-      // Invalid bytes produce an undecodable (empty) Mat, so detect returns no poses
-      final result = await detector.detect(Uint8List.fromList([0, 1, 2, 3]));
-      expect(result, isEmpty);
+      // Invalid bytes produce an undecodable Mat; the error now propagates.
+      await expectLater(
+        () => detector.detect(Uint8List.fromList([0, 1, 2, 3])),
+        throwsA(anything),
+      );
 
       await detector.dispose();
     });
@@ -673,8 +687,8 @@ void main() {
     test(
       'should handle JPEG bytes and produce matching results to detectFromMat',
       () async {
-        final detector = PoseDetector(landmarkModel: PoseLandmarkModel.lite);
-        await detector.initialize();
+        final detector = PoseDetector();
+        await detector.initialize(landmarkModel: PoseLandmarkModel.lite);
 
         final ByteData data = await rootBundle.load('assets/samples/pose2.jpg');
         final Uint8List bytes = data.buffer.asUint8List();
@@ -705,8 +719,8 @@ void main() {
 
   group('PoseDetector - Error Recovery', () {
     test('should recover after empty-result input', () async {
-      final detector = PoseDetector(landmarkModel: PoseLandmarkModel.lite);
-      await detector.initialize();
+      final detector = PoseDetector();
+      await detector.initialize(landmarkModel: PoseLandmarkModel.lite);
 
       // A 1x1 black image is valid but produces no detections
       final cv.Mat tiny = cv.Mat.zeros(1, 1, cv.MatType.CV_8UC3);
@@ -729,8 +743,8 @@ void main() {
 
   group('PoseDetector - Result Consistency', () {
     test('should produce deterministic results', () async {
-      final detector = PoseDetector(landmarkModel: PoseLandmarkModel.lite);
-      await detector.initialize();
+      final detector = PoseDetector();
+      await detector.initialize(landmarkModel: PoseLandmarkModel.lite);
 
       final ByteData data = await rootBundle.load('assets/samples/pose1.jpg');
       final Uint8List bytes = data.buffer.asUint8List();
@@ -775,11 +789,11 @@ void main() {
 
   group('PoseDetector - Additional Configuration', () {
     test('should respect detectorIou parameter', () async {
-      final detector = PoseDetector(
+      final detector = PoseDetector();
+      await detector.initialize(
         landmarkModel: PoseLandmarkModel.lite,
         detectorIou: 0.8,
       );
-      await detector.initialize();
 
       final ByteData data = await rootBundle.load('assets/samples/pose1.jpg');
       final Uint8List bytes = data.buffer.asUint8List();
@@ -800,8 +814,8 @@ void main() {
     });
 
     test('should work with lite landmark model', () async {
-      final detector = PoseDetector(landmarkModel: PoseLandmarkModel.lite);
-      await detector.initialize();
+      final detector = PoseDetector();
+      await detector.initialize(landmarkModel: PoseLandmarkModel.lite);
 
       final ByteData data = await rootBundle.load('assets/samples/pose1.jpg');
       final Uint8List bytes = data.buffer.asUint8List();
@@ -829,8 +843,8 @@ void main() {
     late List<Pose> poses;
 
     setUpAll(() async {
-      detector = PoseDetector(landmarkModel: PoseLandmarkModel.lite);
-      await detector.initialize();
+      detector = PoseDetector();
+      await detector.initialize(landmarkModel: PoseLandmarkModel.lite);
 
       final ByteData data = await rootBundle.load('assets/samples/pose1.jpg');
       final Uint8List bytes = data.buffer.asUint8List();

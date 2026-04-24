@@ -11,7 +11,7 @@ import '../types.dart';
 import '../isolate/pose_detector_core.dart';
 
 /// Startup payload transferred to the background isolate via [Isolate.spawn].
-class _IsolateStartupData {
+class _DetectionIsolateStartupData {
   final SendPort sendPort;
   final TransferableTypedData yoloBytes;
   final TransferableTypedData landmarkBytes;
@@ -25,7 +25,7 @@ class _IsolateStartupData {
   final String performanceModeName;
   final int? numThreads;
 
-  _IsolateStartupData({
+  _DetectionIsolateStartupData({
     required this.sendPort,
     required this.yoloBytes,
     required this.landmarkBytes,
@@ -77,64 +77,17 @@ class PoseDetector {
         'landmarkModel=${landmarkModel.name}:$_pipelineVersion';
   }
 
-  /// Detection mode controlling pipeline behavior.
-  final PoseMode mode;
-
-  /// BlazePose model variant to use for landmark extraction.
-  final PoseLandmarkModel landmarkModel;
-
-  /// Confidence threshold for person detection (0.0 to 1.0).
-  final double detectorConf;
-
-  /// IoU threshold for Non-Maximum Suppression (0.0 to 1.0).
-  final double detectorIou;
-
-  /// Maximum number of persons to detect per image.
-  final int maxDetections;
-
-  /// Minimum confidence score for landmark predictions (0.0 to 1.0).
-  final double minLandmarkScore;
-
-  /// Number of TensorFlow Lite interpreter instances in the landmark model pool.
-  ///
-  /// Forced to 1 when a performance delegate (XNNPACK/auto) is enabled to
-  /// prevent thread contention.
-  final int interpreterPoolSize;
-
-  /// Performance configuration for TensorFlow Lite inference.
-  final PerformanceConfig performanceConfig;
-
   _PoseDetectorWorker? _worker;
 
-  /// Creates a pose detector with the specified configuration.
+  /// Creates a pose detector instance.
   ///
-  /// Parameters:
-  /// - [mode]: Detection mode. Default: [PoseMode.boxesAndLandmarks]
-  /// - [landmarkModel]: BlazePose model variant. Default: [PoseLandmarkModel.heavy]
-  /// - [detectorConf]: Person detection confidence threshold (0.0-1.0). Default: 0.5
-  /// - [detectorIou]: NMS IoU threshold (0.0-1.0). Default: 0.45
-  /// - [maxDetections]: Maximum number of persons to detect. Default: 10
-  /// - [minLandmarkScore]: Minimum landmark confidence score (0.0-1.0). Default: 0.5
-  /// - [interpreterPoolSize]: Number of landmark model interpreter instances (1-10). Default: 1.
-  ///   Forced to 1 when a performance delegate is enabled.
-  /// - [performanceConfig]: TensorFlow Lite performance configuration. Default: auto
-  PoseDetector({
-    this.mode = PoseMode.boxesAndLandmarks,
-    this.landmarkModel = PoseLandmarkModel.heavy,
-    this.detectorConf = 0.5,
-    this.detectorIou = 0.45,
-    this.maxDetections = 10,
-    this.minLandmarkScore = 0.5,
-    int interpreterPoolSize = 1,
-    this.performanceConfig = const PerformanceConfig(),
-  }) : interpreterPoolSize = performanceConfig.mode == PerformanceMode.disabled
-           ? interpreterPoolSize
-           : 1;
+  /// The detector is not ready for use until you call [initialize].
+  PoseDetector();
 
   /// Creates and initializes a pose detector in one step.
   ///
   /// Convenience factory that combines [PoseDetector.new] and [initialize].
-  /// Accepts the same parameters as the constructor.
+  /// Accepts the same parameters as [initialize].
   ///
   /// Example:
   /// ```dart
@@ -154,7 +107,8 @@ class PoseDetector {
     int interpreterPoolSize = 1,
     PerformanceConfig performanceConfig = const PerformanceConfig(),
   }) async {
-    final detector = PoseDetector(
+    final detector = PoseDetector();
+    await detector.initialize(
       mode: mode,
       landmarkModel: landmarkModel,
       detectorConf: detectorConf,
@@ -164,7 +118,6 @@ class PoseDetector {
       interpreterPoolSize: interpreterPoolSize,
       performanceConfig: performanceConfig,
     );
-    await detector.initialize();
     return detector;
   }
 
@@ -178,7 +131,16 @@ class PoseDetector {
   ///
   /// Must be called before [detect] or [detectFromMat].
   /// Calling [initialize] twice without [dispose] throws [StateError].
-  Future<void> initialize() async {
+  Future<void> initialize({
+    PoseMode mode = PoseMode.boxesAndLandmarks,
+    PoseLandmarkModel landmarkModel = PoseLandmarkModel.heavy,
+    double detectorConf = 0.5,
+    double detectorIou = 0.45,
+    int maxDetections = 10,
+    double minLandmarkScore = 0.5,
+    int interpreterPoolSize = 1,
+    PerformanceConfig performanceConfig = const PerformanceConfig(),
+  }) async {
     if (isReady) {
       throw StateError('PoseDetector already initialized');
     }
@@ -199,6 +161,14 @@ class PoseDetector {
     await initializeFromBuffers(
       yoloBytes: yoloBytes,
       landmarkBytes: landmarkBytes,
+      mode: mode,
+      landmarkModel: landmarkModel,
+      detectorConf: detectorConf,
+      detectorIou: detectorIou,
+      maxDetections: maxDetections,
+      minLandmarkScore: minLandmarkScore,
+      interpreterPoolSize: interpreterPoolSize,
+      performanceConfig: performanceConfig,
     );
   }
 
@@ -214,10 +184,22 @@ class PoseDetector {
   Future<void> initializeFromBuffers({
     required Uint8List yoloBytes,
     required Uint8List landmarkBytes,
+    PoseMode mode = PoseMode.boxesAndLandmarks,
+    PoseLandmarkModel landmarkModel = PoseLandmarkModel.heavy,
+    double detectorConf = 0.5,
+    double detectorIou = 0.45,
+    int maxDetections = 10,
+    double minLandmarkScore = 0.5,
+    int interpreterPoolSize = 1,
+    PerformanceConfig performanceConfig = const PerformanceConfig(),
   }) async {
     if (isReady) {
       throw StateError('PoseDetector already initialized');
     }
+
+    final effectivePoolSize = performanceConfig.mode == PerformanceMode.disabled
+        ? interpreterPoolSize
+        : 1;
 
     final worker = _PoseDetectorWorker();
 
@@ -231,7 +213,7 @@ class PoseDetector {
         detectorIou: detectorIou,
         maxDetections: maxDetections,
         minLandmarkScore: minLandmarkScore,
-        interpreterPoolSize: interpreterPoolSize,
+        interpreterPoolSize: effectivePoolSize,
         performanceConfig: performanceConfig,
       );
     } catch (e) {
@@ -250,26 +232,22 @@ class PoseDetector {
   /// background isolate.
   ///
   /// Returns a list of [Pose] objects, one per detected person.
-  /// Returns an empty list if image decoding fails or no persons are detected.
   ///
   /// Throws [StateError] if called before [initialize].
+  /// Throws [FormatException] if the image bytes cannot be decoded.
   Future<List<Pose>> detect(Uint8List imageBytes) async {
     if (!isReady) {
       throw StateError(
         'PoseDetector not initialized. Call initialize() first.',
       );
     }
-    try {
-      final List<dynamic> result = await _worker!.sendRequest<List<dynamic>>(
-        'detect',
-        {
-          'bytes': TransferableTypedData.fromList([imageBytes]),
-        },
-      );
-      return _deserializePoses(result);
-    } catch (_) {
-      return <Pose>[];
-    }
+    final List<dynamic> result = await _worker!.sendRequest<List<dynamic>>(
+      'detect',
+      {
+        'bytes': TransferableTypedData.fromList([imageBytes]),
+      },
+    );
+    return _deserializePoses(result);
   }
 
   /// Detects poses in an image file at [path].
@@ -288,7 +266,7 @@ class PoseDetector {
   ///
   /// The Mat's raw pixel data is extracted and transferred to the background
   /// isolate using zero-copy [TransferableTypedData]. The original Mat is NOT
-  /// disposed by this method — the caller is responsible for disposal.
+  /// disposed by this method; the caller is responsible for disposal.
   ///
   /// Throws [StateError] if called before [initialize].
   Future<List<Pose>> detectFromMat(cv.Mat image) {
@@ -339,10 +317,94 @@ class PoseDetector {
     return _deserializePoses(result);
   }
 
+  /// Detects poses directly from a [CameraFrame] produced by
+  /// [prepareCameraFrame].
+  ///
+  /// The frame's YUV→BGR colour conversion and any optional rotation happen
+  /// inside the detection isolate, not on the calling thread. Use this from a
+  /// `CameraController.startImageStream` callback to keep the UI thread free
+  /// of OpenCV work.
+  ///
+  /// Throws [StateError] if called before [initialize].
+  Future<List<Pose>> detectFromCameraFrame(
+    CameraFrame frame, {
+    int? maxDim,
+  }) async {
+    if (!isReady) {
+      throw StateError(
+        'PoseDetector not initialized. Call initialize() first.',
+      );
+    }
+    final List<dynamic> result = await _worker!.sendRequest<List<dynamic>>(
+      'detectCameraFrame',
+      {
+        'bytes': TransferableTypedData.fromList([frame.bytes]),
+        'width': frame.width,
+        'height': frame.height,
+        'strideCols': frame.strideCols,
+        'conversion': frame.conversion.index,
+        'rotation': frame.rotation?.index,
+        'maxDim': maxDim,
+      },
+    );
+    return _deserializePoses(result);
+  }
+
+  /// One-call wrapper for live camera streams: takes a `CameraImage`-shaped
+  /// object directly (any object exposing `width`, `height`, and `planes` with
+  /// `bytes` / `bytesPerRow` / `bytesPerPixel`) and runs YUV packing, colour
+  /// conversion, rotation, and downscale in the detection isolate — all off
+  /// the UI thread.
+  ///
+  /// Returns an empty list (not an error) when the plane shape can't be
+  /// decoded. Throws at runtime if [cameraImage] doesn't expose the expected
+  /// shape.
+  ///
+  /// [isBgra] selects BGRA (macOS, default) vs. RGBA (Linux) for the desktop
+  /// single-plane path; ignored for YUV input.
+  ///
+  /// Throws [StateError] if [initialize] has not been called.
+  Future<List<Pose>> detectFromCameraImage(
+    Object cameraImage, {
+    CameraFrameRotation? rotation,
+    bool isBgra = true,
+    int? maxDim,
+  }) async {
+    if (!isReady) {
+      throw StateError(
+        'PoseDetector not initialized. Call initialize() first.',
+      );
+    }
+    final frame = prepareCameraFrameFromImage(
+      cameraImage,
+      rotation: rotation,
+      isBgra: isBgra,
+    );
+    if (frame == null) return const <Pose>[];
+    return detectFromCameraFrame(frame, maxDim: maxDim);
+  }
+
   /// Releases all resources used by the detector.
   Future<void> dispose() async {
-    await _worker?.dispose();
+    final worker = _worker;
     _worker = null;
+    if (worker == null) return;
+
+    // Graceful shutdown: send 'dispose' as an RPC and await the ack before
+    // letting the worker force-kill the isolate. flutter_litert's
+    // IsolateWorkerBase calls Isolate.kill(priority: immediate) which races
+    // past any queued 'dispose' message, so without this round-trip the
+    // isolate dies before it can free its TFLite interpreters. On Android
+    // each detector leaks ~10-26MB of native memory; after ~13 creates the
+    // low-memory killer reaps the test process.
+    try {
+      await worker
+          .sendRequest<dynamic>('dispose', const <String, dynamic>{})
+          .timeout(const Duration(seconds: 5));
+    } catch (_) {
+      // Best-effort: fall through to the force-kill below.
+    }
+    await worker.dispose();
   }
 
   List<Pose> _deserializePoses(List<dynamic> result) => result
@@ -351,7 +413,7 @@ class PoseDetector {
 
   /// Isolate entry point: initializes [PoseDetectorCore] and listens for requests.
   @pragma('vm:entry-point')
-  static void _isolateEntry(_IsolateStartupData data) async {
+  static void _detectionIsolateEntry(_DetectionIsolateStartupData data) async {
     final SendPort mainSendPort = data.sendPort;
     final ReceivePort workerReceivePort = ReceivePort();
 
@@ -416,11 +478,6 @@ class PoseDetector {
                 .materialize();
             final Uint8List imageBytes = bb.asUint8List();
             final cv.Mat mat = cv.imdecode(imageBytes, cv.IMREAD_COLOR);
-            if (mat.isEmpty) {
-              mat.dispose();
-              mainSendPort.send({'id': id, 'result': <dynamic>[]});
-              return;
-            }
             try {
               final poses = await core!.detectDirect(
                 mat,
@@ -465,15 +522,159 @@ class PoseDetector {
               mat.dispose();
             }
 
+          case 'detectCameraFrame':
+            if (core == null) {
+              mainSendPort.send({
+                'id': id,
+                'error': 'PoseDetectorCore not initialized in isolate',
+              });
+              return;
+            }
+            final Uint8List frameBytes =
+                (message['bytes'] as TransferableTypedData)
+                    .materialize()
+                    .asUint8List();
+            final frameMat = _matFromCameraFrameMessage(message, frameBytes);
+            try {
+              final poses = await core!.detectDirect(
+                frameMat,
+                imageWidth: frameMat.cols,
+                imageHeight: frameMat.rows,
+              );
+              mainSendPort.send({
+                'id': id,
+                'result': poses.map((p) => p.toMap()).toList(),
+              });
+            } finally {
+              frameMat.dispose();
+            }
+
           case 'dispose':
             await core?.dispose();
             core = null;
+            // ACK the dispose so the main side can await it before force-
+            // killing the isolate. See PoseDetector.dispose().
+            mainSendPort.send({'id': id, 'result': null});
             workerReceivePort.close();
         }
       } catch (e, st) {
         mainSendPort.send({'id': id, 'error': '$e\n$st'});
       }
     });
+  }
+
+  /// Decodes a [CameraFrame] isolate message into a 3-channel BGR [cv.Mat],
+  /// applying the conversion (YUV→BGR or BGRA/RGBA→BGR, with optional stride
+  /// crop) and any requested rotation. Runs inside the detection isolate.
+  ///
+  /// Op ordering is tuned to keep the big allocations tiny: for BGRA frames we
+  /// resize and rotate on the 4-channel buffer and defer `cvtColor` to the end
+  /// (so it converts the post-resize ~maxDim buffer, not full-res). For YUV we
+  /// must `cvtColor` first because the packed layout isn't resizable, but we
+  /// then resize before rotating so the rotate runs on the small BGR buffer.
+  /// Output is byte-identical to the rotate→resize→cvtColor order because
+  /// `cv.rotate` 90/180/270 is a lossless permutation, `cv.resize`
+  /// (`INTER_LINEAR`) interpolates each channel independently, and the
+  /// BGRA→BGR conversion is a per-pixel alpha drop.
+  static cv.Mat _matFromCameraFrameMessage(Map message, Uint8List bytes) {
+    final int width = message['width'] as int;
+    final int height = message['height'] as int;
+    final int strideCols = message['strideCols'] as int;
+    final conversion =
+        CameraFrameConversion.values[message['conversion'] as int];
+    final int? rotationIndex = message['rotation'] as int?;
+    final int? maxDim = message['maxDim'] as int?;
+
+    int? rotateFlag() {
+      if (rotationIndex == null) return null;
+      return switch (CameraFrameRotation.values[rotationIndex]) {
+        CameraFrameRotation.cw90 => cv.ROTATE_90_CLOCKWISE,
+        CameraFrameRotation.cw180 => cv.ROTATE_180,
+        CameraFrameRotation.cw270 => cv.ROTATE_90_COUNTERCLOCKWISE,
+      };
+    }
+
+    cv.Mat maybeResize(cv.Mat m) {
+      if (maxDim == null || (m.cols <= maxDim && m.rows <= maxDim)) return m;
+      final double scale = maxDim / (m.cols > m.rows ? m.cols : m.rows);
+      final resized = cv.resize(m, (
+        (m.cols * scale).toInt(),
+        (m.rows * scale).toInt(),
+      ), interpolation: cv.INTER_LINEAR);
+      m.dispose();
+      return resized;
+    }
+
+    cv.Mat maybeRotate(cv.Mat m) {
+      final flag = rotateFlag();
+      if (flag == null) return m;
+      final rotated = cv.rotate(m, flag);
+      m.dispose();
+      return rotated;
+    }
+
+    switch (conversion) {
+      case CameraFrameConversion.bgra2bgr:
+      case CameraFrameConversion.rgba2bgr:
+        final bgraOrRgba = cv.Mat.fromList(
+          height,
+          strideCols,
+          cv.MatType.CV_8UC4,
+          bytes,
+        );
+        cv.Mat current = strideCols != width
+            ? bgraOrRgba.region(cv.Rect(0, 0, width, height))
+            : bgraOrRgba;
+
+        if (maxDim != null &&
+            (current.cols > maxDim || current.rows > maxDim)) {
+          final double scale =
+              maxDim /
+              (current.cols > current.rows ? current.cols : current.rows);
+          final resized = cv.resize(current, (
+            (current.cols * scale).toInt(),
+            (current.rows * scale).toInt(),
+          ), interpolation: cv.INTER_LINEAR);
+          if (!identical(current, bgraOrRgba)) current.dispose();
+          current = resized;
+        }
+
+        final flag = rotateFlag();
+        if (flag != null) {
+          final rotated = cv.rotate(current, flag);
+          if (!identical(current, bgraOrRgba)) current.dispose();
+          current = rotated;
+        }
+
+        final cvtCode = conversion == CameraFrameConversion.bgra2bgr
+            ? cv.COLOR_BGRA2BGR
+            : cv.COLOR_RGBA2BGR;
+        final bgr = cv.cvtColor(current, cvtCode);
+        if (!identical(current, bgraOrRgba)) current.dispose();
+        bgraOrRgba.dispose();
+        return bgr;
+
+      case CameraFrameConversion.yuv2bgrNv12:
+      case CameraFrameConversion.yuv2bgrNv21:
+      case CameraFrameConversion.yuv2bgrI420:
+        final yuvMat = cv.Mat.fromList(
+          height + height ~/ 2,
+          width,
+          cv.MatType.CV_8UC1,
+          bytes,
+        );
+        final cvtCode = switch (conversion) {
+          CameraFrameConversion.yuv2bgrNv12 => cv.COLOR_YUV2BGR_NV12,
+          CameraFrameConversion.yuv2bgrNv21 => cv.COLOR_YUV2BGR_NV21,
+          CameraFrameConversion.yuv2bgrI420 => cv.COLOR_YUV2BGR_I420,
+          _ => cv.COLOR_YUV2BGR_NV12,
+        };
+        cv.Mat current = cv.cvtColor(yuvMat, cvtCode);
+        yuvMat.dispose();
+        current = maybeResize(current);
+        current = maybeRotate(current);
+        return current;
+    }
   }
 }
 
@@ -495,8 +696,8 @@ class _PoseDetectorWorker extends IsolateWorkerBase {
   }) async {
     await initWorker(
       (sendPort) => Isolate.spawn(
-        PoseDetector._isolateEntry,
-        _IsolateStartupData(
+        PoseDetector._detectionIsolateEntry,
+        _DetectionIsolateStartupData(
           sendPort: sendPort,
           yoloBytes: TransferableTypedData.fromList([yoloBytes]),
           landmarkBytes: TransferableTypedData.fromList([landmarkBytes]),

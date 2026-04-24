@@ -18,7 +18,7 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  flutter_litert: ^2.2.0
+  flutter_litert: ^2.4.0
   opencv_dart: ^2.2.1+4
   meta: ^1.17.0
   web: ^1.1.1
@@ -36,14 +36,6 @@ flutter:
     - assets/models/pose_landmark_full.tflite
     - assets/models/pose_landmark_heavy.tflite
     - assets/models/yolov8n_float32.tflite
-    - assets/samples/multi1.jpg
-    - assets/samples/pose1.jpg
-    - assets/samples/pose2.jpg
-    - assets/samples/pose3.jpg
-    - assets/samples/pose4.jpg
-    - assets/samples/pose5.jpg
-    - assets/samples/pose6.jpg
-    - assets/samples/pose7.jpg
 
   plugin:
     platforms:

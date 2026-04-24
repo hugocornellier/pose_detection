@@ -73,12 +73,11 @@ class _PoseDetectionWidgetState extends State<PoseDetectionWidget> {
     try {
       setState(() => _status = 'Loading pose detection models...');
 
-      _detector = PoseDetector(
+      _detector = await PoseDetector.create(
         mode: PoseMode.boxesAndLandmarks,
         landmarkModel: PoseLandmarkModel.heavy,
         detectorConf: _confidenceThreshold,
       );
-      await _detector!.initialize();
 
       setState(() {
         _status = 'Ready! Select an image to detect poses.';
@@ -175,12 +174,11 @@ class _PoseDetectionWidgetState extends State<PoseDetectionWidget> {
       if (_confidenceThreshold != confThres) {
         _confidenceThreshold = confThres;
         await _detector!.dispose();
-        _detector = PoseDetector(
+        _detector = await PoseDetector.create(
           mode: PoseMode.boxesAndLandmarks,
           landmarkModel: PoseLandmarkModel.heavy,
           detectorConf: confThres,
         );
-        await _detector!.initialize();
       }
 
       final totalStart = DateTime.now();

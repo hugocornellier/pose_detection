@@ -1,13 +1,18 @@
 ## 3.0.0
 
-**Breaking:** `PoseDetector.detectFromMat` signature changed. `detectFromMat(cv.Mat, {required int imageWidth, required int imageHeight})` is now `detectFromMat(cv.Mat)`. Dimensions are read from the Mat directly. Existing callers must drop the `imageWidth` and `imageHeight` named arguments.
+**Breaking:**
+* `PoseDetector` configuration moves from the constructor to `initialize()`. `PoseDetector({mode: ..., landmarkModel: ..., ...})` → `PoseDetector()` + `await detector.initialize(mode: ..., landmarkModel: ..., ...)`. Matches `FaceDetector`'s shape. `PoseDetector.create({...})` continues to accept the same named params unchanged.
+* `PoseDetector.detectFromMat` signature changed. `detectFromMat(cv.Mat, {required int imageWidth, required int imageHeight})` is now `detectFromMat(cv.Mat)`. Dimensions are read from the Mat directly. Existing callers must drop the `imageWidth` and `imageHeight` named arguments.
+* `detect(...)` no longer swallows exceptions. Undecodable image bytes now propagate as an error (matching `FaceDetector` and `HandDetector` behaviour) rather than silently returning an empty list. Wrap `detect(...)` in a `try/catch` if your callsite depended on the previous silent-failure behaviour. On web, decode failure still returns an empty list because browser HTMLImageElement decode does not throw.
 
 * All inference now runs in a dedicated background isolate, keeping the UI thread free. Previously, inference ran on the calling thread.
 * Add `PoseDetector.create({...})` one-step factory (mirrors `FaceDetector.create` and `HandDetector.create`).
-* Add `detectFromFilepath(String path)` — reads the file and delegates to `detect`.
+* Add `detectFromFilepath(String path)`: reads the file and delegates to `detect`.
 * Add `detectFromMatBytes(Uint8List, {required int width, required int height, int matType})` zero-copy fast path via `TransferableTypedData`.
 * Add `initializeFromBuffers({required Uint8List yoloBytes, required Uint8List landmarkBytes})` for callers that load model bytes independently of Flutter's asset system.
 * Add `isReady` getter as an alias for `isInitialized`.
+* Add a top-level Live Camera Detection section to the README, modelled on `face_detection_tflite`'s `packYuv420` + native `cv.cvtColor` pattern, and remove the orphan `assets/models/pose_detection.tflite` left over from the pre-YOLOv8n scaffold.
+* Expand `flutter_litert` re-exports through the `pose_detection` barrel to match `face_detection_tflite`: tensor helpers (`createNHWCTensor4D`, `fillNHWC4D`, `allocTensorShape`, `flattenDynamicTensor`), math helpers (`sigmoid`, `sigmoidClipped`, `clamp01`, `clip`), letterbox helpers (`computeLetterboxParams`, `LetterboxParams`), BGR→RGB byte helpers (`bgrBytesToRgbFloat32`, `bgrBytesToSignedFloat32`), and `PerformanceMode`. Consumers no longer need a direct `flutter_litert` import for these.
 
 ## 2.1.1
 

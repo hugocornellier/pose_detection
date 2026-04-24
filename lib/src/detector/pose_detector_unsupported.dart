@@ -1,6 +1,8 @@
 // ignore_for_file: public_member_api_docs
 
 import 'dart:typed_data';
+import 'package:flutter_litert/flutter_litert.dart'
+    show PerformanceConfig, CameraFrame, CameraFrameRotation;
 import '../types.dart';
 
 class PoseDetector {
@@ -21,25 +23,7 @@ class PoseDetector {
         'landmarkModel=${landmarkModel.name}:$_pipelineVersion';
   }
 
-  final PoseMode mode;
-  final PoseLandmarkModel landmarkModel;
-  final double detectorConf;
-  final double detectorIou;
-  final int maxDetections;
-  final double minLandmarkScore;
-  final int interpreterPoolSize;
-  final PerformanceConfig performanceConfig;
-
-  PoseDetector({
-    this.mode = PoseMode.boxesAndLandmarks,
-    this.landmarkModel = PoseLandmarkModel.heavy,
-    this.detectorConf = 0.5,
-    this.detectorIou = 0.45,
-    this.maxDetections = 10,
-    this.minLandmarkScore = 0.5,
-    this.interpreterPoolSize = 1,
-    this.performanceConfig = PerformanceConfig.disabled,
-  }) {
+  PoseDetector() {
     throw UnsupportedError('PoseDetector is not supported on this platform.');
   }
 
@@ -54,11 +38,30 @@ class PoseDetector {
     PerformanceConfig performanceConfig = PerformanceConfig.disabled,
   }) => throw UnsupportedError('Not supported');
 
-  Future<void> initialize() => throw UnsupportedError('Not supported');
+  Future<void> initialize({
+    PoseMode mode = PoseMode.boxesAndLandmarks,
+    PoseLandmarkModel landmarkModel = PoseLandmarkModel.heavy,
+    double detectorConf = 0.5,
+    double detectorIou = 0.45,
+    int maxDetections = 10,
+    double minLandmarkScore = 0.5,
+    int interpreterPoolSize = 1,
+    PerformanceConfig performanceConfig = PerformanceConfig.disabled,
+  }) => throw UnsupportedError('Not supported');
+
   Future<void> initializeFromBuffers({
     required Uint8List yoloBytes,
     required Uint8List landmarkBytes,
+    PoseMode mode = PoseMode.boxesAndLandmarks,
+    PoseLandmarkModel landmarkModel = PoseLandmarkModel.heavy,
+    double detectorConf = 0.5,
+    double detectorIou = 0.45,
+    int maxDetections = 10,
+    double minLandmarkScore = 0.5,
+    int interpreterPoolSize = 1,
+    PerformanceConfig performanceConfig = PerformanceConfig.disabled,
   }) => throw UnsupportedError('Not supported');
+
   bool get isReady => false;
   bool get isInitialized => false;
   Future<void> dispose() => throw UnsupportedError('Not supported');
@@ -73,5 +76,13 @@ class PoseDetector {
     required int width,
     required int height,
     int matType = 16,
+  }) => throw UnsupportedError('Not supported');
+  Future<List<Pose>> detectFromCameraFrame(CameraFrame frame, {int? maxDim}) =>
+      throw UnsupportedError('Not supported');
+  Future<List<Pose>> detectFromCameraImage(
+    Object cameraImage, {
+    CameraFrameRotation? rotation,
+    bool isBgra = true,
+    int? maxDim,
   }) => throw UnsupportedError('Not supported');
 }

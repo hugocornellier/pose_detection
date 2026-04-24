@@ -5,6 +5,7 @@ import 'dart:js_interop_unsafe';
 import 'dart:typed_data';
 
 import 'package:flutter/services.dart';
+import 'package:flutter_litert/flutter_litert.dart' show PerformanceConfig;
 import 'package:flutter_litert/src/web/js_interop/tfjs_tensor.dart';
 import 'package:flutter_litert/src/web/model.dart' as litert_web;
 import '../types.dart';

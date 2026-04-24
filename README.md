@@ -204,6 +204,45 @@ for (final Pose pose in results) {
 }
 ```
 
+## Bounding Boxes
+
+The boundingBox property returns a BoundingBox object representing the pose bounding box in
+absolute pixel coordinates. The BoundingBox provides convenient access to corner points,
+dimensions (width and height), and the center point.
+
+### Accessing Corners
+
+```dart
+final BoundingBox boundingBox = pose.boundingBox;
+
+// Access individual corners by name (each is a Point with x and y)
+final Point topLeft     = boundingBox.topLeft;       // Top-left corner
+final Point topRight    = boundingBox.topRight;      // Top-right corner
+final Point bottomRight = boundingBox.bottomRight;   // Bottom-right corner
+final Point bottomLeft  = boundingBox.bottomLeft;    // Bottom-left corner
+
+// Access coordinates
+print('Top-left: (${topLeft.x}, ${topLeft.y})');
+```
+
+### Additional Bounding Box Parameters
+
+```dart
+final BoundingBox boundingBox = pose.boundingBox;
+
+// Access dimensions and center
+final double width  = boundingBox.width;     // Width in pixels
+final double height = boundingBox.height;    // Height in pixels
+final Point center = boundingBox.center;  // Center point
+
+// Access coordinates
+print('Size: ${width} x ${height}');
+print('Center: (${center.x}, ${center.y})');
+
+// Access all corners as a list (order: top-left, top-right, bottom-right, bottom-left)
+final List<Point> allCorners = boundingBox.corners;
+```
+
 ## Pose Landmark Models
 
 Choose the model that fits your performance needs:
@@ -324,6 +363,51 @@ The `poseLandmarkConnections` constant contains 27 connections organized by body
 - **Arms**: Shoulders → elbows → wrists → fingers (left and right)
 - **Legs**: Hips → knees → ankles → feet (left and right)
 
+## Live Camera Detection
+
+For real-time pose detection with a camera feed, use `detectFromCameraImage`. It auto-detects YUV420 (NV12 / NV21 / I420) and desktop BGRA/RGBA layouts, and the `cvtColor`, optional `rotate`, and `maxDim` downscale all run inside the detector's existing isolate: the UI thread is never blocked by OpenCV work.
+
+```dart
+import 'package:camera/camera.dart';
+import 'package:pose_detection/pose_detection.dart';
+
+final detector = await PoseDetector.create(
+  landmarkModel: PoseLandmarkModel.lite, // lite model for higher FPS
+);
+
+final cameras = await availableCameras();
+final camera = CameraController(
+  cameras.first,
+  ResolutionPreset.medium,
+  enableAudio: false,
+  imageFormatGroup: ImageFormatGroup.yuv420,
+);
+await camera.initialize();
+
+camera.startImageStream((CameraImage image) async {
+  final poses = await detector.detectFromCameraImage(
+    image,
+    // rotation: CameraFrameRotation.cw90, // based on device orientation
+    maxDim: 640, // optional in-isolate downscale before inference
+  );
+  // Process poses...
+});
+```
+
+**Tips for camera detection:**
+- `detectFromCameraImage` replaces the old `packYuv420` + manual `cv.cvtColor` + `cv.rotate` dance in one call; no `cv.Mat` on the UI thread.
+- Pass `rotation:` so the detector sees upright frames (Android back/front + device orientation logic); on iOS the camera plugin pre-rotates so this is often null.
+- Pass `maxDim:` (e.g. 640) to downscale in-isolate; the detection model internally resizes to 256px, so full-res frames just waste IPC bandwidth.
+- Use `PoseLandmarkModel.lite` for fastest real-time performance.
+- Mirror the overlay on the front camera to match `CameraPreview`'s auto-mirrored texture.
+- For advanced use (e.g. reusing a frame across multiple detectors), `prepareCameraFrame(...)` + `detectFromCameraFrame(...)` is the underlying two-step API.
+
+See the full [example app](https://pub.dev/packages/pose_detection/example) for a production implementation including orientation handling, mirror handling, and frame throttling.
+
+## Background Processing
+
+All inference runs automatically in a background isolate: the UI thread is never blocked during detection or landmark extraction. No special configuration is needed; `PoseDetector` handles isolate management internally.
+
 ## Advanced Usage
 
 ### Multi-person detection
@@ -354,22 +438,3 @@ final detector = PoseDetector(
 - **Default pool size**: 1
 - When XNNPACK is enabled (via `performanceConfig`), pool size is automatically forced to 1 to prevent thread contention
 
-### Camera/video stream processing
-
-For real-time camera processing, reuse the same detector instance:
-
-```dart
-final detector = PoseDetector(
-  landmarkModel: PoseLandmarkModel.lite,  // Use lite for better FPS
-  detectorConf: 0.6,
-);
-await detector.initialize();
-
-// Process each frame (convert camera frame to cv.Mat first)
-void processFrame(cv.Mat mat) async {
-  final results = await detector.detectFromMat(mat);
-  // Update UI with results
-}
-
-await detector.dispose();
-```

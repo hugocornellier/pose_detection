@@ -1,9 +1,6 @@
 import 'package:flutter_litert/flutter_litert.dart'
     show BoundingBox, LandmarkMixin;
 
-export 'package:flutter_litert/flutter_litert.dart'
-    show PerformanceMode, PerformanceConfig, Point, BoundingBox;
-
 /// BlazePose model variant for landmark extraction.
 ///
 /// Controls the accuracy/performance trade-off:

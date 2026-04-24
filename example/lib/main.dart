@@ -7,7 +7,6 @@ import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:pose_detection/pose_detection.dart';
 import 'package:camera/camera.dart';
-import 'package:opencv_dart/opencv_dart.dart' as cv;
 import 'package:sensors_plus/sensors_plus.dart';
 
 void main() {
@@ -483,126 +482,6 @@ class PoseVisualizerWidget extends StatelessWidget {
   }
 }
 
-class MultiOverlayPainter extends CustomPainter {
-  final List<Pose> results;
-
-  MultiOverlayPainter({required this.results});
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    if (results.isEmpty) return;
-
-    final int iw = results.first.imageWidth;
-    final int ih = results.first.imageHeight;
-
-    final double imageAspect = iw / ih;
-    final double canvasAspect = size.width / size.height;
-    double scaleX, scaleY;
-    double offsetX = 0, offsetY = 0;
-
-    if (canvasAspect > imageAspect) {
-      scaleY = size.height / ih;
-      scaleX = scaleY;
-      offsetX = (size.width - iw * scaleX) / 2;
-    } else {
-      scaleX = size.width / iw;
-      scaleY = scaleX;
-      offsetY = (size.height - ih * scaleY) / 2;
-    }
-
-    for (final r in results) {
-      _drawBbox(canvas, r, scaleX, scaleY, offsetX, offsetY);
-      if (r.hasLandmarks) {
-        _drawConnections(canvas, r, scaleX, scaleY, offsetX, offsetY);
-        _drawLandmarks(canvas, r, scaleX, scaleY, offsetX, offsetY);
-      }
-    }
-  }
-
-  void _drawConnections(
-    Canvas canvas,
-    Pose result,
-    double scaleX,
-    double scaleY,
-    double offsetX,
-    double offsetY,
-  ) {
-    final Paint paint = Paint()
-      ..color = Colors.green.withValues(alpha: 0.8)
-      ..strokeWidth = 3
-      ..strokeCap = StrokeCap.round;
-
-    // Use the predefined skeleton connections from the package
-    for (final List<PoseLandmarkType> c in poseLandmarkConnections) {
-      final PoseLandmark? start = result.getLandmark(c[0]);
-      final PoseLandmark? end = result.getLandmark(c[1]);
-      if (start != null &&
-          end != null &&
-          start.visibility > 0.5 &&
-          end.visibility > 0.5) {
-        canvas.drawLine(
-          Offset(start.x * scaleX + offsetX, start.y * scaleY + offsetY),
-          Offset(end.x * scaleX + offsetX, end.y * scaleY + offsetY),
-          paint,
-        );
-      }
-    }
-  }
-
-  void _drawLandmarks(
-    Canvas canvas,
-    Pose result,
-    double scaleX,
-    double scaleY,
-    double offsetX,
-    double offsetY,
-  ) {
-    for (final PoseLandmark l in result.landmarks) {
-      if (l.visibility > 0.5) {
-        final Offset center = Offset(
-          l.x * scaleX + offsetX,
-          l.y * scaleY + offsetY,
-        );
-        final Paint glow = Paint()..color = Colors.blue.withValues(alpha: 0.3);
-        final Paint point = Paint()..color = Colors.red;
-        final Paint centerDot = Paint()..color = Colors.white;
-        canvas.drawCircle(center, 8, glow);
-        canvas.drawCircle(center, 5, point);
-        canvas.drawCircle(center, 2, centerDot);
-      }
-    }
-  }
-
-  void _drawBbox(
-    Canvas canvas,
-    Pose r,
-    double scaleX,
-    double scaleY,
-    double offsetX,
-    double offsetY,
-  ) {
-    final Paint boxPaint = Paint()
-      ..color = Colors.orangeAccent.withValues(alpha: 0.9)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 3;
-
-    final Paint fillPaint = Paint()
-      ..color = Colors.orangeAccent.withValues(alpha: 0.08)
-      ..style = PaintingStyle.fill;
-
-    final double x1 = r.boundingBox.left * scaleX + offsetX;
-    final double y1 = r.boundingBox.top * scaleY + offsetY;
-    final double x2 = r.boundingBox.right * scaleX + offsetX;
-    final double y2 = r.boundingBox.bottom * scaleY + offsetY;
-    final Rect rect = Rect.fromLTRB(x1, y1, x2, y2);
-    canvas.drawRect(rect, fillPaint);
-    canvas.drawRect(rect, boxPaint);
-  }
-
-  @override
-  bool shouldRepaint(MultiOverlayPainter oldDelegate) => true;
-}
-
 class CameraScreen extends StatefulWidget {
   const CameraScreen({super.key});
 
@@ -625,26 +504,20 @@ class _CameraScreenState extends State<CameraScreen> {
 
   List<CameraDescription> _availableCameras = const [];
   bool _isSwitchingCamera = false;
-  String _deviceOrientation = 'Portrait Up';
+  DeviceOrientation _deviceOrientation = DeviceOrientation.portraitUp;
+  final FpsCounter _fpsCounter = FpsCounter();
   int _fps = 0;
-  DateTime? _lastFpsUpdate;
-  int _framesSinceLastUpdate = 0;
   int _detectionTimeMs = 0;
   StreamSubscription<AccelerometerEvent>? _accelerometerSub;
 
-  // Performance: Use ValueNotifier for efficient pose overlay updates
-  // This avoids full widget rebuilds - only the CustomPaint repaints
   final ValueNotifier<List<Pose>> _poseNotifier = ValueNotifier<List<Pose>>([]);
 
-  // Performance: Dynamic frame throttling based on processing time
   int _lastProcessedTime = 0;
-  static const int _minProcessingIntervalMs = 50; // Max ~20 detection FPS
+  static const int _minProcessingIntervalMs = 50;
 
-  // Performance metrics (debug)
   int _detectionCount = 0;
   double _avgProcessingTimeMs = 0;
 
-  // Pose-specific settings
   PoseLandmarkModel _landmarkModel = PoseLandmarkModel.lite;
 
   @override
@@ -656,11 +529,15 @@ class _CameraScreenState extends State<CameraScreen> {
     if (!kIsWeb && (Platform.isAndroid || Platform.isIOS)) {
       _accelerometerSub = accelerometerEventStream().listen((event) {
         final next = event.x.abs() > event.y.abs()
-            ? (event.x > 0 ? 'Landscape Left' : 'Landscape Right')
-            : (event.y > 0 ? 'Portrait Up' : 'Portrait Down');
-        if (next == 'Portrait Down' &&
-            (_deviceOrientation == 'Landscape Left' ||
-                _deviceOrientation == 'Landscape Right')) {
+            ? (event.x > 0
+                  ? DeviceOrientation.landscapeLeft
+                  : DeviceOrientation.landscapeRight)
+            : (event.y > 0
+                  ? DeviceOrientation.portraitUp
+                  : DeviceOrientation.portraitDown);
+        if (next == DeviceOrientation.portraitDown &&
+            (_deviceOrientation == DeviceOrientation.landscapeLeft ||
+                _deviceOrientation == DeviceOrientation.landscapeRight)) {
           return;
         }
         if (next != _deviceOrientation && mounted) {
@@ -807,32 +684,14 @@ class _CameraScreenState extends State<CameraScreen> {
     }
   }
 
-  void _updateFps() {
-    _framesSinceLastUpdate++;
-    final now = DateTime.now();
-    if (_lastFpsUpdate != null) {
-      final diff = now.difference(_lastFpsUpdate!).inMilliseconds;
-      if (diff >= 1000 && mounted) {
-        setState(() {
-          _fps = (_framesSinceLastUpdate * 1000 / diff).round();
-          _framesSinceLastUpdate = 0;
-          _lastFpsUpdate = now;
-        });
-      }
-    } else {
-      _lastFpsUpdate = now;
+  DeviceOrientation _effectiveDeviceOrientation(BuildContext context) {
+    final controller = _cameraController;
+    if (controller != null) {
+      return controller.value.deviceOrientation;
     }
-  }
-
-  int get _barQuarterTurns {
-    switch (_deviceOrientation) {
-      case 'Landscape Left':
-        return 1;
-      case 'Landscape Right':
-        return 3;
-      default:
-        return 0;
-    }
+    return MediaQuery.of(context).orientation == Orientation.portrait
+        ? DeviceOrientation.portraitUp
+        : DeviceOrientation.landscapeLeft;
   }
 
   Widget _buildCameraTopBar() {
@@ -1047,163 +906,19 @@ class _CameraScreenState extends State<CameraScreen> {
     );
   }
 
-  int? _rotationFlagForFrame({required int width, required int height}) {
-    final int? sensor = _sensorOrientation;
-    if (sensor == null) return null;
-
-    // iOS: the camera plugin pre-rotates the image stream per
-    // AVCaptureConnection.videoOrientation, so the historical portrait-only
-    // rotation path still applies.
-    if (Platform.isIOS) {
-      final bool isPortrait =
-          MediaQuery.of(context).orientation == Orientation.portrait;
-      if (!isPortrait) return null;
-      if (height >= width) return null;
-      if (sensor == 90) return cv.ROTATE_90_CLOCKWISE;
-      if (sensor == 270) return cv.ROTATE_90_COUNTERCLOCKWISE;
-      return null;
-    }
-
-    // Android: combined formula covering all four device orientations.
-    // `sensorOrientation` is the clockwise rotation needed to display the
-    // raw sensor buffer upright in the device's natural orientation;
-    // `deviceRotation` is how far the device is rotated clockwise from
-    // natural (portraitUp=0, landscapeLeft=90, portraitDown=180,
-    // landscapeRight=270; per Flutter's DeviceOrientation enum).
-    if (Platform.isAndroid) {
-      final DeviceOrientation d =
-          _cameraController?.value.deviceOrientation ??
-          DeviceOrientation.portraitUp;
-      final int deviceRotation = switch (d) {
-        DeviceOrientation.portraitUp => 0,
-        DeviceOrientation.landscapeLeft => 90,
-        DeviceOrientation.portraitDown => 180,
-        DeviceOrientation.landscapeRight => 270,
-      };
-
-      final int total = _isFrontCamera
-          ? (sensor + deviceRotation) % 360
-          : (sensor - deviceRotation + 360) % 360;
-
-      return switch (total) {
-        90 => cv.ROTATE_90_CLOCKWISE,
-        180 => cv.ROTATE_180,
-        270 => cv.ROTATE_90_COUNTERCLOCKWISE,
-        _ => null,
-      };
-    }
-
-    // Desktop / web: camera_desktop delivers already-upright frames.
-    return null;
-  }
-
-  cv.Mat? _convertCameraImageToMat(CameraImage image) {
-    try {
-      final int width = image.width;
-      final int height = image.height;
-
-      // Desktop: camera_desktop provides single-plane 4-channel packed format
-      if (image.planes.length == 1 &&
-          (image.planes[0].bytesPerPixel ?? 1) >= 4) {
-        final bytes = image.planes[0].bytes;
-        final stride = image.planes[0].bytesPerRow;
-
-        // Create a 4-channel Mat directly from camera bytes (handles stride)
-        final matCols = stride ~/ 4;
-        final bgraOrRgba = cv.Mat.fromList(
-          height,
-          matCols,
-          cv.MatType.CV_8UC4,
-          bytes,
-        );
-        // Crop out stride padding if present
-        final cropped = matCols != width
-            ? bgraOrRgba.region(cv.Rect(0, 0, width, height))
-            : bgraOrRgba;
-
-        // Native SIMD-accelerated color conversion
-        final colorCode = Platform.isMacOS
-            ? cv.COLOR_BGRA2BGR
-            : cv.COLOR_RGBA2BGR;
-        cv.Mat mat = cv.cvtColor(cropped, colorCode);
-
-        if (!identical(cropped, bgraOrRgba)) cropped.dispose();
-        bgraOrRgba.dispose();
-
-        final rotationFlag = _rotationFlagForFrame(
-          width: width,
-          height: height,
-        );
-        if (rotationFlag != null) {
-          final rotated = cv.rotate(mat, rotationFlag);
-          mat.dispose();
-          return rotated;
-        }
-        return mat;
-      }
-
-      // Mobile: YUV420. Pack Y+UV into a contiguous buffer via flutter_litert's
-      // shared `packYuv420`, then hand to OpenCV for native cvtColor.
-      final p0 = image.planes[0];
-      final p1 = image.planes.length > 1 ? image.planes[1] : null;
-      final p2 = image.planes.length > 2 ? image.planes[2] : null;
-      if (p1 == null) return null;
-
-      final packed = packYuv420(
-        width: width,
-        height: height,
-        y: (
-          bytes: p0.bytes,
-          rowStride: p0.bytesPerRow,
-          pixelStride: p0.bytesPerPixel ?? 1,
-        ),
-        u: (
-          bytes: p1.bytes,
-          rowStride: p1.bytesPerRow,
-          pixelStride: p1.bytesPerPixel ?? 1,
-        ),
-        v: p2 == null
-            ? null
-            : (
-                bytes: p2.bytes,
-                rowStride: p2.bytesPerRow,
-                pixelStride: p2.bytesPerPixel ?? 1,
-              ),
-      );
-      if (packed == null) return null;
-
-      final int cvtCode = switch (packed.layout) {
-        YuvLayout.nv12 => cv.COLOR_YUV2BGR_NV12,
-        YuvLayout.nv21 => cv.COLOR_YUV2BGR_NV21,
-        YuvLayout.i420 => cv.COLOR_YUV2BGR_I420,
-      };
-      final cv.Mat yuvMat = cv.Mat.fromList(
-        packed.height + packed.height ~/ 2,
-        packed.width,
-        cv.MatType.CV_8UC1,
-        packed.bytes,
-      );
-      cv.Mat mat = cv.cvtColor(yuvMat, cvtCode);
-      yuvMat.dispose();
-
-      // Rotate image for portrait mode so pose detector sees upright people.
-      final rotationFlag = _rotationFlagForFrame(width: width, height: height);
-      if (rotationFlag != null) {
-        final rotated = cv.rotate(mat, rotationFlag);
-        mat.dispose();
-        return rotated;
-      }
-
-      return mat;
-    } catch (_) {
-      return null;
-    }
+  /// Post-rotation (pre-downscale) frame size, used for overlay coord mapping.
+  Size _postRotationSize(int width, int height, CameraFrameRotation? rotation) {
+    final bool swap =
+        rotation == CameraFrameRotation.cw90 ||
+        rotation == CameraFrameRotation.cw270;
+    return swap
+        ? Size(height.toDouble(), width.toDouble())
+        : Size(width.toDouble(), height.toDouble());
   }
 
   Future<void> _processCameraImage(CameraImage image) async {
     if (_isDisposed || !_isInitialized || _isProcessing) return;
 
-    // Dynamic throttling: Skip if not enough time has passed
     final int now = DateTime.now().millisecondsSinceEpoch;
     if (now - _lastProcessedTime < _minProcessingIntervalMs) {
       return;
@@ -1213,52 +928,42 @@ class _CameraScreenState extends State<CameraScreen> {
     final int startTime = now;
 
     try {
-      cv.Mat? mat = _convertCameraImageToMat(image);
-      if (mat == null) {
-        _isProcessing = false;
-        return;
-      }
+      final sensor = _sensorOrientation;
+      final CameraFrameRotation? rotation = sensor == null
+          ? null
+          : rotationForFrame(
+              width: image.width,
+              height: image.height,
+              sensorOrientation: sensor,
+              isFrontCamera: _isFrontCamera,
+              deviceOrientation: _effectiveDeviceOrientation(context),
+            );
 
-      if (_isDisposed) {
-        mat.dispose();
-        return;
-      }
+      if (_isDisposed) return;
 
-      // Track size based on actual post-rotation Mat dims so the overlay
-      // coordinate space matches what the detector sees.
-      final Size matSize = Size(mat.cols.toDouble(), mat.rows.toDouble());
+      final Size matSize = _postRotationSize(
+        image.width,
+        image.height,
+        rotation,
+      );
       if (_cameraSize != matSize && mounted && !_isDisposed) {
         setState(() {
           _cameraSize = matSize;
         });
       }
 
-      // Downscale for performance, the detection model internally resizes
-      // to 256px, so full-res frames just waste IPC bandwidth.
       const int maxDim = 640;
-      if (mat.cols > maxDim || mat.rows > maxDim) {
-        final double scale =
-            maxDim / (mat.cols > mat.rows ? mat.cols : mat.rows);
-        final cv.Mat resized = cv.resize(mat, (
-          (mat.cols * scale).toInt(),
-          (mat.rows * scale).toInt(),
-        ), interpolation: cv.INTER_LINEAR);
-        mat.dispose();
-        mat = resized;
-      }
+      final List<Pose> poses = await _poseDetector!.detectFromCameraImage(
+        image,
+        rotation: rotation,
+        isBgra: Platform.isMacOS,
+        maxDim: maxDim,
+      );
 
-      // Use detectFromMat for direct cv.Mat input - no image decoding needed
-      final List<Pose> poses = await _poseDetector!.detectFromMat(mat);
-
-      // Clean up native Mat resource
-      mat.dispose();
-
-      // Update via ValueNotifier instead of setState
       if (!_isDisposed) {
         _poseNotifier.value = poses;
       }
 
-      // Update performance metrics
       _lastProcessedTime = DateTime.now().millisecondsSinceEpoch;
       final int processingTime = _lastProcessedTime - startTime;
       _detectionCount++;
@@ -1268,9 +973,11 @@ class _CameraScreenState extends State<CameraScreen> {
       if (mounted && !_isDisposed) {
         setState(() => _detectionTimeMs = processingTime);
       }
-      _updateFps();
-    } catch (e) {
-      // Silently ignore errors to maintain camera feed
+      if (_fpsCounter.tick() && mounted) {
+        setState(() => _fps = _fpsCounter.fps);
+      }
+    } catch (_) {
+      /// Silently handle errors during processing to keep the stream alive.
     } finally {
       _isProcessing = false;
     }
@@ -1295,7 +1002,7 @@ class _CameraScreenState extends State<CameraScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final turns = _barQuarterTurns;
+    final turns = barQuarterTurns(_deviceOrientation);
     return Scaffold(
       body: Stack(
         fit: StackFit.expand,
@@ -1379,7 +1086,6 @@ class _CameraScreenState extends State<CameraScreen> {
         else
           const Center(child: CircularProgressIndicator()),
 
-        // Status indicator with performance metrics
         Positioned(
           bottom: 16,
           left: 0,
@@ -1402,154 +1108,5 @@ class _CameraScreenState extends State<CameraScreen> {
         ),
       ],
     );
-  }
-}
-
-class CameraPoseOverlayPainter extends CustomPainter {
-  final List<Pose> poses;
-  final Size cameraSize;
-  final bool mirrorHorizontally;
-
-  CameraPoseOverlayPainter({
-    required this.poses,
-    required this.cameraSize,
-    required this.mirrorHorizontally,
-  });
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    if (poses.isEmpty) return;
-
-    // Get image dimensions from first pose
-    final int imageWidth = poses.first.imageWidth;
-    final int imageHeight = poses.first.imageHeight;
-
-    // Direct scaling: overlay is now wrapped in AspectRatio matching camera preview,
-    // so canvas size has the same aspect ratio as the image. No letterbox offsets needed.
-    final double scaleX = size.width / imageWidth;
-    final double scaleY = size.height / imageHeight;
-
-    for (final pose in poses) {
-      _drawBbox(canvas, pose, scaleX, scaleY, 0, 0, size);
-      if (pose.hasLandmarks) {
-        _drawConnections(canvas, pose, scaleX, scaleY, 0, 0, size);
-        _drawLandmarks(canvas, pose, scaleX, scaleY, 0, 0, size);
-      }
-    }
-  }
-
-  double _mirrorX(double x, double scaleX, double offsetX, Size size) {
-    final mapped = x * scaleX + offsetX;
-    return mirrorHorizontally ? size.width - mapped : mapped;
-  }
-
-  void _drawConnections(
-    Canvas canvas,
-    Pose pose,
-    double scaleX,
-    double scaleY,
-    double offsetX,
-    double offsetY,
-    Size size,
-  ) {
-    final Paint paint = Paint()
-      ..color = Colors.green.withValues(alpha: 0.8)
-      ..strokeWidth = 3
-      ..strokeCap = StrokeCap.round;
-
-    // Use the predefined skeleton connections from the package
-    for (final List<PoseLandmarkType> c in poseLandmarkConnections) {
-      final PoseLandmark? start = pose.getLandmark(c[0]);
-      final PoseLandmark? end = pose.getLandmark(c[1]);
-      if (start != null &&
-          end != null &&
-          start.visibility > 0.5 &&
-          end.visibility > 0.5) {
-        canvas.drawLine(
-          Offset(
-            _mirrorX(start.x, scaleX, offsetX, size),
-            start.y * scaleY + offsetY,
-          ),
-          Offset(
-            _mirrorX(end.x, scaleX, offsetX, size),
-            end.y * scaleY + offsetY,
-          ),
-          paint,
-        );
-      }
-    }
-  }
-
-  void _drawLandmarks(
-    Canvas canvas,
-    Pose pose,
-    double scaleX,
-    double scaleY,
-    double offsetX,
-    double offsetY,
-    Size size,
-  ) {
-    for (final PoseLandmark l in pose.landmarks) {
-      if (l.visibility > 0.5) {
-        final Offset center = Offset(
-          _mirrorX(l.x, scaleX, offsetX, size),
-          l.y * scaleY + offsetY,
-        );
-        final Paint glow = Paint()..color = Colors.blue.withValues(alpha: 0.3);
-        final Paint point = Paint()..color = Colors.red;
-        final Paint centerDot = Paint()..color = Colors.white;
-        canvas.drawCircle(center, 8, glow);
-        canvas.drawCircle(center, 5, point);
-        canvas.drawCircle(center, 2, centerDot);
-      }
-    }
-  }
-
-  void _drawBbox(
-    Canvas canvas,
-    Pose pose,
-    double scaleX,
-    double scaleY,
-    double offsetX,
-    double offsetY,
-    Size size,
-  ) {
-    final Paint boxPaint = Paint()
-      ..color = Colors.orangeAccent.withValues(alpha: 0.9)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 3;
-
-    final Paint fillPaint = Paint()
-      ..color = Colors.orangeAccent.withValues(alpha: 0.08)
-      ..style = PaintingStyle.fill;
-
-    final double x1 = _mirrorX(pose.boundingBox.left, scaleX, offsetX, size);
-    final double y1 = pose.boundingBox.top * scaleY + offsetY;
-    final double x2 = _mirrorX(pose.boundingBox.right, scaleX, offsetX, size);
-    final double y2 = pose.boundingBox.bottom * scaleY + offsetY;
-    final Rect rect = Rect.fromLTRB(
-      x1 < x2 ? x1 : x2,
-      y1,
-      x1 < x2 ? x2 : x1,
-      y2,
-    );
-    canvas.drawRect(rect, fillPaint);
-    canvas.drawRect(rect, boxPaint);
-  }
-
-  @override
-  bool shouldRepaint(CameraPoseOverlayPainter oldDelegate) {
-    if (mirrorHorizontally != oldDelegate.mirrorHorizontally) return true;
-    // Only repaint if poses actually changed
-    if (poses.length != oldDelegate.poses.length) return true;
-    if (poses.isEmpty) return false;
-
-    // Quick check: compare first pose bounding box
-    final Pose current = poses.first;
-    final Pose old = oldDelegate.poses.first;
-    return current.boundingBox.left != old.boundingBox.left ||
-        current.boundingBox.top != old.boundingBox.top ||
-        current.boundingBox.right != old.boundingBox.right ||
-        current.boundingBox.bottom != old.boundingBox.bottom;
   }
 }

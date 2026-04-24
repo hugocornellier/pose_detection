@@ -9,13 +9,17 @@ import '../util/pose_helpers.dart';
 ///
 /// Avoids GC pressure by reusing the same buffers across invocations.
 /// Each [InterpreterPool] slot has its own [_PoseBuffers] instance.
+///
+/// Outputs are stored as flat [Float32List]s and passed to TFLite as their
+/// underlying [ByteBuffer], which avoids the boxed-double allocation that
+/// `Tensor.copyTo` performs when handed a nested `List<List<double>>` dst.
 class _PoseBuffers {
   final Float32List flatInputBuffer;
-  final List<List<double>> outputLandmarks;
-  final List<List<double>> outputScore;
-  final List<List<List<List<double>>>> outputMask;
-  final List<List<List<List<double>>>> outputHeatmap;
-  final List<List<double>> outputWorld;
+  final Float32List outputLandmarks;
+  final Float32List outputScore;
+  final Float32List outputMask;
+  final Float32List outputHeatmap;
+  final Float32List outputWorld;
 
   _PoseBuffers({
     required this.flatInputBuffer,
@@ -137,14 +141,11 @@ class PoseLandmarkModelRunner {
     for (final interp in _pool.interpreters) {
       _buffers[interp] = _PoseBuffers(
         flatInputBuffer: Float32List(256 * 256 * 3),
-        outputLandmarks: [List<double>.filled(195, 0.0, growable: false)],
-        outputScore: [List<double>.filled(1, 0.0, growable: false)],
-        outputMask:
-            allocTensorShape([1, 256, 256, 1])
-                as List<List<List<List<double>>>>,
-        outputHeatmap:
-            allocTensorShape([1, 64, 64, 39]) as List<List<List<List<double>>>>,
-        outputWorld: [List<double>.filled(117, 0.0, growable: false)],
+        outputLandmarks: Float32List(195),
+        outputScore: Float32List(1),
+        outputMask: Float32List(256 * 256 * 1),
+        outputHeatmap: Float32List(64 * 64 * 39),
+        outputWorld: Float32List(117),
       );
     }
 
@@ -197,12 +198,12 @@ class PoseLandmarkModelRunner {
         buffer: buf.flatInputBuffer,
       );
 
-      final outputs = {
-        0: buf.outputLandmarks,
-        1: buf.outputScore,
-        2: buf.outputMask,
-        3: buf.outputHeatmap,
-        4: buf.outputWorld,
+      final Map<int, Object> outputs = <int, Object>{
+        0: buf.outputLandmarks.buffer,
+        1: buf.outputScore.buffer,
+        2: buf.outputMask.buffer,
+        3: buf.outputHeatmap.buffer,
+        4: buf.outputWorld.buffer,
       };
 
       if (iso != null) {
@@ -211,7 +212,7 @@ class PoseLandmarkModelRunner {
         interp.runForMultipleInputs([buf.flatInputBuffer.buffer], outputs);
       }
 
-      return parsePoseLandmarks(buf.outputLandmarks, buf.outputScore);
+      return parsePoseLandmarksFlat(buf.outputLandmarks, buf.outputScore);
     });
   }
 }

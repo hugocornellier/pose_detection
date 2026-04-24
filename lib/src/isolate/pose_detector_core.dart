@@ -94,7 +94,9 @@ class PoseDetectorCore {
     required int imageHeight,
   }) async {
     if (_yolo == null || _lm == null) {
-      throw StateError('PoseDetectorCore not initialized.');
+      throw StateError(
+        'PoseDetectorCore not initialized. Call initializeFromBuffers() first.',
+      );
     }
 
     final List<Detection> dets = await _yolo!.detect(

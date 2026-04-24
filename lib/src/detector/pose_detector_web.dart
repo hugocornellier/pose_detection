@@ -56,36 +56,13 @@ class PoseDetector {
   final YoloV8PersonDetector _yolo = YoloV8PersonDetector();
   late final PoseLandmarkModelRunner _lm;
 
-  /// Detection mode controlling pipeline behavior.
-  ///
-  /// - [PoseMode.boxes]: Fast detection returning only bounding boxes (Stage 1 only)
-  /// - [PoseMode.boxesAndLandmarks]: Full pipeline returning boxes + 33 landmarks (both stages)
-  final PoseMode mode;
-
-  /// BlazePose model variant to use for landmark extraction.
-  ///
-  /// - [PoseLandmarkModel.lite]: Fastest, good accuracy
-  /// - [PoseLandmarkModel.full]: Balanced speed/accuracy
-  /// - [PoseLandmarkModel.heavy]: Slowest, best accuracy (default)
-  final PoseLandmarkModel landmarkModel;
-
-  /// Confidence threshold for person detection (0.0 to 1.0).
-  final double detectorConf;
-
-  /// IoU (Intersection over Union) threshold for Non-Maximum Suppression (0.0 to 1.0).
-  final double detectorIou;
-
-  /// Maximum number of persons to detect per image.
-  final int maxDetections;
-
-  /// Minimum confidence score for landmark predictions (0.0 to 1.0).
-  final double minLandmarkScore;
-
-  /// Always 1 on web (single-threaded).
-  final int interpreterPoolSize;
-
-  /// Performance configuration (accepted for API compatibility, ignored on web).
-  final PerformanceConfig performanceConfig;
+  PoseMode _mode = PoseMode.boxesAndLandmarks;
+  PoseLandmarkModel _landmarkModel = PoseLandmarkModel.heavy;
+  double _detectorConf = 0.5;
+  double _detectorIou = 0.45;
+  int _maxDetections = 10;
+  double _minLandmarkScore = 0.5;
+  PerformanceConfig _performanceConfig = PerformanceConfig.disabled;
 
   bool _isInitialized = false;
 
@@ -93,34 +70,17 @@ class PoseDetector {
   web.HTMLCanvasElement? _cropCanvas;
   web.CanvasRenderingContext2D? _cropCtx;
 
-  /// Creates a pose detector with the specified configuration.
+  /// Creates a pose detector instance.
   ///
-  /// Parameters:
-  /// - [mode]: Detection mode (boxes only or boxes + landmarks). Default: [PoseMode.boxesAndLandmarks]
-  /// - [landmarkModel]: BlazePose model variant. Default: [PoseLandmarkModel.heavy]
-  /// - [detectorConf]: Person detection confidence threshold (0.0-1.0). Default: 0.5
-  /// - [detectorIou]: NMS IoU threshold for duplicate suppression (0.0-1.0). Default: 0.45
-  /// - [maxDetections]: Maximum number of persons to detect. Default: 10
-  /// - [minLandmarkScore]: Minimum landmark confidence score (0.0-1.0). Default: 0.5
-  /// - [interpreterPoolSize]: Ignored on web (always 1).
-  /// - [performanceConfig]: Ignored on web (always CPU/WASM).
-  PoseDetector({
-    this.mode = PoseMode.boxesAndLandmarks,
-    this.landmarkModel = PoseLandmarkModel.heavy,
-    this.detectorConf = 0.5,
-    this.detectorIou = 0.45,
-    this.maxDetections = 10,
-    this.minLandmarkScore = 0.5,
-    int interpreterPoolSize = 1,
-    this.performanceConfig = PerformanceConfig.disabled,
-  }) : interpreterPoolSize = 1 {
+  /// The detector is not ready for use until you call [initialize].
+  PoseDetector() {
     _lm = PoseLandmarkModelRunner(poolSize: 1);
   }
 
   /// Creates and initializes a pose detector in one step.
   ///
   /// Convenience factory that combines [PoseDetector.new] and [initialize].
-  /// Accepts the same parameters as the constructor.
+  /// Accepts the same parameters as [initialize].
   static Future<PoseDetector> create({
     PoseMode mode = PoseMode.boxesAndLandmarks,
     PoseLandmarkModel landmarkModel = PoseLandmarkModel.heavy,
@@ -131,17 +91,16 @@ class PoseDetector {
     int interpreterPoolSize = 1,
     PerformanceConfig performanceConfig = PerformanceConfig.disabled,
   }) async {
-    final detector = PoseDetector(
+    final detector = PoseDetector();
+    await detector.initialize(
       mode: mode,
       landmarkModel: landmarkModel,
       detectorConf: detectorConf,
       detectorIou: detectorIou,
       maxDetections: maxDetections,
       minLandmarkScore: minLandmarkScore,
-      interpreterPoolSize: interpreterPoolSize,
       performanceConfig: performanceConfig,
     );
-    await detector.initialize();
     return detector;
   }
 
@@ -152,16 +111,33 @@ class PoseDetector {
   /// If already initialized, will dispose existing models and reinitialize.
   ///
   /// Throws an exception if model loading fails.
-  Future<void> initialize() async {
+  Future<void> initialize({
+    PoseMode mode = PoseMode.boxesAndLandmarks,
+    PoseLandmarkModel landmarkModel = PoseLandmarkModel.heavy,
+    double detectorConf = 0.5,
+    double detectorIou = 0.45,
+    int maxDetections = 10,
+    double minLandmarkScore = 0.5,
+    int interpreterPoolSize = 1,
+    PerformanceConfig performanceConfig = PerformanceConfig.disabled,
+  }) async {
     if (_isInitialized) {
       await dispose();
     }
 
+    _mode = mode;
+    _landmarkModel = landmarkModel;
+    _detectorConf = detectorConf;
+    _detectorIou = detectorIou;
+    _maxDetections = maxDetections;
+    _minLandmarkScore = minLandmarkScore;
+    _performanceConfig = performanceConfig;
+
     // Initialize TFLite.js WASM runtime
     await initializeWeb();
 
-    await _lm.initialize(landmarkModel, performanceConfig: performanceConfig);
-    await _yolo.initialize(performanceConfig: performanceConfig);
+    await _lm.initialize(_landmarkModel, performanceConfig: _performanceConfig);
+    await _yolo.initialize(performanceConfig: _performanceConfig);
 
     // Create canvas for person crop/resize
     _cropCanvas = web.HTMLCanvasElement();
@@ -200,6 +176,8 @@ class PoseDetector {
   /// - [imageBytes]: Encoded image bytes (JPEG, PNG, BMP, etc.)
   ///
   /// Returns a list of [Pose] objects, one per detected person.
+  /// On web, returns an empty list if the image bytes cannot be decoded
+  /// (browser HTMLImageElement decode failure does not throw).
   ///
   /// Throws [StateError] if called before [initialize].
   Future<List<Pose>> detect(Uint8List imageBytes) async {
@@ -221,13 +199,13 @@ class PoseDetector {
       htmlImage,
       imageWidth: imageWidth,
       imageHeight: imageHeight,
-      confThres: detectorConf,
-      iouThres: detectorIou,
-      maxDet: maxDetections,
+      confThres: _detectorConf,
+      iouThres: _detectorIou,
+      maxDet: _maxDetections,
       personOnly: true,
     );
 
-    if (mode == PoseMode.boxes) {
+    if (_mode == PoseMode.boxes) {
       return buildBoxOnlyPoses(dets, imageWidth, imageHeight);
     }
 
@@ -278,7 +256,7 @@ class PoseDetector {
       try {
         final PoseLandmarks landmarks = await _lm.runFromRgba(rgbaBytes);
 
-        if (landmarks.score >= minLandmarkScore) {
+        if (landmarks.score >= _minLandmarkScore) {
           final List<PoseLandmark> pts = _transformLandmarksLetterbox(
             landmarks.landmarks,
             x1.toDouble(),
@@ -347,6 +325,25 @@ class PoseDetector {
   }) {
     throw UnsupportedError(
       'detectFromMatBytes is not supported on web. Use detect(imageBytes) instead.',
+    );
+  }
+
+  /// Detects poses from a [CameraFrame]. Not supported on web.
+  Future<List<Pose>> detectFromCameraFrame(CameraFrame frame, {int? maxDim}) {
+    throw UnsupportedError(
+      'detectFromCameraFrame is not supported on web. Use detect(imageBytes) instead.',
+    );
+  }
+
+  /// Detects poses from a CameraImage-shaped object. Not supported on web.
+  Future<List<Pose>> detectFromCameraImage(
+    Object cameraImage, {
+    CameraFrameRotation? rotation,
+    bool isBgra = true,
+    int? maxDim,
+  }) {
+    throw UnsupportedError(
+      'detectFromCameraImage is not supported on web. Use detect(imageBytes) instead.',
     );
   }
 

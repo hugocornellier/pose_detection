@@ -4,11 +4,11 @@ import 'package:pose_detection/pose_detection.dart';
 
 Future main() async {
   // 1. initialize
-  final PoseDetector detector = PoseDetector(
+  final PoseDetector detector = PoseDetector();
+  await detector.initialize(
     mode: PoseMode.boxesAndLandmarks,
     landmarkModel: PoseLandmarkModel.heavy,
   );
-  await detector.initialize();
 
   // 2. detect
   final Uint8List imageBytes = await File('path/to/image.jpg').readAsBytes();

@@ -2,6 +2,7 @@
 
 import 'dart:typed_data';
 
+import 'package:flutter_litert/flutter_litert.dart' show PerformanceConfig;
 import '../types.dart';
 
 class PoseLandmarkModelRunner {

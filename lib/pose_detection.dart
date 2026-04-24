@@ -47,8 +47,43 @@ library;
 export 'src/types.dart';
 export 'src/detector/pose_detector.dart' show PoseDetector;
 export 'src/dart_registration.dart';
+export 'src/ui/pose_overlay.dart';
 
 export 'src/exports/opencv_exports.dart';
 
 export 'package:flutter_litert/flutter_litert.dart'
-    show packYuv420, YuvPlane, YuvLayout, PackedYuv;
+    show
+        PerformanceMode,
+        PerformanceConfig,
+        createNHWCTensor4D,
+        fillNHWC4D,
+        allocTensorShape,
+        flattenDynamicTensor,
+        sigmoid,
+        sigmoidClipped,
+        clamp01,
+        clip,
+        computeLetterboxParams,
+        LetterboxParams,
+        bgrBytesToRgbFloat32,
+        bgrBytesToSignedFloat32,
+        Point,
+        BoundingBox,
+        packYuv420,
+        YuvPlane,
+        YuvLayout,
+        PackedYuv,
+        CameraPlane,
+        CameraFrame,
+        CameraFrameConversion,
+        CameraFrameRotation,
+        prepareCameraFrame,
+        prepareCameraFrameFromImage,
+        rotationForFrame,
+        detectionSize,
+        coverFitScaleOffset,
+        barQuarterTurns,
+        FpsCounter,
+        drawLandmarkMarker,
+        drawSkeletonConnections,
+        drawBoundingBoxOutline;

@@ -129,12 +129,12 @@ void main() {
       'Benchmark heavy model with XNNPACK',
       timeout: const Timeout(Duration(minutes: 10)),
       () async {
-        final detector = PoseDetector(
+        final detector = PoseDetector();
+        await detector.initialize(
           mode: PoseMode.boxesAndLandmarks,
           landmarkModel: PoseLandmarkModel.heavy,
           performanceConfig: const PerformanceConfig.xnnpack(),
         );
-        await detector.initialize();
 
         print('\n${'=' * 60}');
         print('BENCHMARK: Heavy Model (XNNPACK, pool=1 forced)');
