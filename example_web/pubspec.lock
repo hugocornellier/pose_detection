@@ -87,12 +87,11 @@ packages:
     source: sdk
     version: "0.0.0"
   flutter_litert:
-    dependency: transitive
+    dependency: "direct overridden"
     description:
-      name: flutter_litert
-      sha256: afc58e1f677360f3e5a66b584125396b7951706d5bb494a68e20570b25e6196e
-      url: "https://pub.dev"
-    source: hosted
+      path: "../../flutter_litert"
+      relative: true
+    source: path
     version: "2.4.1"
   flutter_web_plugins:
     dependency: transitive

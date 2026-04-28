@@ -77,10 +77,12 @@ class _PoseDetectionWidgetState extends State<PoseDetectionWidget> {
         mode: PoseMode.boxesAndLandmarks,
         landmarkModel: PoseLandmarkModel.heavy,
         detectorConf: _confidenceThreshold,
+        useLiteRt: true,
+        liteRtAccelerator: 'webgpu',
       );
 
       setState(() {
-        _status = 'Ready! Select an image to detect poses.';
+        _status = 'Ready (LiteRT.js webgpu). Select an image to detect poses.';
         _isModelReady = true;
       });
     } catch (e, stack) {
@@ -178,6 +180,8 @@ class _PoseDetectionWidgetState extends State<PoseDetectionWidget> {
           mode: PoseMode.boxesAndLandmarks,
           landmarkModel: PoseLandmarkModel.heavy,
           detectorConf: confThres,
+          useLiteRt: true,
+          liteRtAccelerator: 'webgpu',
         );
       }
 

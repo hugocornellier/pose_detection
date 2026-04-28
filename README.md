@@ -98,28 +98,64 @@ This package supports Flutter Web using the same package import:
 import 'package:pose_detection/pose_detection.dart';
 ```
 
-The main difference is how you load images:
+Two web runtimes are available, selectable per `PoseDetector`:
+
+1. **Default — `tflite-js` (CPU/WASM).** No setup beyond initialization. Same path that ships in older versions.
+2. **LiteRT.js with WebGPU delegate.** Google's official web runtime via `flutter_litert ≥ 2.5.0`. ~18× faster than the default in real measurements (446 ms → 25 ms / call on the heavy BlazePose model with mixed single/multi-person images). Requires a small loader script in `web/index.html`.
+
+The main difference from native is how you load images:
 
 - The Quick Start example above uses `dart:io` (`File(...)`), which is not available on web.
 - On web, load an image as `Uint8List` (for example from a file picker, drag-and-drop, or network response) and call `detect(imageBytes)`.
 - `detectFromMat(...)` (OpenCV `cv.Mat`) is native-only and is not available on web.
-- `interpreterPoolSize`, `performanceConfig`, and `useNativePreprocessing` are accepted for API compatibility but are ignored on web (web runs CPU/WASM).
+- `interpreterPoolSize`, `performanceConfig`, and `useNativePreprocessing` are accepted for API compatibility but are ignored on web.
 
 ```dart
-final detector = PoseDetector(
+final detector = await PoseDetector.create(
   mode: PoseMode.boxesAndLandmarks,
   landmarkModel: PoseLandmarkModel.heavy,
 );
-await detector.initialize(); // Also initializes the web TFLite/WASM runtime
 
 final List<Pose> poses = await detector.detect(imageBytes);
 
 await detector.dispose();
 ```
 
+### Web (LiteRT.js + WebGPU, recommended)
+
+Just opt in at construction time — the runtime is auto-loaded from a CDN on first use, no `web/index.html` changes required:
+
+```dart
+final detector = await PoseDetector.create(
+  mode: PoseMode.boxesAndLandmarks,
+  landmarkModel: PoseLandmarkModel.heavy,
+  useLiteRt: true,
+  liteRtAccelerator: 'webgpu', // 'wasm' on browsers without WebGPU
+);
+```
+
+If `webgpu` compile fails for any op, the runtime automatically falls back to `wasm` (still substantially faster than the default `tflite-js` path because LiteRT.js's WASM is SIMD-optimized).
+
+If you need to self-host the runtime (offline, strict CSP, or to pin a specific build), call `flutter_litert`'s `configureLiteRtLoader(moduleUrl: ..., wasmUrl: ...)` before any `PoseDetector.create`, or set `autoLoad: false` and load it from your own `<script>` tag instead.
+
+### Benchmarks
+
+Heavy BlazePose model on macOS Chrome 147, 5 images, 10 timed iterations each, averaged over 2 runs (see `runWebBenchmark.sh`):
+
+| Image | Detections | Default (tflite-js) | LiteRT.js webgpu | Speedup |
+|---|---|---|---|---|
+| pose1 | 1 | 357 ms | 20 ms | 17.8× |
+| pose2 | 1 | 357 ms | 18 ms | 19.9× |
+| pose3 | 2 | 430 ms | 23 ms | 18.7× |
+| pose4 | 6 | 726 ms | 46 ms | 15.9× |
+| pose5 | 1 | 360 ms | 17 ms | 20.7× |
+| **mean** | — | **446 ms** | **25 ms** | **~18×** |
+
+Detection counts are identical between the two runtimes on every image.
+
 ### Separate `example_web` app
 
-The repository keeps the browser demo in `example_web/` (separate from `example/`) because the web sample uses browser-specific APIs (HTML file picker + canvas overlay) and UI flow.
+The repository keeps the browser demo in `example_web/` (separate from `example/`) because the web sample uses browser-specific APIs (HTML file picker + canvas overlay) and UI flow. The demo is wired with `useLiteRt: true, liteRtAccelerator: 'webgpu'` and the loader snippet in `web/index.html` — copy from there as a starting point.
 
 Run the web demo locally:
 

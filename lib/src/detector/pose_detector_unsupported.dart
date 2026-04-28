@@ -36,6 +36,8 @@ class PoseDetector {
     double minLandmarkScore = 0.5,
     int interpreterPoolSize = 1,
     PerformanceConfig performanceConfig = PerformanceConfig.disabled,
+    bool useLiteRt = false,
+    String liteRtAccelerator = 'wasm',
   }) => throw UnsupportedError('Not supported');
 
   Future<void> initialize({
@@ -47,6 +49,8 @@ class PoseDetector {
     double minLandmarkScore = 0.5,
     int interpreterPoolSize = 1,
     PerformanceConfig performanceConfig = PerformanceConfig.disabled,
+    bool useLiteRt = false,
+    String liteRtAccelerator = 'wasm',
   }) => throw UnsupportedError('Not supported');
 
   Future<void> initializeFromBuffers({

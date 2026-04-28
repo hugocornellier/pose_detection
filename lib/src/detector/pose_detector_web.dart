@@ -11,6 +11,48 @@ import '../util/pose_helpers.dart';
 import '../models/person_detector_web.dart';
 import '../models/pose_landmark_model_web.dart';
 
+/// Per-stage timing accumulator (microseconds). Populated by `detect()` when
+/// `PoseDetector.debugTimings` is true; reset per call.
+class WebDetectTimings {
+  /// Image decode (createImageBitmap) duration.
+  int decodeUs = 0;
+
+  /// YOLO pre-processing (canvas + getImageData + RGBA→Float32).
+  int yoloPreUs = 0;
+
+  /// YOLO inference (interpreter.run + readback).
+  int yoloInferUs = 0;
+
+  /// BlazePose pre-processing summed across detections.
+  int lmPreUs = 0;
+
+  /// BlazePose inference summed across detections.
+  int lmInferUs = 0;
+
+  /// Post-processing (NMS / Pose construction). Reserved; not currently
+  /// populated because postProcessing on the LiteRT path is folded into
+  /// the timed inference stage.
+  int postUs = 0;
+
+  /// Total wall-clock duration of the `detect()` call.
+  int totalUs = 0;
+
+  /// Number of detections produced by YOLO for this call.
+  int detections = 0;
+
+  /// Returns the timings as a JSON-friendly map of microsecond values.
+  Map<String, int> toJsonUs() => {
+    'decode_us': decodeUs,
+    'yolo_pre_us': yoloPreUs,
+    'yolo_infer_us': yoloInferUs,
+    'lm_pre_us': lmPreUs,
+    'lm_infer_us': lmInferUs,
+    'post_us': postUs,
+    'total_us': totalUs,
+    'detections': detections,
+  };
+}
+
 /// Web implementation of the on-device pose detector.
 ///
 /// Implements the same two-stage pipeline as the native version:
@@ -63,12 +105,20 @@ class PoseDetector {
   int _maxDetections = 10;
   double _minLandmarkScore = 0.5;
   PerformanceConfig _performanceConfig = PerformanceConfig.disabled;
+  bool _useLiteRt = false;
+  String _liteRtAccelerator = 'wasm';
 
   bool _isInitialized = false;
 
   /// Canvas for person crop/resize to 256x256 for landmark extraction.
   web.HTMLCanvasElement? _cropCanvas;
   web.CanvasRenderingContext2D? _cropCtx;
+
+  /// Last-call per-stage timings (set when [debugTimings] is true).
+  WebDetectTimings? lastTimings;
+
+  /// When true, [detect] populates [lastTimings].
+  bool debugTimings = false;
 
   /// Creates a pose detector instance.
   ///
@@ -90,6 +140,8 @@ class PoseDetector {
     double minLandmarkScore = 0.5,
     int interpreterPoolSize = 1,
     PerformanceConfig performanceConfig = PerformanceConfig.disabled,
+    bool useLiteRt = false,
+    String liteRtAccelerator = 'wasm',
   }) async {
     final detector = PoseDetector();
     await detector.initialize(
@@ -100,6 +152,8 @@ class PoseDetector {
       maxDetections: maxDetections,
       minLandmarkScore: minLandmarkScore,
       performanceConfig: performanceConfig,
+      useLiteRt: useLiteRt,
+      liteRtAccelerator: liteRtAccelerator,
     );
     return detector;
   }
@@ -120,6 +174,8 @@ class PoseDetector {
     double minLandmarkScore = 0.5,
     int interpreterPoolSize = 1,
     PerformanceConfig performanceConfig = PerformanceConfig.disabled,
+    bool useLiteRt = false,
+    String liteRtAccelerator = 'wasm',
   }) async {
     if (_isInitialized) {
       await dispose();
@@ -132,12 +188,24 @@ class PoseDetector {
     _maxDetections = maxDetections;
     _minLandmarkScore = minLandmarkScore;
     _performanceConfig = performanceConfig;
+    _useLiteRt = useLiteRt;
+    _liteRtAccelerator = liteRtAccelerator;
 
-    // Initialize TFLite.js WASM runtime
+    // Initialize TFLite.js WASM runtime (still needed for the BlazePose path,
+    // even when YOLO routes through LiteRT.js).
     await initializeWeb();
 
-    await _lm.initialize(_landmarkModel, performanceConfig: _performanceConfig);
-    await _yolo.initialize(performanceConfig: _performanceConfig);
+    await _lm.initialize(
+      _landmarkModel,
+      performanceConfig: _performanceConfig,
+      useLiteRt: _useLiteRt,
+      liteRtAccelerator: _liteRtAccelerator,
+    );
+    await _yolo.initialize(
+      performanceConfig: _performanceConfig,
+      useLiteRt: _useLiteRt,
+      liteRtAccelerator: _liteRtAccelerator,
+    );
 
     // Create canvas for person crop/resize
     _cropCanvas = web.HTMLCanvasElement();
@@ -187,25 +255,57 @@ class PoseDetector {
       );
     }
 
-    // Decode image to HTMLImageElement using Canvas API
-    final web.HTMLImageElement? htmlImage = await _decodeImage(imageBytes);
-    if (htmlImage == null) return <Pose>[];
+    final WebDetectTimings? t = debugTimings ? WebDetectTimings() : null;
+    final Stopwatch totalSw = (t != null)
+        ? (Stopwatch()..start())
+        : Stopwatch();
+    final Stopwatch sw = Stopwatch();
 
-    final int imageWidth = htmlImage.naturalWidth;
-    final int imageHeight = htmlImage.naturalHeight;
+    // Decode image to ImageBitmap (off-thread, no load-event roundtrip).
+    if (t != null) sw.start();
+    final web.ImageBitmap? bitmap = await _decodeBitmap(imageBytes);
+    if (t != null) {
+      sw.stop();
+      t.decodeUs = sw.elapsedMicroseconds;
+      sw.reset();
+    }
+    if (bitmap == null) {
+      if (t != null) {
+        totalSw.stop();
+        t.totalUs = totalSw.elapsedMicroseconds;
+        lastTimings = t;
+      }
+      return <Pose>[];
+    }
+
+    final int imageWidth = bitmap.width;
+    final int imageHeight = bitmap.height;
 
     // Stage 1: Person detection
+    if (t != null) sw.start();
     final List<Detection> dets = await _yolo.detect(
-      htmlImage,
+      bitmap,
       imageWidth: imageWidth,
       imageHeight: imageHeight,
       confThres: _detectorConf,
       iouThres: _detectorIou,
       maxDet: _maxDetections,
       personOnly: true,
+      timingPreUs: t == null ? null : (v) => t.yoloPreUs = v,
+      timingInferUs: t == null ? null : (v) => t.yoloInferUs = v,
     );
+    if (t != null) {
+      sw.stop();
+      sw.reset();
+    }
 
     if (_mode == PoseMode.boxes) {
+      if (t != null) {
+        totalSw.stop();
+        t.totalUs = totalSw.elapsedMicroseconds;
+        t.detections = dets.length;
+        lastTimings = t;
+      }
       return buildBoxOnlyPoses(dets, imageWidth, imageHeight);
     }
 
@@ -234,10 +334,11 @@ class PoseDetector {
       final int resizedWidth = lb.newWidth;
       final int resizedHeight = lb.newHeight;
 
+      if (t != null) sw.start();
       ctx.fillStyle = 'rgb(114,114,114)'.toJS;
       ctx.fillRect(0, 0, 256, 256);
       ctx.drawImage(
-        htmlImage,
+        bitmap,
         x1,
         y1,
         cropWidth,
@@ -252,9 +353,20 @@ class PoseDetector {
       final web.ImageData poseImageData = ctx.getImageData(0, 0, 256, 256);
       final rgbaClamped = poseImageData.data.toDart;
       final Uint8List rgbaBytes = Uint8List.view(rgbaClamped.buffer);
+      if (t != null) {
+        sw.stop();
+        t.lmPreUs += sw.elapsedMicroseconds;
+        sw.reset();
+      }
 
       try {
+        if (t != null) sw.start();
         final PoseLandmarks landmarks = await _lm.runFromRgba(rgbaBytes);
+        if (t != null) {
+          sw.stop();
+          t.lmInferUs += sw.elapsedMicroseconds;
+          sw.reset();
+        }
 
         if (landmarks.score >= _minLandmarkScore) {
           final List<PoseLandmark> pts = _transformLandmarksLetterbox(
@@ -299,6 +411,13 @@ class PoseDetector {
       }
     }
 
+    bitmap.close();
+    if (t != null) {
+      totalSw.stop();
+      t.totalUs = totalSw.elapsedMicroseconds;
+      t.detections = dets.length;
+      lastTimings = t;
+    }
     return results;
   }
 
@@ -347,43 +466,20 @@ class PoseDetector {
     );
   }
 
-  /// Decodes encoded image bytes (JPEG, PNG, etc.) to an HTMLImageElement.
+  /// Decodes encoded image bytes (JPEG, PNG, etc.) to an [web.ImageBitmap].
   ///
-  /// Creates a Blob from the bytes, generates an object URL, and loads it
-  /// into an HTMLImageElement. Returns null if loading fails.
-  Future<web.HTMLImageElement?> _decodeImage(Uint8List bytes) async {
+  /// Uses `createImageBitmap`, which decodes off the main thread and
+  /// avoids the HTMLImageElement load-event roundtrip.
+  Future<web.ImageBitmap?> _decodeBitmap(Uint8List bytes) async {
     final web.Blob blob = web.Blob([bytes.toJS].toJS);
-    final String url = web.URL.createObjectURL(blob);
     try {
-      final web.HTMLImageElement htmlImage = web.HTMLImageElement();
-      final Completer<void> loadCompleter = Completer<void>();
-
-      void loadHandler(web.Event _) {
-        if (!loadCompleter.isCompleted) {
-          loadCompleter.complete();
-        }
-      }
-
-      void errorHandler(web.Event _) {
-        if (!loadCompleter.isCompleted) {
-          loadCompleter.completeError('Failed to load image');
-        }
-      }
-
-      htmlImage.addEventListener('load', loadHandler.toJS);
-      htmlImage.addEventListener('error', errorHandler.toJS);
-      htmlImage.src = url;
-
-      await loadCompleter.future;
-
-      htmlImage.removeEventListener('load', loadHandler.toJS);
-      htmlImage.removeEventListener('error', errorHandler.toJS);
-
-      return htmlImage;
+      final JSPromise<web.ImageBitmap> promise = web.window.createImageBitmap(
+        blob,
+      );
+      final web.ImageBitmap bm = await promise.toDart;
+      return bm;
     } catch (_) {
       return null;
-    } finally {
-      web.URL.revokeObjectURL(url);
     }
   }
 

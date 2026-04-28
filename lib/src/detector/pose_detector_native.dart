@@ -106,6 +106,9 @@ class PoseDetector {
     double minLandmarkScore = 0.5,
     int interpreterPoolSize = 1,
     PerformanceConfig performanceConfig = const PerformanceConfig(),
+    // Web-only knobs; accepted here for API parity but ignored on native.
+    bool useLiteRt = false,
+    String liteRtAccelerator = 'wasm',
   }) async {
     final detector = PoseDetector();
     await detector.initialize(
@@ -140,6 +143,9 @@ class PoseDetector {
     double minLandmarkScore = 0.5,
     int interpreterPoolSize = 1,
     PerformanceConfig performanceConfig = const PerformanceConfig(),
+    // Web-only knobs; accepted here for API parity but ignored on native.
+    bool useLiteRt = false,
+    String liteRtAccelerator = 'wasm',
   }) async {
     if (isReady) {
       throw StateError('PoseDetector already initialized');
