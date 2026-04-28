@@ -5,10 +5,10 @@ packages:
     dependency: transitive
     description:
       name: async
-      sha256: "758e6d74e971c3e5aceb4110bfd6698efc7f501675bcfe0c775459a8140750eb"
+      sha256: e2eb0491ba5ddb6177742d2da23904574082139b07c1e33b8503b9f46f3e1a37
       url: "https://pub.dev"
     source: hosted
-    version: "2.13.0"
+    version: "2.13.1"
   boolean_selector:
     dependency: transitive
     description:
@@ -61,10 +61,10 @@ packages:
     dependency: transitive
     description:
       name: dartcv4
-      sha256: d19ea8381b12edb8383140c944ac26413b3602ba19f516527e5ddd73625d181c
+      sha256: "5764d13550055da3bb35ca28e6866b837579dfb4b594582b7a7753785ca5dfef"
       url: "https://pub.dev"
     source: hosted
-    version: "2.2.1+3"
+    version: "2.2.1+4"
   ffi:
     dependency: transitive
     description:
@@ -90,10 +90,10 @@ packages:
     dependency: transitive
     description:
       name: flutter_litert
-      sha256: "51d63dad0fe25289a16a3c8b8400d84ab612857b8ba71fd0712b90b0626b678d"
+      sha256: afc58e1f677360f3e5a66b584125396b7951706d5bb494a68e20570b25e6196e
       url: "https://pub.dev"
     source: hosted
-    version: "2.0.4"
+    version: "2.4.1"
   flutter_web_plugins:
     dependency: transitive
     description: flutter
@@ -111,10 +111,10 @@ packages:
     dependency: transitive
     description:
       name: hooks
-      sha256: "7a08a0d684cb3b8fb604b78455d5d352f502b68079f7b80b831c62220ab0a4f6"
+      sha256: "025f060e86d2d4c3c47b56e33caf7f93bf9283340f26d23424ebcfccf34f621e"
       url: "https://pub.dev"
     source: hosted
-    version: "1.0.1"
+    version: "1.0.3"
   logging:
     dependency: transitive
     description:
@@ -127,10 +127,10 @@ packages:
     dependency: transitive
     description:
       name: matcher
-      sha256: "12956d0ad8390bbcc63ca2e1469c0619946ccb52809807067a7020d57e647aa6"
+      sha256: "31bd099b47c10cd1aeb55146a2d46ce0277630ecef3f7dae54ad7873f36696cd"
       url: "https://pub.dev"
     source: hosted
-    version: "0.12.18"
+    version: "0.12.20"
   material_color_utilities:
     dependency: transitive
     description:
@@ -151,10 +151,10 @@ packages:
     dependency: transitive
     description:
       name: native_toolchain_cmake
-      sha256: fe40e8483183ced98e851e08a9cd2a547fd412cccab98277aa23f2377e43d66f
+      sha256: cd4865568c57f03c7ab1f138cc5032c5f77825d27083d6f5a3e9bbb3e8014a87
       url: "https://pub.dev"
     source: hosted
-    version: "0.2.4"
+    version: "0.2.5"
   opencv_dart:
     dependency: transitive
     description:
@@ -177,7 +177,7 @@ packages:
       path: ".."
       relative: true
     source: path
-    version: "2.0.1"
+    version: "3.0.1"
   pub_semver:
     dependency: transitive
     description:
@@ -194,6 +194,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "3.2.2"
+  record_use:
+    dependency: transitive
+    description:
+      name: record_use
+      sha256: "2551bd8eecfe95d14ae75f6021ad0248be5c27f138c2ec12fcb52b500b3ba1ed"
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.6.0"
   sky_engine:
     dependency: transitive
     description: flutter
@@ -243,10 +251,10 @@ packages:
     dependency: transitive
     description:
       name: test_api
-      sha256: "93167629bfc610f71560ab9312acdda4959de4df6fac7492c89ff0d3886f6636"
+      sha256: "2a122cbe059f8b610d3a5415f42e255b6c17b1f21eee1d960f31080237fb4f11"
       url: "https://pub.dev"
     source: hosted
-    version: "0.7.9"
+    version: "0.7.12"
   typed_data:
     dependency: transitive
     description:
