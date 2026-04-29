@@ -80,9 +80,11 @@ class _PoseDetectionWidgetState extends State<PoseDetectionWidget> {
         useLiteRt: true,
       );
 
+      final String backend =
+          (_detector as dynamic).activeAccelerator as String? ?? 'tflite-js';
       setState(() {
         _status =
-            'Ready (LiteRT.js, auto WebGPU/WASM). Select an image to detect poses.';
+            'Ready (LiteRT.js, $backend). Select an image to detect poses.';
         _isModelReady = true;
       });
     } catch (e) {

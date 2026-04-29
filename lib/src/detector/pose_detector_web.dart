@@ -1,9 +1,13 @@
+// ignore_for_file: implementation_imports
+
 import 'dart:async';
 import 'dart:developer' as developer;
 import 'dart:js_interop';
 import 'dart:typed_data';
 
 import 'package:flutter_litert/flutter_litert.dart';
+import 'package:flutter_litert/src/web/litertjs_interpreter.dart'
+    show LiteRtRuntimeError;
 import 'package:web/web.dart' as web;
 
 import '../types.dart';
@@ -225,6 +229,46 @@ class PoseDetector {
   /// Returns true if the detector has been initialized and is ready to use.
   bool get isInitialized => _isInitialized;
 
+  /// The accelerator currently in use across all model runners
+  /// (`'webgpu'` / `'wasm'`), or null on the legacy tflite-js path or
+  /// before initialization completes.
+  ///
+  /// May change at runtime if a `LiteRtRuntimeError` fires on the WebGPU
+  /// path and the detector swaps to WASM.
+  String? get activeAccelerator =>
+      _yolo.activeAccelerator ?? _lm.activeAccelerator;
+
+  /// True once the detector has irreversibly fallen back from WebGPU to
+  /// WASM after a runtime GPU failure. Useful for surfacing in UI.
+  bool get fellBackToWasm => _fellBackToWasm;
+  bool _fellBackToWasm = false;
+
+  /// Disposes both model runners and re-initializes them on the WASM
+  /// backend. Called after a [LiteRtRuntimeError] fires on WebGPU.
+  Future<void> _swapToWasm() async {
+    if (_fellBackToWasm) return;
+    _fellBackToWasm = true;
+    _liteRtAccelerator = 'wasm';
+    try {
+      await _yolo.dispose();
+      await _lm.dispose();
+    } catch (_) {
+      // Best-effort: an interpreter that already errored may not dispose
+      // cleanly. Continue to re-init regardless.
+    }
+    await _lm.initialize(
+      _landmarkModel,
+      performanceConfig: _performanceConfig,
+      useLiteRt: _useLiteRt,
+      liteRtAccelerator: 'wasm',
+    );
+    await _yolo.initialize(
+      performanceConfig: _performanceConfig,
+      useLiteRt: _useLiteRt,
+      liteRtAccelerator: 'wasm',
+    );
+  }
+
   /// Releases all resources used by the detector.
   ///
   /// Call this when done using the detector to free memory.
@@ -257,7 +301,21 @@ class PoseDetector {
         'PoseDetector not initialized. Call initialize() first.',
       );
     }
+    try {
+      return await _detectInner(imageBytes);
+    } on LiteRtRuntimeError catch (e) {
+      // GPU OOM / device-lost / validation error mid-inference. If we were
+      // running on WebGPU, transparently swap all interpreters to WASM and
+      // retry once. If we were already on WASM, nothing to fall back to.
+      if (e.accelerator == 'webgpu' && !_fellBackToWasm) {
+        await _swapToWasm();
+        return _detectInner(imageBytes);
+      }
+      rethrow;
+    }
+  }
 
+  Future<List<Pose>> _detectInner(Uint8List imageBytes) async {
     final WebDetectTimings? t = debugTimings ? WebDetectTimings() : null;
     final Stopwatch totalSw = (t != null)
         ? (Stopwatch()..start())
@@ -327,7 +385,9 @@ class PoseDetector {
             _lm.allocateOwnedBuffers(),
             _lm.allocateOwnedBuffers(),
           ]
-        : const <({Float32List input, Float32List landmarks, Float32List score})>[];
+        : const <
+            ({Float32List input, Float32List landmarks, Float32List score})
+          >[];
 
     Future<PoseLandmarks>? prevFuture;
     Detection? prevDet;

@@ -29,6 +29,10 @@ class YoloV8PersonDetector extends PersonDetectorBase {
   /// called with [useLiteRt: true].
   LiteRtInterpreter? _liteRtItp;
 
+  /// The accelerator that actually compiled this model (`'webgpu'` /
+  /// `'wasm'`), or null if running on the legacy tflite-js path.
+  String? get activeAccelerator => _liteRtItp?.activeAccelerator;
+
   /// Reusable Float32List output buffer for the LiteRT.js path (avoids
   /// allocating a 705k-float buffer on every detect call).
   Float32List? _liteRtOutputFlat;

@@ -33,6 +33,11 @@ class PoseLandmarkModelRunner {
   // CompiledModel objects. Each instance is independent at the JS level;
   // WebGPU may interleave their command submissions.
   final List<LiteRtInterpreter> _liteRtItps = <LiteRtInterpreter>[];
+
+  /// The accelerator that actually compiled the landmark model
+  /// (`'webgpu'` / `'wasm'`), or null on the legacy tflite-js path.
+  String? get activeAccelerator =>
+      _liteRtItps.isEmpty ? null : _liteRtItps.first.activeAccelerator;
   int _liteRtNext = 0;
   bool _isInitialized = false;
   Float32List? _inputBufferFlat;
