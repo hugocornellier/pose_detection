@@ -108,7 +108,7 @@ class PoseDetector {
     PerformanceConfig performanceConfig = const PerformanceConfig(),
     // Web-only knobs; accepted here for API parity but ignored on native.
     bool useLiteRt = false,
-    String liteRtAccelerator = 'wasm',
+    String liteRtAccelerator = 'auto',
   }) async {
     final detector = PoseDetector();
     await detector.initialize(
@@ -145,7 +145,7 @@ class PoseDetector {
     PerformanceConfig performanceConfig = const PerformanceConfig(),
     // Web-only knobs; accepted here for API parity but ignored on native.
     bool useLiteRt = false,
-    String liteRtAccelerator = 'wasm',
+    String liteRtAccelerator = 'auto',
   }) async {
     if (isReady) {
       throw StateError('PoseDetector already initialized');

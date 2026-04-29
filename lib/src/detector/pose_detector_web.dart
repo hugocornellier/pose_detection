@@ -106,7 +106,7 @@ class PoseDetector {
   double _minLandmarkScore = 0.5;
   PerformanceConfig _performanceConfig = PerformanceConfig.disabled;
   bool _useLiteRt = false;
-  String _liteRtAccelerator = 'wasm';
+  String _liteRtAccelerator = 'auto';
 
   bool _isInitialized = false;
 
@@ -124,7 +124,10 @@ class PoseDetector {
   ///
   /// The detector is not ready for use until you call [initialize].
   PoseDetector() {
-    _lm = PoseLandmarkModelRunner(poolSize: 1);
+    // liteRtParallelism: 2 loads two CompiledModel instances on the
+    // LiteRT.js path so multiple landmark inferences can be in-flight on
+    // distinct interpreters. No-op for the legacy tflite-js path.
+    _lm = PoseLandmarkModelRunner(poolSize: 1, liteRtParallelism: 2);
   }
 
   /// Creates and initializes a pose detector in one step.
@@ -141,7 +144,7 @@ class PoseDetector {
     int interpreterPoolSize = 1,
     PerformanceConfig performanceConfig = PerformanceConfig.disabled,
     bool useLiteRt = false,
-    String liteRtAccelerator = 'wasm',
+    String liteRtAccelerator = 'auto',
   }) async {
     final detector = PoseDetector();
     await detector.initialize(
@@ -175,7 +178,7 @@ class PoseDetector {
     int interpreterPoolSize = 1,
     PerformanceConfig performanceConfig = PerformanceConfig.disabled,
     bool useLiteRt = false,
-    String liteRtAccelerator = 'wasm',
+    String liteRtAccelerator = 'auto',
   }) async {
     if (_isInitialized) {
       await dispose();
@@ -309,11 +312,32 @@ class PoseDetector {
       return buildBoxOnlyPoses(dets, imageWidth, imageHeight);
     }
 
-    // Stage 2: Landmark extraction for each detection
+    // Stage 2: Landmark extraction for each detection.
+    //
+    // Pipeline pattern: while the GPU is computing landmarks for detection N,
+    // we preprocess detection N+1 on the CPU. We hold at most one in-flight
+    // future and rotate between two buffer slots so a fresh preprocess does
+    // not stomp the in-flight tensor's data.
     final List<Pose> results = <Pose>[];
     final web.CanvasRenderingContext2D ctx = _cropCtx!;
 
-    for (final Detection d in dets) {
+    final List<({Float32List input, Float32List landmarks, Float32List score})>
+    slots = (dets.length > 1)
+        ? <({Float32List input, Float32List landmarks, Float32List score})>[
+            _lm.allocateOwnedBuffers(),
+            _lm.allocateOwnedBuffers(),
+          ]
+        : const <({Float32List input, Float32List landmarks, Float32List score})>[];
+
+    Future<PoseLandmarks>? prevFuture;
+    Detection? prevDet;
+    double prevRatio = 0;
+    int prevPadX = 0, prevPadY = 0;
+    int prevX1 = 0, prevY1 = 0;
+    Stopwatch? prevInferSw;
+
+    for (int i = 0; i < dets.length; i++) {
+      final Detection d = dets[i];
       final int x1 = d.bboxXYXY[0].clamp(0.0, imageWidth.toDouble()).toInt();
       final int y1 = d.bboxXYXY[1].clamp(0.0, imageHeight.toDouble()).toInt();
       final int x2 = d.bboxXYXY[2].clamp(0.0, imageWidth.toDouble()).toInt();
@@ -349,7 +373,7 @@ class PoseDetector {
         resizedHeight,
       );
 
-      // Extract RGBA pixel data for landmark model
+      // Extract RGBA pixel data for landmark model.
       final web.ImageData poseImageData = ctx.getImageData(0, 0, 256, 256);
       final rgbaClamped = poseImageData.data.toDart;
       final Uint8List rgbaBytes = Uint8List.view(rgbaClamped.buffer);
@@ -359,56 +383,69 @@ class PoseDetector {
         sw.reset();
       }
 
-      try {
-        if (t != null) sw.start();
-        final PoseLandmarks landmarks = await _lm.runFromRgba(rgbaBytes);
-        if (t != null) {
-          sw.stop();
-          t.lmInferUs += sw.elapsedMicroseconds;
-          sw.reset();
-        }
-
-        if (landmarks.score >= _minLandmarkScore) {
-          final List<PoseLandmark> pts = _transformLandmarksLetterbox(
-            landmarks.landmarks,
-            x1.toDouble(),
-            y1.toDouble(),
-            ratio,
-            padX.toDouble(),
-            padY.toDouble(),
-            imageWidth,
-            imageHeight,
-          );
-          results.add(
-            Pose(
-              boundingBox: BoundingBox.ltrb(
-                d.bboxXYXY[0],
-                d.bboxXYXY[1],
-                d.bboxXYXY[2],
-                d.bboxXYXY[3],
-              ),
-              score: d.score,
-              landmarks: pts,
-              imageWidth: imageWidth,
-              imageHeight: imageHeight,
-            ),
-          );
-        } else {
-          results.add(buildBoxOnlyPose(d, imageWidth, imageHeight));
-        }
-      } catch (e, stackTrace) {
-        assert(() {
-          // Ignore in release mode, but surface the actual failure during debug.
-          developer.log(
-            'Pose landmark extraction failed on web',
-            name: 'pose_detection',
-            error: e,
-            stackTrace: stackTrace,
-          );
-          return true;
-        }());
-        results.add(buildBoxOnlyPose(d, imageWidth, imageHeight));
+      // Fire inference. With slots, runFromRgba's synchronous part copies
+      // RGBA → Float32 into the slot's buffer and uploads to the LiteRT.js
+      // tensor before yielding, so we can reuse buffers in a 2-slot rotation
+      // safely (slot reused at i+2 only after future at i+1 awaited).
+      Future<PoseLandmarks> future;
+      Stopwatch? inferSw;
+      if (t != null) inferSw = Stopwatch()..start();
+      if (slots.isEmpty) {
+        future = _lm.runFromRgba(rgbaBytes);
+      } else {
+        final slot = slots[i & 1];
+        future = _lm.runFromRgba(
+          rgbaBytes,
+          ownedInput: slot.input,
+          ownedLandmarks: slot.landmarks,
+          ownedScore: slot.score,
+        );
       }
+
+      // While that runs on GPU, await the previous iteration's result and
+      // turn it into a Pose.
+      if (prevFuture != null) {
+        await _drainPipelined(
+          prevFuture,
+          prevDet!,
+          prevRatio,
+          prevPadX,
+          prevPadY,
+          prevX1,
+          prevY1,
+          imageWidth,
+          imageHeight,
+          results,
+          t,
+          prevInferSw,
+        );
+      }
+
+      prevFuture = future;
+      prevDet = d;
+      prevRatio = ratio;
+      prevPadX = padX;
+      prevPadY = padY;
+      prevX1 = x1;
+      prevY1 = y1;
+      prevInferSw = inferSw;
+    }
+
+    if (prevFuture != null) {
+      await _drainPipelined(
+        prevFuture,
+        prevDet!,
+        prevRatio,
+        prevPadX,
+        prevPadY,
+        prevX1,
+        prevY1,
+        imageWidth,
+        imageHeight,
+        results,
+        t,
+        prevInferSw,
+      );
     }
 
     bitmap.close();
@@ -419,6 +456,68 @@ class PoseDetector {
       lastTimings = t;
     }
     return results;
+  }
+
+  Future<void> _drainPipelined(
+    Future<PoseLandmarks> future,
+    Detection d,
+    double ratio,
+    int padX,
+    int padY,
+    int cropX,
+    int cropY,
+    int imageWidth,
+    int imageHeight,
+    List<Pose> out,
+    WebDetectTimings? t,
+    Stopwatch? inferSw,
+  ) async {
+    try {
+      final PoseLandmarks landmarks = await future;
+      if (t != null && inferSw != null) {
+        inferSw.stop();
+        t.lmInferUs += inferSw.elapsedMicroseconds;
+      }
+      if (landmarks.score >= _minLandmarkScore) {
+        final List<PoseLandmark> pts = _transformLandmarksLetterbox(
+          landmarks.landmarks,
+          cropX.toDouble(),
+          cropY.toDouble(),
+          ratio,
+          padX.toDouble(),
+          padY.toDouble(),
+          imageWidth,
+          imageHeight,
+        );
+        out.add(
+          Pose(
+            boundingBox: BoundingBox.ltrb(
+              d.bboxXYXY[0],
+              d.bboxXYXY[1],
+              d.bboxXYXY[2],
+              d.bboxXYXY[3],
+            ),
+            score: d.score,
+            landmarks: pts,
+            imageWidth: imageWidth,
+            imageHeight: imageHeight,
+          ),
+        );
+      } else {
+        out.add(buildBoxOnlyPose(d, imageWidth, imageHeight));
+      }
+    } catch (e, stackTrace) {
+      assert(() {
+        developer.log(
+          'Pose landmark extraction failed on web',
+          name: 'pose_detection',
+          error: e,
+          stackTrace: stackTrace,
+        );
+        return true;
+      }());
+      out.add(buildBoxOnlyPose(d, imageWidth, imageHeight));
+    }
   }
 
   /// Not supported on web. Use [detect] with encoded image bytes instead.

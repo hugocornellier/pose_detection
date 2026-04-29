@@ -15,7 +15,8 @@ import 'person_detector_base.dart';
 /// Web implementation of YOLOv8n person detector.
 ///
 /// Uses Canvas API for image preprocessing instead of OpenCV.
-/// Runs on CPU/WASM (no GPU delegates on web).
+/// On the LiteRT.js path, runs on WebGPU when available and falls back to
+/// SIMD-WASM otherwise. The legacy tflite-js path is CPU/WASM only.
 /// Uses [Interpreter] directly (no [IsolateInterpreter] on web).
 class YoloV8PersonDetector extends PersonDetectorBase {
   web.HTMLCanvasElement? _canvasElement;
@@ -32,6 +33,13 @@ class YoloV8PersonDetector extends PersonDetectorBase {
   /// allocating a 705k-float buffer on every detect call).
   Float32List? _liteRtOutputFlat;
 
+  /// Cached result of the "is the YOLO export's xywh in normalized space?"
+  /// probe. Computed on the first inference call when the answer is
+  /// available; afterwards the per-call ws.sort()+median check is skipped.
+  /// null = not yet probed; true = normalized (rescale to pixel space);
+  /// false = already in pixel space.
+  static bool? _xywhIsNormalized;
+
   /// Initializes the YOLOv8 person detector by loading the model.
   ///
   /// Parameters:
@@ -47,7 +55,7 @@ class YoloV8PersonDetector extends PersonDetectorBase {
   Future<void> initialize({
     PerformanceConfig? performanceConfig,
     bool useLiteRt = false,
-    String liteRtAccelerator = 'wasm',
+    String liteRtAccelerator = 'auto',
   }) async {
     const String assetPath =
         'packages/pose_detection/assets/models/yolov8n_float32.tflite';
@@ -55,9 +63,14 @@ class YoloV8PersonDetector extends PersonDetectorBase {
 
     if (useLiteRt) {
       final ByteData raw = await rootBundle.load(assetPath);
+      // 'auto' prefers WebGPU; flutter_litert falls back to WASM if compile
+      // fails (e.g., no navigator.gpu, or unsupported ops).
+      final String resolved = liteRtAccelerator == 'auto'
+          ? 'webgpu'
+          : liteRtAccelerator;
       final lrt = await LiteRtInterpreter.fromBytes(
         raw.buffer.asUint8List(),
-        accelerator: liteRtAccelerator,
+        accelerator: resolved,
       );
       _liteRtItp = lrt;
 
@@ -298,20 +311,24 @@ class YoloV8PersonDetector extends PersonDetectorBase {
     if (candScores.isEmpty) return <Detection>[];
 
     // YOLOv8 ultralytics export usually has xywh in pixel space already.
-    // Detect normalized output (median width <= 2.0) and rescale.
-    if (candXywh.length > 1) {
+    // The output convention is fixed at compile time, so we only run the
+    // "median width <= 2.0" probe on the very first inference and cache.
+    bool? norm = _xywhIsNormalized;
+    if (norm == null && candXywh.length > 1) {
       final List<double> ws = <double>[for (final v in candXywh) v[2]];
       ws.sort();
       final double med = ws[ws.length ~/ 2];
-      if (med <= 2.0) {
-        final double iw = inputWidth.toDouble();
-        final double ih = inputHeight.toDouble();
-        for (final v in candXywh) {
-          v[0] *= iw;
-          v[1] *= ih;
-          v[2] *= iw;
-          v[3] *= ih;
-        }
+      norm = med <= 2.0;
+      _xywhIsNormalized = norm;
+    }
+    if (norm == true) {
+      final double iw = inputWidth.toDouble();
+      final double ih = inputHeight.toDouble();
+      for (final v in candXywh) {
+        v[0] *= iw;
+        v[1] *= ih;
+        v[2] *= iw;
+        v[3] *= ih;
       }
     }
 

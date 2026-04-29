@@ -38,7 +38,6 @@ class PoseDetectionWidget extends StatefulWidget {
 
 class _PoseDetectionWidgetState extends State<PoseDetectionWidget> {
   String _status = 'Initializing models...';
-  String _results = '';
   Uint8List? _pickedBytes;
   ImageProvider? _preview;
   PoseDetector? _detector;
@@ -49,6 +48,7 @@ class _PoseDetectionWidgetState extends State<PoseDetectionWidget> {
   final TextEditingController _confidenceController = TextEditingController(
     text: '0.70',
   );
+  Timer? _confidenceDebounce;
 
   static bool _viewFactoryRegistered = false;
 
@@ -78,17 +78,16 @@ class _PoseDetectionWidgetState extends State<PoseDetectionWidget> {
         landmarkModel: PoseLandmarkModel.heavy,
         detectorConf: _confidenceThreshold,
         useLiteRt: true,
-        liteRtAccelerator: 'webgpu',
       );
 
       setState(() {
-        _status = 'Ready (LiteRT.js webgpu). Select an image to detect poses.';
+        _status =
+            'Ready (LiteRT.js, auto WebGPU/WASM). Select an image to detect poses.';
         _isModelReady = true;
       });
-    } catch (e, stack) {
+    } catch (e) {
       setState(() {
         _status = 'Failed to initialize: $e';
-        _results = 'Stack:\n$stack';
         _isModelReady = false;
       });
     }
@@ -96,10 +95,19 @@ class _PoseDetectionWidgetState extends State<PoseDetectionWidget> {
 
   @override
   void dispose() {
+    _confidenceDebounce?.cancel();
     _detector?.dispose();
     _confidenceController.dispose();
     _displayCanvas = null;
     super.dispose();
+  }
+
+  void _scheduleConfidenceRerun() {
+    _confidenceDebounce?.cancel();
+    if (_pickedBytes == null || !_isModelReady) return;
+    _confidenceDebounce = Timer(const Duration(milliseconds: 400), () {
+      _runDetection();
+    });
   }
 
   Future<void> _pickImageWeb() async {
@@ -141,8 +149,10 @@ class _PoseDetectionWidgetState extends State<PoseDetectionWidget> {
       _preview = MemoryImage(bytes);
       _hasAnnotation = false;
       _status =
-          'Loaded ${file.name} (${bytes.lengthInBytes} bytes) - Ready to detect';
+          'Loaded ${file.name} (${bytes.lengthInBytes} bytes) - Detecting...';
     });
+
+    await _runDetection();
   }
 
   Future<void> _runDetection() async {
@@ -167,12 +177,10 @@ class _PoseDetectionWidgetState extends State<PoseDetectionWidget> {
 
     setState(() {
       _status = 'Detecting poses...';
-      _results = '';
       _hasAnnotation = false;
     });
 
     try {
-      // Reinitialize detector if confidence changed
       if (_confidenceThreshold != confThres) {
         _confidenceThreshold = confThres;
         await _detector!.dispose();
@@ -181,51 +189,23 @@ class _PoseDetectionWidgetState extends State<PoseDetectionWidget> {
           landmarkModel: PoseLandmarkModel.heavy,
           detectorConf: confThres,
           useLiteRt: true,
-          liteRtAccelerator: 'webgpu',
         );
       }
 
       final totalStart = DateTime.now();
-
       final poses = await _detector!.detect(_pickedBytes!);
       final totalElapsed = DateTime.now().difference(totalStart).inMilliseconds;
 
-      // Draw annotations on canvas
       if (poses.isNotEmpty) {
         await _drawAnnotations(poses);
-      }
-
-      final withLandmarks = poses.where((p) => p.landmarks.isNotEmpty).length;
-      final resultsText = StringBuffer();
-      resultsText.writeln('Found ${poses.length} person(s)');
-      resultsText.writeln('Poses with landmarks: $withLandmarks');
-      resultsText.writeln('Total time: ${totalElapsed}ms\n');
-      resultsText.writeln('POSE RESULTS:');
-      for (int i = 0; i < poses.length; i++) {
-        final pose = poses[i];
-        resultsText.writeln('  Person ${i + 1}:');
-        resultsText.writeln('    Score: ${pose.score.toStringAsFixed(2)}');
-        if (pose.landmarks.isNotEmpty) {
-          resultsText.writeln('    Keypoints: ${pose.landmarks.length}');
-          final visibleCount = pose.landmarks
-              .where((lm) => lm.visibility > 0.5)
-              .length;
-          resultsText.writeln('    Visible keypoints: $visibleCount');
-        } else {
-          resultsText.writeln('    Landmarks: Low confidence');
-        }
       }
 
       setState(() {
         _status =
             'Complete! ${poses.length} person(s) detected in ${totalElapsed}ms';
-        _results = resultsText.toString();
       });
-    } catch (e, stack) {
-      setState(() {
-        _status = 'Error!';
-        _results = 'Error: $e\n\nStack:\n$stack';
-      });
+    } catch (e) {
+      setState(() => _status = 'Error: $e');
     }
   }
 
@@ -341,11 +321,6 @@ class _PoseDetectionWidgetState extends State<PoseDetectionWidget> {
                 onPressed: _isModelReady ? _pickImageWeb : null,
                 child: const Text('Select Image'),
               ),
-              const SizedBox(width: 12),
-              ElevatedButton(
-                onPressed: _isModelReady ? _runDetection : null,
-                child: const Text('Detect Poses'),
-              ),
               const SizedBox(width: 20),
               const Text(
                 'Confidence:',
@@ -369,6 +344,7 @@ class _PoseDetectionWidgetState extends State<PoseDetectionWidget> {
                     final val = double.tryParse(value);
                     if (val != null && val >= 0.0 && val <= 1.0) {
                       setState(() => _confidenceThreshold = val);
+                      _scheduleConfidenceRerun();
                     }
                   },
                 ),
@@ -389,6 +365,7 @@ class _PoseDetectionWidgetState extends State<PoseDetectionWidget> {
                               2,
                             );
                           });
+                          _scheduleConfidenceRerun();
                         }
                       : null,
                 ),
@@ -421,42 +398,25 @@ class _PoseDetectionWidgetState extends State<PoseDetectionWidget> {
               ],
             ),
           ),
-          if (_preview != null) ...[
-            const SizedBox(height: 20),
-            Container(
-              height: 300,
-              width: double.infinity,
-              clipBehavior: Clip.hardEdge,
-              decoration: BoxDecoration(
-                color: Colors.grey.shade100,
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: Colors.grey.shade300),
-              ),
-              child: _hasAnnotation
-                  ? HtmlElementView(viewType: 'annotation-canvas')
-                  : FittedBox(
-                      fit: BoxFit.contain,
-                      child: Image(image: _preview!),
-                    ),
-            ),
-          ],
           const SizedBox(height: 20),
-          Expanded(
-            child: Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Colors.grey.shade100,
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: Colors.grey.shade300),
-              ),
-              child: SingleChildScrollView(
-                child: SelectableText(
-                  _results.isEmpty ? 'Results will appear here...' : _results,
-                  style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
+          if (_preview != null)
+            Expanded(
+              child: Container(
+                width: double.infinity,
+                clipBehavior: Clip.hardEdge,
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade100,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.grey.shade300),
                 ),
+                child: _hasAnnotation
+                    ? HtmlElementView(viewType: 'annotation-canvas')
+                    : FittedBox(
+                        fit: BoxFit.contain,
+                        child: Image(image: _preview!),
+                      ),
               ),
             ),
-          ),
         ],
       ),
     );

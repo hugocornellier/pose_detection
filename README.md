@@ -130,11 +130,19 @@ final detector = await PoseDetector.create(
   mode: PoseMode.boxesAndLandmarks,
   landmarkModel: PoseLandmarkModel.heavy,
   useLiteRt: true,
-  liteRtAccelerator: 'webgpu', // 'wasm' on browsers without WebGPU
+  // liteRtAccelerator defaults to 'auto' — prefers WebGPU, falls back to WASM.
 );
 ```
 
-If `webgpu` compile fails for any op, the runtime automatically falls back to `wasm` (still substantially faster than the default `tflite-js` path because LiteRT.js's WASM is SIMD-optimized).
+`liteRtAccelerator` accepts:
+
+| Value | Behavior |
+|---|---|
+| `'auto'` (default) | Try WebGPU; if compile fails (no `navigator.gpu`, or unsupported ops) fall back to WASM. |
+| `'webgpu'` | Force WebGPU; same compile-time fallback to WASM if anything fails. |
+| `'wasm'` | Force SIMD-optimized WASM. Use this to opt out of GPU even when available. |
+
+The WASM fallback is still substantially faster than the default `tflite-js` path because LiteRT.js's WASM is SIMD-optimized.
 
 If you need to self-host the runtime (offline, strict CSP, or to pin a specific build), call `flutter_litert`'s `configureLiteRtLoader(moduleUrl: ..., wasmUrl: ...)` before any `PoseDetector.create`, or set `autoLoad: false` and load it from your own `<script>` tag instead.
 
@@ -155,7 +163,7 @@ Detection counts are identical between the two runtimes on every image.
 
 ### Separate `example_web` app
 
-The repository keeps the browser demo in `example_web/` (separate from `example/`) because the web sample uses browser-specific APIs (HTML file picker + canvas overlay) and UI flow. The demo is wired with `useLiteRt: true, liteRtAccelerator: 'webgpu'` and the loader snippet in `web/index.html` — copy from there as a starting point.
+The repository keeps the browser demo in `example_web/` (separate from `example/`) because the web sample uses browser-specific APIs (HTML file picker + canvas overlay) and UI flow. The demo is wired with `useLiteRt: true` (which uses the default `'auto'` accelerator: WebGPU with WASM fallback) — copy from there as a starting point.
 
 Run the web demo locally:
 

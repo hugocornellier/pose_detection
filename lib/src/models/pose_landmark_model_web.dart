@@ -24,11 +24,16 @@ import '../util/web_image_utils.dart';
 /// - No opencv_dart (no cv.Mat) -- input is RGBA Uint8List from Canvas
 /// - No dart:io
 /// - No IsolateInterpreter (uses a single web model instance)
-/// - No delegates (always CPU/WASM on web)
+/// - WebGPU when on the LiteRT.js path with browser support, else WASM
 /// - Single model instance (no pool -- JS is single-threaded)
 class PoseLandmarkModelRunner {
   litert_web.Model? _model;
-  LiteRtInterpreter? _liteRtItp;
+  // LiteRT.js path may use multiple compiled instances (round-robin) so
+  // multiple inferences can be in-flight concurrently on different
+  // CompiledModel objects. Each instance is independent at the JS level;
+  // WebGPU may interleave their command submissions.
+  final List<LiteRtInterpreter> _liteRtItps = <LiteRtInterpreter>[];
+  int _liteRtNext = 0;
   bool _isInitialized = false;
   Float32List? _inputBufferFlat;
   // Reusable owned buffers for LiteRT.js outputs (landmarks: 33*5 = 195
@@ -39,11 +44,16 @@ class PoseLandmarkModelRunner {
   int _liteRtLandmarksIdx = 0;
   int _liteRtScoreIdx = 1;
 
+  final int _liteRtParallelism;
+
   /// Creates a landmark model runner.
   ///
-  /// [poolSize] is accepted for API compatibility but ignored on web
-  /// (JS is single-threaded, so a single model instance is used).
-  PoseLandmarkModelRunner({int poolSize = 1});
+  /// [poolSize] is accepted for API compatibility but ignored on the legacy
+  /// web (tflite-js) path. On the LiteRT.js path it controls how many
+  /// CompiledModel instances are loaded so multiple landmark inferences can
+  /// be in-flight concurrently on different compiled models. Default 1.
+  PoseLandmarkModelRunner({int poolSize = 1, int liteRtParallelism = 1})
+    : _liteRtParallelism = liteRtParallelism < 1 ? 1 : liteRtParallelism;
 
   /// Initializes the BlazePose landmark model with the specified variant.
   ///
@@ -57,7 +67,7 @@ class PoseLandmarkModelRunner {
     PoseLandmarkModel model, {
     PerformanceConfig? performanceConfig,
     bool useLiteRt = false,
-    String liteRtAccelerator = 'wasm',
+    String liteRtAccelerator = 'auto',
   }) async {
     if (_isInitialized) await dispose();
 
@@ -66,10 +76,16 @@ class PoseLandmarkModelRunner {
     final Uint8List bytes = rawAssetFile.buffer.asUint8List();
 
     if (useLiteRt) {
-      _liteRtItp = await LiteRtInterpreter.fromBytes(
-        bytes,
-        accelerator: liteRtAccelerator,
-      );
+      // 'auto' prefers WebGPU; flutter_litert falls back to WASM if compile
+      // fails (e.g., no navigator.gpu, or unsupported ops).
+      final String resolved = liteRtAccelerator == 'auto'
+          ? 'webgpu'
+          : liteRtAccelerator;
+      for (int i = 0; i < _liteRtParallelism; i++) {
+        _liteRtItps.add(
+          await LiteRtInterpreter.fromBytes(bytes, accelerator: resolved),
+        );
+      }
       // BlazePose has 5 outputs in some unspecified order; look up by shape.
       //   landmarks  shape == [1, 195]  (33 landmarks × 5 channels)
       //   score      shape == [1, 1]
@@ -80,7 +96,7 @@ class PoseLandmarkModelRunner {
       // positionally so we resolve via shape instead. Both sizes are unique
       // within BlazePose's 5-output graph (seg=65536, heatmap=159744,
       // world=117).
-      final outs = _liteRtItp!.getOutputTensors();
+      final outs = _liteRtItps.first.getOutputTensors();
       int landmarksIdx = -1;
       int scoreIdx = -1;
       int landmarksLen = 0;
@@ -123,14 +139,34 @@ class PoseLandmarkModelRunner {
   /// Always returns 1 on web (single-threaded).
   int get poolSize => 1;
 
+  /// Output landmark buffer length (e.g. 165 or 195 floats); valid after
+  /// [initialize] returns successfully.
+  int get liteRtLandmarksLen => _liteRtLandmarks?.length ?? 0;
+
+  /// Allocates a fresh input/output buffer triple sized for this model. Used
+  /// by callers that want to pipeline multiple concurrent inferences without
+  /// the runner's internal buffers colliding.
+  ({Float32List input, Float32List landmarks, Float32List score})
+  allocateOwnedBuffers() {
+    final landmarksLen = _liteRtLandmarks?.length ?? 195;
+    return (
+      input: Float32List(256 * 256 * 3),
+      landmarks: Float32List(landmarksLen),
+      score: Float32List(1),
+    );
+  }
+
   /// Disposes the model runner and releases all resources.
   ///
   /// After disposal, [initialize] must be called again before using the runner.
   Future<void> dispose() async {
     _model?.delete();
     _model = null;
-    _liteRtItp?.close();
-    _liteRtItp = null;
+    for (final itp in _liteRtItps) {
+      itp.close();
+    }
+    _liteRtItps.clear();
+    _liteRtNext = 0;
     _liteRtLandmarks = null;
     _liteRtScore = null;
     _inputBufferFlat = null;
@@ -144,25 +180,39 @@ class PoseLandmarkModelRunner {
   ///
   /// Parameters:
   /// - [rgbaData]: 256x256 RGBA pixel data (length must be 256*256*4 = 262144)
+  /// - [ownedInput]: optional caller-owned Float32List to use as the input
+  ///   buffer. When supplied, allows callers to pipeline multiple inferences
+  ///   without inputs colliding on the shared internal buffer.
+  /// - [ownedLandmarks]/[ownedScore]: optional caller-owned output buffers.
+  ///   Must be supplied together when used.
   ///
   /// Returns [PoseLandmarks] containing 33 landmarks with normalized coordinates.
   ///
   /// Throws [StateError] if the model is not initialized.
-  Future<PoseLandmarks> runFromRgba(Uint8List rgbaData) async {
-    if (!_isInitialized || (_model == null && _liteRtItp == null)) {
+  Future<PoseLandmarks> runFromRgba(
+    Uint8List rgbaData, {
+    Float32List? ownedInput,
+    Float32List? ownedLandmarks,
+    Float32List? ownedScore,
+  }) async {
+    if (!_isInitialized || (_model == null && _liteRtItps.isEmpty)) {
       throw StateError(
         'PoseLandmarkModelRunner not initialized. Call initialize() first.',
       );
     }
 
     // Convert RGBA to normalized RGB float32
-    final inputFlat = _inputBufferFlat!;
+    final inputFlat = ownedInput ?? _inputBufferFlat!;
     rgbaToRgbFloat32(rgbaData, inputFlat);
 
-    if (_liteRtItp != null) {
-      final landmarks = _liteRtLandmarks!;
-      final score = _liteRtScore!;
-      await _liteRtItp!.runForMultipleInputs(
+    if (_liteRtItps.isNotEmpty) {
+      final landmarks = ownedLandmarks ?? _liteRtLandmarks!;
+      final score = ownedScore ?? _liteRtScore!;
+      // Round-robin select an interpreter so multiple inferences fired in
+      // a tight loop can land on different CompiledModel instances.
+      final itp = _liteRtItps[_liteRtNext];
+      _liteRtNext = (_liteRtNext + 1) % _liteRtItps.length;
+      await itp.runForMultipleInputs(
         <Object>[inputFlat],
         <int, Object>{_liteRtLandmarksIdx: landmarks, _liteRtScoreIdx: score},
       );
