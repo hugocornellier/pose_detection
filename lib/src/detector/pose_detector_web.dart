@@ -6,8 +6,6 @@ import 'dart:js_interop';
 import 'dart:typed_data';
 
 import 'package:flutter_litert/flutter_litert.dart';
-import 'package:flutter_litert/src/web/litertjs_interpreter.dart'
-    show LiteRtRuntimeError;
 import 'package:web/web.dart' as web;
 
 import '../types.dart';
@@ -109,7 +107,7 @@ class PoseDetector {
   int _maxDetections = 10;
   double _minLandmarkScore = 0.5;
   PerformanceConfig _performanceConfig = PerformanceConfig.disabled;
-  bool _useLiteRt = false;
+  bool _useLiteRt = true;
   String _liteRtAccelerator = 'auto';
 
   bool _isInitialized = false;
@@ -147,7 +145,7 @@ class PoseDetector {
     double minLandmarkScore = 0.5,
     int interpreterPoolSize = 1,
     PerformanceConfig performanceConfig = PerformanceConfig.disabled,
-    bool useLiteRt = false,
+    bool useLiteRt = true,
     String liteRtAccelerator = 'auto',
   }) async {
     final detector = PoseDetector();
@@ -181,7 +179,7 @@ class PoseDetector {
     double minLandmarkScore = 0.5,
     int interpreterPoolSize = 1,
     PerformanceConfig performanceConfig = PerformanceConfig.disabled,
-    bool useLiteRt = false,
+    bool useLiteRt = true,
     String liteRtAccelerator = 'auto',
   }) async {
     if (_isInitialized) {
@@ -198,8 +196,8 @@ class PoseDetector {
     _useLiteRt = useLiteRt;
     _liteRtAccelerator = liteRtAccelerator;
 
-    // Initialize TFLite.js WASM runtime (still needed for the BlazePose path,
-    // even when YOLO routes through LiteRT.js).
+    // Initialize TFLite.js WASM runtime (no-op on the LiteRT.js path;
+    // kept for the legacy tflite-js path when useLiteRt is false).
     await initializeWeb();
 
     await _lm.initialize(
@@ -259,12 +257,12 @@ class PoseDetector {
     await _lm.initialize(
       _landmarkModel,
       performanceConfig: _performanceConfig,
-      useLiteRt: _useLiteRt,
+      useLiteRt: true,
       liteRtAccelerator: 'wasm',
     );
     await _yolo.initialize(
       performanceConfig: _performanceConfig,
-      useLiteRt: _useLiteRt,
+      useLiteRt: true,
       liteRtAccelerator: 'wasm',
     );
   }
@@ -303,11 +301,11 @@ class PoseDetector {
     }
     try {
       return await _detectInner(imageBytes);
-    } on LiteRtRuntimeError catch (e) {
+    } catch (e) {
       // GPU OOM / device-lost / validation error mid-inference. If we were
       // running on WebGPU, transparently swap all interpreters to WASM and
       // retry once. If we were already on WASM, nothing to fall back to.
-      if (e.accelerator == 'webgpu' && !_fellBackToWasm) {
+      if (activeAccelerator == 'webgpu' && !_fellBackToWasm) {
         await _swapToWasm();
         return _detectInner(imageBytes);
       }

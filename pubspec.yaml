@@ -1,6 +1,6 @@
 name: pose_detection
 description: Pose, person and landmark detection using on-device TFLite models.
-version: 3.0.2
+version: 3.1.0
 
 repository: https://github.com/hugocornellier/pose_detection
 homepage: https://github.com/hugocornellier/pose_detection
@@ -29,13 +29,6 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^6.0.0
-
-# Use the local flutter_litert checkout while we develop the runtime
-# fallback / activeAccelerator additions. Drop this block once
-# flutter_litert is published with those changes.
-dependency_overrides:
-  flutter_litert:
-    path: ../flutter_litert
 
 flutter:
   assets:

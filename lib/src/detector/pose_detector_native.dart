@@ -106,8 +106,8 @@ class PoseDetector {
     double minLandmarkScore = 0.5,
     int interpreterPoolSize = 1,
     PerformanceConfig performanceConfig = const PerformanceConfig(),
-    // Web-only knobs; accepted here for API parity but ignored on native.
-    bool useLiteRt = false,
+    // Web-only; accepted here for API parity but ignored on native.
+    bool useLiteRt = true,
     String liteRtAccelerator = 'auto',
   }) async {
     final detector = PoseDetector();
@@ -143,8 +143,8 @@ class PoseDetector {
     double minLandmarkScore = 0.5,
     int interpreterPoolSize = 1,
     PerformanceConfig performanceConfig = const PerformanceConfig(),
-    // Web-only knobs; accepted here for API parity but ignored on native.
-    bool useLiteRt = false,
+    // Web-only; accepted here for API parity but ignored on native.
+    bool useLiteRt = true,
     String liteRtAccelerator = 'auto',
   }) async {
     if (isReady) {
@@ -359,7 +359,7 @@ class PoseDetector {
   /// One-call wrapper for live camera streams: takes a `CameraImage`-shaped
   /// object directly (any object exposing `width`, `height`, and `planes` with
   /// `bytes` / `bytesPerRow` / `bytesPerPixel`) and runs YUV packing, colour
-  /// conversion, rotation, and downscale in the detection isolate — all off
+  /// conversion, rotation, and downscale in the detection isolate, all off
   /// the UI thread.
   ///
   /// Returns an empty list (not an error) when the plane shape can't be

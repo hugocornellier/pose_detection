@@ -1,3 +1,7 @@
+## 3.1.0
+
+**Web:** LiteRT.js (WebGPU + WASM fallback) is now the default web runtime. `useLiteRt` now defaults to `true` so no opt-in is required. Pass `useLiteRt: false` to use the legacy tflite-js path. `liteRtAccelerator` (`String`, default `'auto'`) controls the backend: `'auto'` prefers WebGPU with automatic WASM fallback, `'webgpu'` / `'wasm'` force a specific backend. On browsers without WebGPU support, `'auto'` falls back to WASM transparently. Both runtimes load from CDN on first use with no `web/index.html` changes required; see `configureLiteRtLoader` in `flutter_litert` for self-hosting options.
+
 ## 3.0.2
 
 * Update flutter_litert -> 2.5.0

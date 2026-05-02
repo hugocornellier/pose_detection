@@ -77,7 +77,6 @@ class _PoseDetectionWidgetState extends State<PoseDetectionWidget> {
         mode: PoseMode.boxesAndLandmarks,
         landmarkModel: PoseLandmarkModel.heavy,
         detectorConf: _confidenceThreshold,
-        useLiteRt: true,
       );
 
       final String backend =
@@ -190,7 +189,6 @@ class _PoseDetectionWidgetState extends State<PoseDetectionWidget> {
           mode: PoseMode.boxesAndLandmarks,
           landmarkModel: PoseLandmarkModel.heavy,
           detectorConf: confThres,
-          useLiteRt: true,
         );
       }
 

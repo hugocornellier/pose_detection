@@ -34,10 +34,14 @@ class PoseLandmarkModelRunner {
   // WebGPU may interleave their command submissions.
   final List<LiteRtInterpreter> _liteRtItps = <LiteRtInterpreter>[];
 
-  /// The accelerator that actually compiled the landmark model
-  /// (`'webgpu'` / `'wasm'`), or null on the legacy tflite-js path.
+  /// The accelerator passed to [LiteRtInterpreter.fromBytes] (`'webgpu'` /
+  /// `'wasm'`), or null on the legacy tflite-js path.
+  String? _activeAccelerator;
+
+  /// The accelerator that compiled the landmark model (`'webgpu'` / `'wasm'`),
+  /// or null on the legacy tflite-js path.
   String? get activeAccelerator =>
-      _liteRtItps.isEmpty ? null : _liteRtItps.first.activeAccelerator;
+      _liteRtItps.isEmpty ? null : _activeAccelerator;
   int _liteRtNext = 0;
   bool _isInitialized = false;
   Float32List? _inputBufferFlat;
@@ -71,7 +75,7 @@ class PoseLandmarkModelRunner {
   Future<void> initialize(
     PoseLandmarkModel model, {
     PerformanceConfig? performanceConfig,
-    bool useLiteRt = false,
+    bool useLiteRt = true,
     String liteRtAccelerator = 'auto',
   }) async {
     if (_isInitialized) await dispose();
@@ -91,6 +95,7 @@ class PoseLandmarkModelRunner {
           await LiteRtInterpreter.fromBytes(bytes, accelerator: resolved),
         );
       }
+      _activeAccelerator = resolved;
       // BlazePose has 5 outputs in some unspecified order; look up by shape.
       //   landmarks  shape == [1, 195]  (33 landmarks × 5 channels)
       //   score      shape == [1, 1]
@@ -111,7 +116,7 @@ class PoseLandmarkModelRunner {
           n *= d;
         }
         // BlazePose lite/full export 165 floats (33*5); heavy exports 195
-        // (39*5, includes 6 virtual landmarks). Either is fine — we only
+        // (39*5, includes 6 virtual landmarks). Either is fine; we only
         // parse the first 33*5=165 in parsePoseLandmarksFlat, but the
         // receiving buffer has to fit the entire tensor or setRange throws.
         if (n == 165 || n == 195) {
@@ -171,6 +176,7 @@ class PoseLandmarkModelRunner {
       itp.close();
     }
     _liteRtItps.clear();
+    _activeAccelerator = null;
     _liteRtNext = 0;
     _liteRtLandmarks = null;
     _liteRtScore = null;

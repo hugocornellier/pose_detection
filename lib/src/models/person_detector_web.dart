@@ -29,9 +29,14 @@ class YoloV8PersonDetector extends PersonDetectorBase {
   /// called with [useLiteRt: true].
   LiteRtInterpreter? _liteRtItp;
 
-  /// The accelerator that actually compiled this model (`'webgpu'` /
+  /// The accelerator passed to [LiteRtInterpreter.fromBytes] (`'webgpu'` /
   /// `'wasm'`), or null if running on the legacy tflite-js path.
-  String? get activeAccelerator => _liteRtItp?.activeAccelerator;
+  String? _activeAccelerator;
+
+  /// The accelerator that compiled this model (`'webgpu'` / `'wasm'`),
+  /// or null if running on the legacy tflite-js path.
+  String? get activeAccelerator =>
+      _liteRtItp != null ? _activeAccelerator : null;
 
   /// Reusable Float32List output buffer for the LiteRT.js path (avoids
   /// allocating a 705k-float buffer on every detect call).
@@ -58,7 +63,7 @@ class YoloV8PersonDetector extends PersonDetectorBase {
   /// Throws an exception if the model fails to load.
   Future<void> initialize({
     PerformanceConfig? performanceConfig,
-    bool useLiteRt = false,
+    bool useLiteRt = true,
     String liteRtAccelerator = 'auto',
   }) async {
     const String assetPath =
@@ -77,6 +82,7 @@ class YoloV8PersonDetector extends PersonDetectorBase {
         accelerator: resolved,
       );
       _liteRtItp = lrt;
+      _activeAccelerator = resolved;
 
       final inT = lrt.getInputTensor(0);
       inH = inT.shape[1];
@@ -132,6 +138,7 @@ class YoloV8PersonDetector extends PersonDetectorBase {
     inputBuffer = null;
     _liteRtItp?.close();
     _liteRtItp = null;
+    _activeAccelerator = null;
     _liteRtOutputFlat = null;
     disposeBase();
   }
@@ -288,7 +295,7 @@ class YoloV8PersonDetector extends PersonDetectorBase {
     final List<List<double>> candXywh = <List<double>>[];
 
     // Match the generic path: argmax over all classes per anchor, score
-    // threshold, and (later) filterClassId — class filter is applied AFTER
+    // threshold, and (later) filterClassId. Class filter is applied AFTER
     // top-K so we keep the same anchors regardless of `filterClassId`.
     for (int a = 0; a < anchors; a++) {
       double bestLogit = -1e30;
@@ -300,7 +307,7 @@ class YoloV8PersonDetector extends PersonDetectorBase {
           bestCls = c;
         }
       }
-      // sigmoid is monotonic — argmax of logits == argmax of sigmoids.
+      // sigmoid is monotonic: argmax of logits == argmax of sigmoids.
       final double s = 1.0 / (1.0 + math.exp(-bestLogit));
       if (s < confThres) continue;
       candScores.add(s);

@@ -13,7 +13,7 @@ dependencies:
     path: ../
   web: ^1.1.1
 
-# Same override as pose_detection/pubspec.yaml — needed because the
+# Same override as pose_detection/pubspec.yaml, needed because the
 # example_web is a separate Flutter project that pulls its own flutter_litert.
 dependency_overrides:
   flutter_litert:

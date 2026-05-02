@@ -13,8 +13,9 @@
 
 Flutter plugin for on-device, multi-person pose detection and landmark estimation using TensorFlow Lite. Uses YOLOv8n for person detection and Google's [BlazePose](https://ai.google.dev/edge/mediapipe/solutions/vision/pose_landmarker) for 33-keypoint landmark extraction.
 
-
-![Example Screenshot](assets/screenshots/ex1.png)
+<p align="center">
+  <img src="assets/screenshots/demo.gif" alt="Pose Detection Demo" width="600">
+</p>
 
 ## Quick Start
 
@@ -71,155 +72,6 @@ await detector.initialize();
 ```
 
 Refer to the [sample code](https://pub.dev/packages/pose_detection/example) on the pub.dev example tab for a more in-depth example.
-
-## Migration Guide
-
-### 3.0.0: `detectFromMat` signature change
-
-The `imageWidth` and `imageHeight` named arguments have been removed. Dimensions are now read directly from the Mat.
-
-```dart
-// Before (2.x)
-final poses = await detector.detectFromMat(
-  mat,
-  imageWidth: mat.cols,
-  imageHeight: mat.rows,
-);
-
-// After (3.0)
-final poses = await detector.detectFromMat(mat);
-```
-
-## Web (Flutter Web)
-
-This package supports Flutter Web using the same package import:
-
-```dart
-import 'package:pose_detection/pose_detection.dart';
-```
-
-Two web runtimes are available, selectable per `PoseDetector`:
-
-1. **Default — `tflite-js` (CPU/WASM).** No setup beyond initialization. Same path that ships in older versions.
-2. **LiteRT.js with WebGPU delegate.** Google's official web runtime via `flutter_litert ≥ 2.5.0`. ~18× faster than the default in real measurements (446 ms → 25 ms / call on the heavy BlazePose model with mixed single/multi-person images). Requires a small loader script in `web/index.html`.
-
-The main difference from native is how you load images:
-
-- The Quick Start example above uses `dart:io` (`File(...)`), which is not available on web.
-- On web, load an image as `Uint8List` (for example from a file picker, drag-and-drop, or network response) and call `detect(imageBytes)`.
-- `detectFromMat(...)` (OpenCV `cv.Mat`) is native-only and is not available on web.
-- `interpreterPoolSize`, `performanceConfig`, and `useNativePreprocessing` are accepted for API compatibility but are ignored on web.
-
-```dart
-final detector = await PoseDetector.create(
-  mode: PoseMode.boxesAndLandmarks,
-  landmarkModel: PoseLandmarkModel.heavy,
-);
-
-final List<Pose> poses = await detector.detect(imageBytes);
-
-await detector.dispose();
-```
-
-### Web (LiteRT.js + WebGPU, recommended)
-
-Just opt in at construction time — the runtime is auto-loaded from a CDN on first use, no `web/index.html` changes required:
-
-```dart
-final detector = await PoseDetector.create(
-  mode: PoseMode.boxesAndLandmarks,
-  landmarkModel: PoseLandmarkModel.heavy,
-  useLiteRt: true,
-  // liteRtAccelerator defaults to 'auto' — prefers WebGPU, falls back to WASM.
-);
-```
-
-`liteRtAccelerator` accepts:
-
-| Value | Behavior |
-|---|---|
-| `'auto'` (default) | Try WebGPU; if compile fails (no `navigator.gpu`, or unsupported ops) fall back to WASM. |
-| `'webgpu'` | Force WebGPU; same compile-time fallback to WASM if anything fails. |
-| `'wasm'` | Force SIMD-optimized WASM. Use this to opt out of GPU even when available. |
-
-The WASM fallback is still substantially faster than the default `tflite-js` path because LiteRT.js's WASM is SIMD-optimized.
-
-If you need to self-host the runtime (offline, strict CSP, or to pin a specific build), call `flutter_litert`'s `configureLiteRtLoader(moduleUrl: ..., wasmUrl: ...)` before any `PoseDetector.create`, or set `autoLoad: false` and load it from your own `<script>` tag instead.
-
-### Benchmarks
-
-Heavy BlazePose model on macOS Chrome 147, 5 images, 10 timed iterations each, averaged over 2 runs (see `runWebBenchmark.sh`):
-
-| Image | Detections | Default (tflite-js) | LiteRT.js webgpu | Speedup |
-|---|---|---|---|---|
-| pose1 | 1 | 357 ms | 20 ms | 17.8× |
-| pose2 | 1 | 357 ms | 18 ms | 19.9× |
-| pose3 | 2 | 430 ms | 23 ms | 18.7× |
-| pose4 | 6 | 726 ms | 46 ms | 15.9× |
-| pose5 | 1 | 360 ms | 17 ms | 20.7× |
-| **mean** | — | **446 ms** | **25 ms** | **~18×** |
-
-Detection counts are identical between the two runtimes on every image.
-
-### Separate `example_web` app
-
-The repository keeps the browser demo in `example_web/` (separate from `example/`) because the web sample uses browser-specific APIs (HTML file picker + canvas overlay) and UI flow. The demo is wired with `useLiteRt: true` (which uses the default `'auto'` accelerator: WebGPU with WASM fallback) — copy from there as a starting point.
-
-Run the web demo locally:
-
-```bash
-cd example_web
-flutter pub get
-flutter run -d chrome
-```
-
-Build for web:
-
-```bash
-cd example_web
-flutter build web
-```
-
-## Performance
-
-### Hardware Acceleration
-
-The package automatically selects the best acceleration strategy for each platform:
-
-| Platform | Default Delegate | Speedup | Notes |
-|----------|-----------------|---------|-------|
-| **macOS** | XNNPACK | 2-5x | SIMD vectorization (NEON on ARM, AVX on x86) |
-| **Linux** | XNNPACK | 2-5x | SIMD vectorization |
-| **iOS** | Metal GPU | 2-4x | Hardware GPU acceleration |
-| **Android** | XNNPACK | 2-5x | ARM NEON SIMD acceleration |
-| **Windows** | XNNPACK | 2-5x | SIMD vectorization (AVX on x86) |
-
-No configuration needed, just call `initialize()` and you get the optimal performance for your platform.
-
-### Advanced Performance Configuration
-
-```dart
-// Auto mode (default), optimal for each platform
-await detector.initialize();
-
-// Force XNNPACK (all native platforms)
-final detector = PoseDetector(
-  performanceConfig: PerformanceConfig.xnnpack(numThreads: 4),
-);
-await detector.initialize();
-
-// Force GPU delegate (iOS recommended, Android experimental)
-final detector = PoseDetector(
-  performanceConfig: PerformanceConfig.gpu(),
-);
-await detector.initialize();
-
-// CPU-only (maximum compatibility)
-final detector = PoseDetector(
-  performanceConfig: PerformanceConfig.disabled,
-);
-await detector.initialize();
-```
 
 ## Pose Detection Modes
 
@@ -448,6 +300,46 @@ camera.startImageStream((CameraImage image) async {
 
 See the full [example app](https://pub.dev/packages/pose_detection/example) for a production implementation including orientation handling, mirror handling, and frame throttling.
 
+## Video Detection
+
+In addition to still images and live camera feeds, `pose_detection` supports frame-by-frame inference on video files. The example app includes a fully working `VideoFileScreen` that shows the end-to-end flow:
+
+1. **Open the video** with `cv.VideoCapture.fromFile(path)` (powered by [opencv_dart](https://pub.dev/packages/opencv_dart)).
+2. **Read frames in a loop** with `cap.read()`, passing each `cv.Mat` directly to `detector.detectFromMat(frame)`.
+3. **Draw results** onto the same `Mat` (bounding boxes + skeleton overlay).
+4. **Write the annotated frame** to an output file with `cv.VideoWriter`, preserving the original FPS and resolution.
+5. **Play back the result** in-app with the `video_player` package.
+
+```dart
+final cap = cv.VideoCapture.fromFile(path);
+final fps = cap.get(cv.CAP_PROP_FPS);
+final width = cap.get(cv.CAP_PROP_FRAME_WIDTH).toInt();
+final height = cap.get(cv.CAP_PROP_FRAME_HEIGHT).toInt();
+
+final writer = cv.VideoWriter.fromFile(outPath, 'avc1', fps, (width, height));
+
+cv.Mat? frame;
+while (true) {
+  final (ok, mat) = cap.read(m: frame);
+  frame = mat;
+  if (!ok || frame.isEmpty) break;
+
+  final List<Pose> poses = await detector.detectFromMat(frame);
+  // draw poses on frame...
+  writer.write(frame);
+}
+
+cap.release();
+writer.release();
+```
+
+The output is a standard H.264 MP4 with the pose overlay baked in. See `VideoFileScreen` in the [example app](https://pub.dev/packages/pose_detection/example) for the full implementation including progress tracking, cancellation, temporal smoothing, and playback.
+
+**Notes:**
+- Video processing is CPU-bound and runs off the UI thread via the detector's isolate. The UI stays responsive.
+- Use `PoseLandmarkModel.lite` or `PoseLandmarkModel.full` for a better speed/accuracy tradeoff when processing long videos.
+- On Linux, GStreamer plugins are required to open MP4 files: `sudo apt install gstreamer1.0-libav gstreamer1.0-plugins-good gstreamer1.0-plugins-bad`.
+
 ## Background Processing
 
 All inference runs automatically in a background isolate: the UI thread is never blocked during detection or landmark extraction. No special configuration is needed; `PoseDetector` handles isolate management internally.
@@ -482,3 +374,153 @@ final detector = PoseDetector(
 - **Default pool size**: 1
 - When XNNPACK is enabled (via `performanceConfig`), pool size is automatically forced to 1 to prevent thread contention
 
+
+
+## Web (Flutter Web)
+
+This package supports Flutter Web using the same package import:
+
+```dart
+import 'package:pose_detection/pose_detection.dart';
+```
+
+Two web runtimes are available, selectable per `PoseDetector`:
+
+1. **LiteRT.js with WebGPU delegate (default).** Google's official web runtime via `flutter_litert ≥ 2.5.0`. ~18× faster in real measurements (446 ms → 25 ms / call on the heavy BlazePose model with mixed single/multi-person images). Auto-loaded from CDN on first use, no `web/index.html` changes required. Prefers WebGPU; falls back to WASM automatically on unsupported browsers.
+2. **`tflite-js` (CPU/WASM, legacy).** Pass `useLiteRt: false` to opt into the previous default. No additional CDN scripts beyond those already loaded.
+
+The main difference from native is how you load images:
+
+- The Quick Start example above uses `dart:io` (`File(...)`), which is not available on web.
+- On web, load an image as `Uint8List` (for example from a file picker, drag-and-drop, or network response) and call `detect(imageBytes)`.
+- `detectFromMat(...)` (OpenCV `cv.Mat`) is native-only and is not available on web.
+- `interpreterPoolSize`, `performanceConfig`, and `useNativePreprocessing` are accepted for API compatibility but are ignored on web.
+
+```dart
+final detector = await PoseDetector.create(
+  mode: PoseMode.boxesAndLandmarks,
+  landmarkModel: PoseLandmarkModel.heavy,
+);
+
+final List<Pose> poses = await detector.detect(imageBytes);
+
+await detector.dispose();
+```
+
+### Web (LiteRT.js + WebGPU, default)
+
+No extra configuration needed. LiteRT.js is the default runtime:
+
+```dart
+final detector = await PoseDetector.create(
+  mode: PoseMode.boxesAndLandmarks,
+  landmarkModel: PoseLandmarkModel.heavy,
+  // liteRtAccelerator defaults to 'auto': prefers WebGPU, falls back to WASM.
+);
+```
+
+`liteRtAccelerator` accepts:
+
+| Value | Behavior |
+|---|---|
+| `'auto'` (default) | Try WebGPU; if compile fails (no `navigator.gpu`, or unsupported ops) fall back to WASM. |
+| `'webgpu'` | Force WebGPU; same compile-time fallback to WASM if anything fails. |
+| `'wasm'` | Force SIMD-optimized WASM. Use this to opt out of GPU even when available. |
+
+The WASM fallback is still substantially faster than the legacy `tflite-js` path because LiteRT.js's WASM is SIMD-optimized.
+
+To opt into the legacy tflite-js path, pass `useLiteRt: false`.
+
+If you need to self-host the runtime (offline, strict CSP, or to pin a specific build), call `flutter_litert`'s `configureLiteRtLoader(moduleUrl: ..., wasmUrl: ...)` before any `PoseDetector.create`, or set `autoLoad: false` and load it from your own `<script>` tag instead.
+
+### Benchmarks
+
+Heavy BlazePose model on macOS Chrome 147, 5 images, 10 timed iterations each, averaged over 2 runs (see `runWebBenchmark.sh`):
+
+| Image | Detections | Default (tflite-js) | LiteRT.js webgpu | Speedup |
+|---|---|---|---|---|
+| pose1 | 1 | 357 ms | 20 ms | 17.8× |
+| pose2 | 1 | 357 ms | 18 ms | 19.9× |
+| pose3 | 2 | 430 ms | 23 ms | 18.7× |
+| pose4 | 6 | 726 ms | 46 ms | 15.9× |
+| pose5 | 1 | 360 ms | 17 ms | 20.7× |
+| **mean** | | **446 ms** | **25 ms** | **~18×** |
+
+Detection counts are identical between the two runtimes on every image.
+
+### Separate `example_web` app
+
+The repository keeps the browser demo in `example_web/` (separate from `example/`) because the web sample uses browser-specific APIs (HTML file picker + canvas overlay) and UI flow. The demo uses the default `'auto'` accelerator (WebGPU with WASM fallback). Copy from <a href="https://github.com/hugocornellier/pose_detection/blob/main/example_web/lib/main.dart" target="_blank">example_web/lib/main.dart</a> as a starting point.
+
+Run the web demo locally:
+
+```bash
+cd example_web
+flutter pub get
+flutter run -d chrome
+```
+
+Build for web:
+
+```bash
+cd example_web
+flutter build web
+```
+
+## Performance
+
+### Hardware Acceleration
+
+The package automatically selects the best acceleration strategy for each platform:
+
+| Platform | Default Delegate | Speedup | Notes |
+|----------|-----------------|---------|-------|
+| **macOS** | XNNPACK | 2-5x | SIMD vectorization (NEON on ARM, AVX on x86) |
+| **Linux** | XNNPACK | 2-5x | SIMD vectorization |
+| **iOS** | Metal GPU | 2-4x | Hardware GPU acceleration |
+| **Android** | XNNPACK | 2-5x | ARM NEON SIMD acceleration |
+| **Windows** | XNNPACK | 2-5x | SIMD vectorization (AVX on x86) |
+
+No configuration needed, just call `initialize()` and you get the optimal performance for your platform.
+
+### Advanced Performance Configuration
+
+```dart
+// Auto mode (default), optimal for each platform
+await detector.initialize();
+
+// Force XNNPACK (all native platforms)
+final detector = PoseDetector(
+  performanceConfig: PerformanceConfig.xnnpack(numThreads: 4),
+);
+await detector.initialize();
+
+// Force GPU delegate (iOS recommended, Android experimental)
+final detector = PoseDetector(
+  performanceConfig: PerformanceConfig.gpu(),
+);
+await detector.initialize();
+
+// CPU-only (maximum compatibility)
+final detector = PoseDetector(
+  performanceConfig: PerformanceConfig.disabled,
+);
+await detector.initialize();
+```
+## Migration Guide
+
+### 3.0.0: `detectFromMat` signature change
+
+The `imageWidth` and `imageHeight` named arguments have been removed. Dimensions are now read directly from the Mat.
+
+```dart
+// Before (2.x)
+final poses = await detector.detectFromMat(
+  mat,
+  imageWidth: mat.cols,
+  imageHeight: mat.rows,
+);
+
+// After (3.0)
+final poses = await detector.detectFromMat(mat);
+```
