@@ -60,7 +60,7 @@ class _DetectionIsolateStartupData {
 /// await detector.dispose();
 /// ```
 class PoseDetector {
-  static const String _packageVersion = '3.0.0';
+  static const String _packageVersion = '3.1.0';
   static const String _pipelineVersion = 'pipeline_v1';
 
   /// Version key for the default pose detection pipeline.

@@ -21,11 +21,11 @@ import '../util/web_image_utils.dart';
 /// accuracy/performance trade-offs.
 ///
 /// Key differences from native:
-/// - No opencv_dart (no cv.Mat) -- input is RGBA Uint8List from Canvas
+/// - No opencv_dart (no cv.Mat); input is RGBA Uint8List from Canvas
 /// - No dart:io
 /// - No IsolateInterpreter (uses a single web model instance)
 /// - WebGPU when on the LiteRT.js path with browser support, else WASM
-/// - Single model instance (no pool -- JS is single-threaded)
+/// - Single model instance (no pool; JS is single-threaded)
 class PoseLandmarkModelRunner {
   litert_web.Model? _model;
   // LiteRT.js path may use multiple compiled instances (round-robin) so

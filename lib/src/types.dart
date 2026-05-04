@@ -45,7 +45,7 @@ class PoseLandmarks {
 /// A single body keypoint with 3D coordinates and visibility score.
 ///
 /// Coordinates are in the original image space (pixels).
-/// The [z] coordinate represents depth relative to the body center (not absolute depth).
+/// The [z] coordinate represents depth relative to the hips midpoint (not absolute depth).
 class PoseLandmark with LandmarkMixin {
   /// The body part this landmark represents (nose, leftShoulder, etc.)
   final PoseLandmarkType type;

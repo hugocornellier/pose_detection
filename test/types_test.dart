@@ -7,7 +7,7 @@ void main() {
   group('PoseDetector model version', () {
     test('default modelVersion is non-empty and package-scoped', () {
       expect(PoseDetector.modelVersion, isNotEmpty);
-      expect(PoseDetector.modelVersion, contains('pose_detection:3.0.0'));
+      expect(PoseDetector.modelVersion, contains('pose_detection:3.1.0'));
       expect(PoseDetector.modelVersion, PoseDetector.modelVersionFor());
     });
 

@@ -64,11 +64,11 @@ Future main() async {
 Alternatively, construct and initialize separately if you need to configure between steps:
 
 ```dart
-final PoseDetector detector = PoseDetector(
+final PoseDetector detector = PoseDetector();
+await detector.initialize(
   mode: PoseMode.boxesAndLandmarks,
   landmarkModel: PoseLandmarkModel.heavy,
 );
-await detector.initialize();
 ```
 
 Refer to the [sample code](https://pub.dev/packages/pose_detection/example) on the pub.dev example tab for a more in-depth example.
@@ -87,10 +87,10 @@ This package supports two operation modes that determine what data is returned:
 When you only need to detect where people are (without body landmarks), use `PoseMode.boxes` for better performance:
 
 ```dart
-final PoseDetector detector = PoseDetector(
+final PoseDetector detector = PoseDetector();
+await detector.initialize(
   mode: PoseMode.boxes,  // Skip landmark detection
 );
-await detector.initialize();
 
 final List<Pose> results = await detector.detect(imageBytes);
 for (final Pose pose in results) {
@@ -259,6 +259,33 @@ The `poseLandmarkConnections` constant contains 27 connections organized by body
 - **Arms**: Shoulders → elbows → wrists → fingers (left and right)
 - **Legs**: Hips → knees → ankles → feet (left and right)
 
+### Built-in Overlay Painters
+
+The package ships two ready-to-use `CustomPainter` implementations:
+
+| Class | Use case |
+|---|---|
+| `MultiOverlayPainter` | Still images: scales detection coordinates to fit the widget |
+| `CameraPoseOverlayPainter` | Live camera preview: handles coordinate mapping and optional front-camera horizontal mirroring |
+
+```dart
+// Still image overlay
+CustomPaint(
+  foregroundPainter: MultiOverlayPainter(results: poses),
+  child: Image.memory(imageBytes),
+)
+
+// Live camera overlay (front camera, mirrored)
+CustomPaint(
+  foregroundPainter: CameraPoseOverlayPainter(
+    poses: poses,
+    cameraSize: Size(cameraWidth.toDouble(), cameraHeight.toDouble()),
+    mirrorHorizontally: isFrontCamera,
+  ),
+  child: CameraPreview(controller),
+)
+```
+
 ## Live Camera Detection
 
 For real-time pose detection with a camera feed, use `detectFromCameraImage`. It auto-detects YUV420 (NV12 / NV21 / I420) and desktop BGRA/RGBA layouts, and the `cvtColor`, optional `rotate`, and `maxDim` downscale all run inside the detector's existing isolate: the UI thread is never blocked by OpenCV work.
@@ -366,15 +393,35 @@ for (int i = 0; i < results.length; i++) {
 **Interpreter Pool:** The detector maintains a pool of TensorFlow Lite interpreter instances for landmark extraction. Each interpreter adds ~10MB memory overhead.
 
 ```dart
-final detector = PoseDetector(
+final detector = PoseDetector();
+await detector.initialize(
   interpreterPoolSize: 3,  // Number of interpreter instances
 );
 ```
 
 - **Default pool size**: 1
-- When XNNPACK is enabled (via `performanceConfig`), pool size is automatically forced to 1 to prevent thread contention
+- When any hardware acceleration is active (auto, XNNPACK, or GPU), pool size is automatically forced to 1 to prevent thread contention
 
+### Detect from a file path
 
+`detectFromFilepath` reads the file and delegates to `detect`. Native-only (uses `dart:io`).
+
+```dart
+final List<Pose> poses = await detector.detectFromFilepath('/path/to/image.jpg');
+```
+
+### Detect from raw pixel bytes (zero-copy)
+
+`detectFromMatBytes` accepts raw pixel data without constructing a `cv.Mat` first. Bytes are transferred to the background isolate via `TransferableTypedData` with no copy. Useful when you already have decoded pixel data from another source.
+
+```dart
+final List<Pose> poses = await detector.detectFromMatBytes(
+  pixelBytes,          // Raw BGR pixel data
+  width: imageWidth,
+  height: imageHeight,
+  matType: 16,         // CV_8UC3 (default)
+);
+```
 
 ## Web (Flutter Web)
 
@@ -394,7 +441,7 @@ The main difference from native is how you load images:
 - The Quick Start example above uses `dart:io` (`File(...)`), which is not available on web.
 - On web, load an image as `Uint8List` (for example from a file picker, drag-and-drop, or network response) and call `detect(imageBytes)`.
 - `detectFromMat(...)` (OpenCV `cv.Mat`) is native-only and is not available on web.
-- `interpreterPoolSize`, `performanceConfig`, and `useNativePreprocessing` are accepted for API compatibility but are ignored on web.
+- `interpreterPoolSize` and `performanceConfig` are accepted for API compatibility but are ignored on web.
 
 ```dart
 final detector = await PoseDetector.create(
@@ -490,22 +537,19 @@ No configuration needed, just call `initialize()` and you get the optimal perfor
 await detector.initialize();
 
 // Force XNNPACK (all native platforms)
-final detector = PoseDetector(
+final detector = await PoseDetector.create(
   performanceConfig: PerformanceConfig.xnnpack(numThreads: 4),
 );
-await detector.initialize();
 
-// Force GPU delegate (iOS recommended, Android experimental)
-final detector = PoseDetector(
+// Force GPU delegate
+final detector = await PoseDetector.create(
   performanceConfig: PerformanceConfig.gpu(),
 );
-await detector.initialize();
 
 // CPU-only (maximum compatibility)
-final detector = PoseDetector(
+final detector = await PoseDetector.create(
   performanceConfig: PerformanceConfig.disabled,
 );
-await detector.initialize();
 ```
 ## Migration Guide
 

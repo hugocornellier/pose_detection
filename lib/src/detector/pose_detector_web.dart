@@ -12,6 +12,8 @@ import '../types.dart';
 import '../util/pose_helpers.dart';
 import '../models/person_detector_web.dart';
 import '../models/pose_landmark_model_web.dart';
+import 'package:flutter_litert/src/web/web_detector_utils.dart'
+    show decodeBitmap, WebGpuFallback;
 
 /// Per-stage timing accumulator (microseconds). Populated by `detect()` when
 /// `PoseDetector.debugTimings` is true; reset per call.
@@ -79,8 +81,8 @@ class WebDetectTimings {
 /// final poses = await detector.detect(imageBytes);
 /// await detector.dispose();
 /// ```
-class PoseDetector {
-  static const String _packageVersion = '3.0.0';
+class PoseDetector with WebGpuFallback {
+  static const String _packageVersion = '3.1.0';
   static const String _pipelineVersion = 'pipeline_v1';
 
   /// Version key for the default pose detection pipeline.
@@ -233,19 +235,12 @@ class PoseDetector {
   ///
   /// May change at runtime if a `LiteRtRuntimeError` fires on the WebGPU
   /// path and the detector swaps to WASM.
+  @override
   String? get activeAccelerator =>
       _yolo.activeAccelerator ?? _lm.activeAccelerator;
 
-  /// True once the detector has irreversibly fallen back from WebGPU to
-  /// WASM after a runtime GPU failure. Useful for surfacing in UI.
-  bool get fellBackToWasm => _fellBackToWasm;
-  bool _fellBackToWasm = false;
-
-  /// Disposes both model runners and re-initializes them on the WASM
-  /// backend. Called after a [LiteRtRuntimeError] fires on WebGPU.
-  Future<void> _swapToWasm() async {
-    if (_fellBackToWasm) return;
-    _fellBackToWasm = true;
+  @override
+  Future<void> swapToWasm() async {
     _liteRtAccelerator = 'wasm';
     try {
       await _yolo.dispose();
@@ -299,18 +294,7 @@ class PoseDetector {
         'PoseDetector not initialized. Call initialize() first.',
       );
     }
-    try {
-      return await _detectInner(imageBytes);
-    } catch (e) {
-      // GPU OOM / device-lost / validation error mid-inference. If we were
-      // running on WebGPU, transparently swap all interpreters to WASM and
-      // retry once. If we were already on WASM, nothing to fall back to.
-      if (activeAccelerator == 'webgpu' && !_fellBackToWasm) {
-        await _swapToWasm();
-        return _detectInner(imageBytes);
-      }
-      rethrow;
-    }
+    return withFallback(() => _detectInner(imageBytes));
   }
 
   Future<List<Pose>> _detectInner(Uint8List imageBytes) async {
@@ -322,7 +306,7 @@ class PoseDetector {
 
     // Decode image to ImageBitmap (off-thread, no load-event roundtrip).
     if (t != null) sw.start();
-    final web.ImageBitmap? bitmap = await _decodeBitmap(imageBytes);
+    final web.ImageBitmap? bitmap = await decodeBitmap(imageBytes);
     if (t != null) {
       sw.stop();
       t.decodeUs = sw.elapsedMicroseconds;
@@ -621,23 +605,6 @@ class PoseDetector {
     throw UnsupportedError(
       'detectFromCameraImage is not supported on web. Use detect(imageBytes) instead.',
     );
-  }
-
-  /// Decodes encoded image bytes (JPEG, PNG, etc.) to an [web.ImageBitmap].
-  ///
-  /// Uses `createImageBitmap`, which decodes off the main thread and
-  /// avoids the HTMLImageElement load-event roundtrip.
-  Future<web.ImageBitmap?> _decodeBitmap(Uint8List bytes) async {
-    final web.Blob blob = web.Blob([bytes.toJS].toJS);
-    try {
-      final JSPromise<web.ImageBitmap> promise = web.window.createImageBitmap(
-        blob,
-      );
-      final web.ImageBitmap bm = await promise.toDart;
-      return bm;
-    } catch (_) {
-      return null;
-    }
   }
 
   /// Transforms letterboxed 256x256 normalized landmarks back to original image space.
