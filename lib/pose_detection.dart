@@ -28,7 +28,7 @@
 /// ```
 ///
 /// **Main Classes:**
-/// - [PoseDetector]: Main API for pose detection (runs inference in a background isolate)
+/// - [PoseDetector]: Main API for pose detection (background isolate on native; async browser runtime on web)
 /// - [Pose]: Detected person with bounding box and optional 33 landmarks
 /// - [PoseLandmark]: Single body keypoint with 3D coordinates and visibility
 /// - [PoseLandmarkType]: Enum of 33 body parts (nose, shoulders, knees, etc.)

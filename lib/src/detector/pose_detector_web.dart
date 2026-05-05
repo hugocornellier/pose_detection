@@ -73,11 +73,10 @@ class WebDetectTimings {
 ///
 /// Usage:
 /// ```dart
-/// final detector = PoseDetector(
+/// final detector = await PoseDetector.create(
 ///   mode: PoseMode.boxesAndLandmarks,
 ///   landmarkModel: PoseLandmarkModel.heavy,
 /// );
-/// await detector.initialize();
 /// final poses = await detector.detect(imageBytes);
 /// await detector.dispose();
 /// ```
@@ -167,7 +166,8 @@ class PoseDetector with WebGpuFallback {
 
   /// Initializes the pose detector by loading TensorFlow Lite models.
   ///
-  /// On web, this also initializes the TFLite.js WASM runtime via [initializeWeb].
+  /// On web, this initializes the selected browser runtime. The LiteRT.js path
+  /// is the default; the legacy tflite-js path still uses [initializeWeb].
   /// Must be called before [detect].
   /// If already initialized, will dispose existing models and reinitialize.
   ///

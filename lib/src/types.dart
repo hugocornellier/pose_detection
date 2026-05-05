@@ -30,7 +30,7 @@ enum PoseMode {
   boxesAndLandmarks,
 }
 
-/// Collection of pose landmarks with confidence score (internal use).
+/// Collection of pose landmarks with a confidence score.
 class PoseLandmarks {
   /// List of 33 body landmarks extracted from the BlazePose model.
   final List<PoseLandmark> landmarks;

@@ -288,7 +288,7 @@ CustomPaint(
 
 ## Live Camera Detection
 
-For real-time pose detection with a camera feed, use `detectFromCameraImage`. It auto-detects YUV420 (NV12 / NV21 / I420) and desktop BGRA/RGBA layouts, and the `cvtColor`, optional `rotate`, and `maxDim` downscale all run inside the detector's existing isolate: the UI thread is never blocked by OpenCV work.
+For real-time pose detection with a camera feed, use `detectFromCameraImage`. It auto-detects YUV420 (NV12 / NV21 / I420) and desktop single-plane 4-channel layouts, and the `cvtColor`, optional `rotate`, and `maxDim` downscale all run inside the detector's existing isolate on native platforms: the UI thread is never blocked by OpenCV work.
 
 ```dart
 import 'package:camera/camera.dart';
@@ -321,6 +321,7 @@ camera.startImageStream((CameraImage image) async {
 - `detectFromCameraImage` replaces the old `packYuv420` + manual `cv.cvtColor` + `cv.rotate` dance in one call; no `cv.Mat` on the UI thread.
 - Pass `rotation:` so the detector sees upright frames (Android back/front + device orientation logic); on iOS the camera plugin pre-rotates so this is often null.
 - Pass `maxDim:` (e.g. 640) to downscale in-isolate; the detection model internally resizes to 256px, so full-res frames just waste IPC bandwidth.
+- For desktop single-plane frames, `isBgra` defaults to `true` for macOS camera frames. Pass `isBgra: false` for Linux RGBA frames.
 - Use `PoseLandmarkModel.lite` for fastest real-time performance.
 - Mirror the overlay on the front camera to match `CameraPreview`'s auto-mirrored texture.
 - For advanced use (e.g. reusing a frame across multiple detectors), `prepareCameraFrame(...)` + `detectFromCameraFrame(...)` is the underlying two-step API.
@@ -369,7 +370,7 @@ The output is a standard H.264 MP4 with the pose overlay baked in. See `VideoFil
 
 ## Background Processing
 
-All inference runs automatically in a background isolate: the UI thread is never blocked during detection or landmark extraction. No special configuration is needed; `PoseDetector` handles isolate management internally.
+On native platforms, inference runs automatically in a background isolate: the UI thread is never blocked during detection or landmark extraction. On Flutter Web, inference runs asynchronously through the browser JavaScript/WebGPU/WASM runtime. No special configuration is needed; `PoseDetector` handles the platform-specific execution path internally.
 
 ## Advanced Usage
 
@@ -433,7 +434,7 @@ import 'package:pose_detection/pose_detection.dart';
 
 Two web runtimes are available, selectable per `PoseDetector`:
 
-1. **LiteRT.js with WebGPU delegate (default).** Google's official web runtime via `flutter_litert ≥ 2.5.0`. ~18× faster in real measurements (446 ms → 25 ms / call on the heavy BlazePose model with mixed single/multi-person images). Auto-loaded from CDN on first use, no `web/index.html` changes required. Prefers WebGPU; falls back to WASM automatically on unsupported browsers.
+1. **LiteRT.js with WebGPU delegate (default).** Google's official web runtime via `flutter_litert ≥ 2.5.1`. ~18× faster in real measurements (446 ms → 25 ms / call on the heavy BlazePose model with mixed single/multi-person images). Auto-loaded from CDN on first use, no `web/index.html` changes required. Prefers WebGPU; falls back to WASM automatically on unsupported browsers.
 2. **`tflite-js` (CPU/WASM, legacy).** Pass `useLiteRt: false` to opt into the previous default. No additional CDN scripts beyond those already loaded.
 
 The main difference from native is how you load images:
@@ -524,7 +525,7 @@ The package automatically selects the best acceleration strategy for each platfo
 |----------|-----------------|---------|-------|
 | **macOS** | XNNPACK | 2-5x | SIMD vectorization (NEON on ARM, AVX on x86) |
 | **Linux** | XNNPACK | 2-5x | SIMD vectorization |
-| **iOS** | Metal GPU | 2-4x | Hardware GPU acceleration |
+| **iOS** | XNNPACK for YOLO, Metal GPU for landmarks | 2-4x | Avoids YOLO Metal precision inconsistencies while keeping GPU acceleration for landmarks |
 | **Android** | XNNPACK | 2-5x | ARM NEON SIMD acceleration |
 | **Windows** | XNNPACK | 2-5x | SIMD vectorization (AVX on x86) |
 
@@ -553,7 +554,34 @@ final detector = await PoseDetector.create(
 ```
 ## Migration Guide
 
-### 3.0.0: `detectFromMat` signature change
+### 3.0.0 breaking changes
+
+#### Configuration moved from constructor to `initialize()`
+
+Configuration parameters are no longer accepted by `PoseDetector(...)`. Use the no-argument constructor plus `initialize(...)`, or keep using `PoseDetector.create(...)` for one-step construction.
+
+```dart
+// Before (2.x)
+final detector = PoseDetector(
+  mode: PoseMode.boxesAndLandmarks,
+  landmarkModel: PoseLandmarkModel.heavy,
+);
+
+// After (3.0)
+final detector = PoseDetector();
+await detector.initialize(
+  mode: PoseMode.boxesAndLandmarks,
+  landmarkModel: PoseLandmarkModel.heavy,
+);
+
+// Or one step
+final detector = await PoseDetector.create(
+  mode: PoseMode.boxesAndLandmarks,
+  landmarkModel: PoseLandmarkModel.heavy,
+);
+```
+
+#### `detectFromMat` signature changed
 
 The `imageWidth` and `imageHeight` named arguments have been removed. Dimensions are now read directly from the Mat.
 
@@ -568,3 +596,20 @@ final poses = await detector.detectFromMat(
 // After (3.0)
 final poses = await detector.detectFromMat(mat);
 ```
+
+#### Native `detect(...)` decode failures now throw
+
+On native platforms, undecodable image bytes now propagate as an error instead of returning an empty list. Wrap `detect(...)` in a `try/catch` if your 2.x call site depended on silent failure. On web, decode failure still returns an empty list because browser image decode failure does not throw.
+
+```dart
+try {
+  final poses = await detector.detect(imageBytes);
+  // Process poses...
+} on FormatException {
+  // Handle invalid or unsupported image bytes.
+}
+```
+
+### Platform note: repeated `initialize()` calls
+
+Native detectors throw `StateError` if `initialize()` is called twice without `dispose()`. The web detector disposes existing models and reinitializes.

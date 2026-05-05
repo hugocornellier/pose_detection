@@ -51,11 +51,10 @@ class _DetectionIsolateStartupData {
 ///
 /// Usage:
 /// ```dart
-/// final detector = PoseDetector(
+/// final detector = await PoseDetector.create(
 ///   mode: PoseMode.boxesAndLandmarks,
 ///   landmarkModel: PoseLandmarkModel.heavy,
 /// );
-/// await detector.initialize();
 /// final poses = await detector.detect(imageBytes);
 /// await detector.dispose();
 /// ```
@@ -133,7 +132,8 @@ class PoseDetector {
   /// Initializes the pose detector by loading TensorFlow Lite models.
   ///
   /// Must be called before [detect] or [detectFromMat].
-  /// Calling [initialize] twice without [dispose] throws [StateError].
+  /// On native platforms, calling [initialize] twice without [dispose] throws
+  /// [StateError]. On web, the existing models are disposed and reinitialized.
   Future<void> initialize({
     PoseMode mode = PoseMode.boxesAndLandmarks,
     PoseLandmarkModel landmarkModel = PoseLandmarkModel.heavy,
