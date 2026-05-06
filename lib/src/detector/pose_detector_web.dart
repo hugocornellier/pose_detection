@@ -64,10 +64,11 @@ class WebDetectTimings {
 /// 2. BlazePose model to extract 33 body keypoints per detected person
 ///
 /// Key differences from native:
-/// - No opencv_dart (no cv.Mat, no detectFromMat method)
+/// - No opencv_dart or cv.Mat support
 /// - No dart:io
-/// - Only has [detect] (no detectFromMat)
-/// - Image decoding uses HTMLImageElement via Blob/URL
+/// - API-parity methods such as [detectFromMat], [detectFromCameraFrame], and
+///   [detectFromCameraImage] throw [UnsupportedError]
+/// - Image decoding uses browser image decode (`createImageBitmap`)
 /// - Person crop uses Canvas drawImage
 /// - Landmark extraction uses RGBA from Canvas getImageData
 ///
@@ -229,15 +230,20 @@ class PoseDetector with WebGpuFallback {
   /// Returns true if the detector has been initialized and is ready to use.
   bool get isInitialized => _isInitialized;
 
-  /// The accelerator currently in use across all model runners
-  /// (`'webgpu'` / `'wasm'`), or null on the legacy tflite-js path or
-  /// before initialization completes.
+  /// The accelerator currently in use across model runners (`'webgpu'` /
+  /// `'wasm'`), or null on the legacy tflite-js path or before initialization
+  /// completes. Returns `'webgpu'` if any runner is still on WebGPU so runtime
+  /// fallback remains enabled for mixed WebGPU/WASM compile outcomes.
   ///
   /// May change at runtime if a `LiteRtRuntimeError` fires on the WebGPU
   /// path and the detector swaps to WASM.
   @override
-  String? get activeAccelerator =>
-      _yolo.activeAccelerator ?? _lm.activeAccelerator;
+  String? get activeAccelerator {
+    final String? yolo = _yolo.activeAccelerator;
+    final String? landmarks = _lm.activeAccelerator;
+    if (yolo == 'webgpu' || landmarks == 'webgpu') return 'webgpu';
+    return yolo ?? landmarks;
+  }
 
   @override
   Future<void> swapToWasm() async {
@@ -276,7 +282,8 @@ class PoseDetector with WebGpuFallback {
 
   /// Detects poses from encoded image bytes (JPEG, PNG, etc.).
   ///
-  /// On web, the image bytes are decoded via an HTMLImageElement using a Blob URL.
+  /// On web, the image bytes are decoded with browser image decode
+  /// (`createImageBitmap`).
   /// Person crops are generated using Canvas drawImage, and landmark input is
   /// extracted as RGBA data from Canvas getImageData.
   ///
@@ -285,7 +292,7 @@ class PoseDetector with WebGpuFallback {
   ///
   /// Returns a list of [Pose] objects, one per detected person.
   /// On web, returns an empty list if the image bytes cannot be decoded
-  /// (browser HTMLImageElement decode failure does not throw).
+  /// (browser image decode failure does not throw through this API).
   ///
   /// Throws [StateError] if called before [initialize].
   Future<List<Pose>> detect(Uint8List imageBytes) async {

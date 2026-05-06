@@ -17,7 +17,7 @@ import 'person_detector_base.dart';
 /// Uses Canvas API for image preprocessing instead of OpenCV.
 /// On the LiteRT.js path, runs on WebGPU when available and falls back to
 /// SIMD-WASM otherwise. The legacy tflite-js path is CPU/WASM only.
-/// Uses [Interpreter] directly (no [IsolateInterpreter] on web).
+/// Uses browser runtimes directly (no [IsolateInterpreter] on web).
 class YoloV8PersonDetector extends PersonDetectorBase {
   web.HTMLCanvasElement? _canvasElement;
   web.CanvasRenderingContext2D? _canvasCtx;
@@ -29,8 +29,8 @@ class YoloV8PersonDetector extends PersonDetectorBase {
   /// called with [useLiteRt: true].
   LiteRtInterpreter? _liteRtItp;
 
-  /// The accelerator passed to [LiteRtInterpreter.fromBytes] (`'webgpu'` /
-  /// `'wasm'`), or null if running on the legacy tflite-js path.
+  /// The accelerator that compiled this model (`'webgpu'` / `'wasm'`), or
+  /// null if running on the legacy tflite-js path.
   String? _activeAccelerator;
 
   /// The accelerator that compiled this model (`'webgpu'` / `'wasm'`),
@@ -52,8 +52,8 @@ class YoloV8PersonDetector extends PersonDetectorBase {
   /// Initializes the YOLOv8 person detector by loading the model.
   ///
   /// Parameters:
-  /// - [performanceConfig]: Accepted for API compatibility but ignored on web
-  ///   (always runs CPU/WASM).
+  /// - [performanceConfig]: Accepted for API compatibility. Web runtime
+  ///   selection is controlled by [useLiteRt] and [liteRtAccelerator].
   ///
   /// Loads the YOLOv8n model from assets, allocates tensors, and creates
   /// a canvas element for letterbox preprocessing. Must be called before [detect].
@@ -82,7 +82,7 @@ class YoloV8PersonDetector extends PersonDetectorBase {
         accelerator: resolved,
       );
       _liteRtItp = lrt;
-      _activeAccelerator = resolved;
+      _activeAccelerator = lrt.activeAccelerator;
 
       final inT = lrt.getInputTensor(0);
       inH = inT.shape[1];

@@ -14,7 +14,9 @@ String poseLandmarkModelPath(PoseLandmarkModel model) =>
 /// Normalizes x/y coordinates from 256x256 pixel space to [0, 1] range.
 ///
 /// Expected buffer layouts:
-/// - [landmarksData]: 195 floats = 33 landmarks × (x, y, z, visibility, presence)
+/// - [landmarksData]: at least 165 floats = 33 landmarks *
+///   (x, y, z, visibility, presence). Some heavy exports include 195 floats
+///   (39 * 5); this parser reads the first 33 landmarks.
 /// - [scoreData]: at least 1 float (reads index 0)
 PoseLandmarks parsePoseLandmarksFlat(
   Float32List landmarksData,
@@ -51,7 +53,7 @@ PoseLandmarks parsePoseLandmarksFlat(
 /// interpreter returns nested `List<dynamic>` outputs.
 ///
 /// Delegates to [parsePoseLandmarksFlat] after copying values into a
-/// [Float32List]; the copy cost is negligible for 195 floats.
+/// [Float32List]; the copy cost is negligible for 165/195 floats.
 PoseLandmarks parsePoseLandmarks(
   List<dynamic> landmarksData,
   List<dynamic> scoreData,

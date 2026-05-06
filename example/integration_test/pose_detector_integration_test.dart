@@ -675,10 +675,11 @@ void main() {
       final detector = PoseDetector();
       await detector.initialize(landmarkModel: PoseLandmarkModel.lite);
 
-      // Invalid bytes produce an undecodable Mat; the error now propagates.
+      // Invalid encoded image bytes are normalized to a catchable public
+      // FormatException instead of leaking isolate/RPC implementation details.
       await expectLater(
         () => detector.detect(Uint8List.fromList([0, 1, 2, 3])),
-        throwsA(anything),
+        throwsA(isA<FormatException>()),
       );
 
       await detector.dispose();

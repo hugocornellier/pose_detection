@@ -142,7 +142,9 @@ class CameraPoseOverlayPainter extends CustomPainter {
   /// Poses to render.
   final List<Pose> poses;
 
-  /// Source camera preview size in pixels (for coord-space mapping).
+  /// Source camera preview size in pixels, retained for repaint comparisons
+  /// and API compatibility. Coordinate mapping uses the image dimensions
+  /// stored on the first [Pose].
   final Size cameraSize;
 
   /// When true, flips x-coordinates to match a mirrored front-camera preview.
@@ -154,7 +156,7 @@ class CameraPoseOverlayPainter extends CustomPainter {
   late final Paint _dotPaint = Paint()..color = Colors.white;
 
   /// Creates a painter for the given [poses], source [cameraSize], and mirror
-  /// flag.
+  /// flag. The current coordinate mapping uses each pose's source image size.
   CameraPoseOverlayPainter({
     required this.poses,
     required this.cameraSize,

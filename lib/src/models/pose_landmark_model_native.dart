@@ -43,8 +43,9 @@ class _PoseBuffers {
 /// to prevent concurrent inference, avoiding XNNPACK thread contention.
 ///
 /// The pool size determines the maximum number of interpreter instances:
-/// - Pool size 1: Sequential processing (stable, predictable performance)
-/// - Pool size 3: Good balance for typical multi-person scenarios (default)
+/// - Pool size 1: Sequential processing (stable, predictable default)
+/// - Pool size 3: Good balance for typical multi-person scenarios when
+///   hardware acceleration is disabled and the caller opts in
 /// - Pool size 5+: Best for crowded scenes (6+ people)
 ///
 /// **How it works:**

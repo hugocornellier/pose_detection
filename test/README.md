@@ -1,187 +1,89 @@
 # Testing Guide
 
-This directory contains tests for the `pose_detection` package.
+This package has two test layers: fast host tests in `test/`, and model-backed
+integration tests in `example/integration_test/`.
 
-## Test Structure
+## Host Tests
 
-### `/test` - Unit Tests (Limited)
-Contains basic unit tests that can run in a pure Dart VM environment:
-- ✅ Error handling (StateError when not initialized)
-- ✅ API structure validation
+The root `test/` directory currently contains:
 
-**Note:** Most functionality requires TensorFlow Lite native libraries, so comprehensive testing must be done via integration tests.
+- `types_test.dart`: 60 tests for public value types, enums, helpers, and
+  skeleton topology.
+- `additional_coverage_test.dart`: 3 tests for registration and test-visible
+  model helper behavior.
 
-### `/integration_test` - Integration Tests (Comprehensive)
-Contains full integration tests that run in an actual app environment with TFLite support:
-- ✅ Initialization and disposal
-- ✅ Error handling
-- ✅ Detection with real sample images (pose1-7.jpg)
-- ✅ `detect(cv.Mat)` method
-- ✅ Different model variants (lite, full, heavy)
-- ✅ Different modes (boxes, boxesAndLandmarks)
-- ✅ Landmark and bounding box access (all 33 BlazePose landmarks)
-- ✅ Configuration parameters
-- ✅ Edge cases
+Run them from the package root:
 
-**Total Test Cases: 28**
-
-## Running Tests
-
-### ⚠️ Important: TensorFlow Lite Requirement
-
-The standard `flutter test` command runs tests in a Dart VM which **does not** have access to native libraries. Since this package uses TensorFlow Lite (a native library), most tests will fail with:
-
-```
-Failed to load dynamic library 'libtensorflowlite_c-mac.dylib'
+```bash
+flutter test
 ```
 
-**This is expected!** You must run integration tests instead.
+Or run the files explicitly:
 
-### Integration Tests (Recommended)
+```bash
+flutter test test/types_test.dart test/additional_coverage_test.dart
+```
 
-Integration tests run in an actual app environment where native libraries are available.
+These tests are intentionally limited to APIs that can run in the Flutter test
+environment without loading the pose models for inference.
 
-#### Using the Example App (Easiest)
+## Integration Tests
+
+Full inference coverage lives under the example app:
+
+- `example/integration_test/pose_detector_integration_test.dart`: 38 tests for
+  initialization, disposal, error handling, real image detection, model
+  variants, boxes-only mode, `detectFromMat`, `detectFromMatBytes`, result
+  consistency, and invalid image bytes.
+- `example/integration_test/pose_detector_benchmark_test.dart`: native
+  benchmark harness.
+- `example/integration_test/pose_detector_web_benchmark_test.dart`: web
+  benchmark harness.
+
+Run integration tests from `example/` on a supported device or desktop target:
 
 ```bash
 cd example
 flutter test integration_test/
 ```
 
-This will run the integration tests within the example app on a connected device or simulator.
-
-#### On iOS Simulator
+For a specific connected device:
 
 ```bash
-# List available simulators
+cd example
 flutter devices
-
-# Run tests on a specific simulator
-cd example
-flutter test integration_test/ --device-id=<simulator-id>
+flutter test integration_test/ --device-id=<device-id>
 ```
 
-#### On Android Emulator
+For a focused native integration test:
 
 ```bash
-# Start an emulator first
-flutter emulators --launch <emulator-name>
-
-# Run tests
 cd example
-flutter test integration_test/ --device-id=<emulator-id>
+flutter test integration_test/pose_detector_integration_test.dart
 ```
 
-#### On Physical Device
+## Native Library Notes
+
+The root host tests do not require TensorFlow Lite inference. Tests that
+initialize `PoseDetector` or call inference APIs load native TFLite through
+`flutter_litert` and should be run as integration tests in `example/`.
+
+If you are deliberately running a host-side native inference test and need to
+point `flutter_litert` at a local TensorFlow Lite C library, use
+`TFLITE_LIB_PATH`:
 
 ```bash
-# Connect device via USB/WiFi
-cd example
-flutter test integration_test/
+TFLITE_LIB_PATH=/path/to/libtensorflowlite_c-mac.dylib flutter test <test-file>
 ```
-
-### Quick Validation (Limited)
-
-To run the limited unit tests (only error handling):
-
-```bash
-flutter test test/pose_detector_test.dart
-```
-
-## Test Coverage
-
-The test suite covers:
-
-1. **Initialization**
-   - Default configuration
-   - Custom parameters
-   - Re-initialization
-   - Multiple dispose calls
-
-2. **Error Handling**
-   - StateError when not initialized
-
-3. **Real Image Detection**
-   - 7 sample images (pose1.jpg - pose7.jpg)
-   - Multiple people per image
-   - Different image sizes
-
-4. **API Methods**
-   - `detect(cv.Mat)` with OpenCV Mat input
-
-5. **Model Variants**
-   - PoseLandmarkModel.lite
-   - PoseLandmarkModel.full
-   - PoseLandmarkModel.heavy
-
-6. **Detection Modes**
-   - PoseMode.boxesAndLandmarks (full pipeline)
-   - PoseMode.boxes (fast, no landmarks)
-
-7. **Data Access**
-   - 33 BlazePose landmarks
-   - Bounding box coordinates
-   - Normalized coordinates
-   - Visibility scores
-   - Depth (z) coordinates
-
-8. **Configuration**
-   - detectorConf threshold
-   - detectorIou threshold
-   - maxDetections limit
-   - minLandmarkScore threshold
 
 ## Sample Images
 
-The tests use real pose images from `assets/samples/`:
-- pose1.jpg through pose7.jpg
-- Images contain people in various poses
-- Different lighting conditions and backgrounds
-- Multiple people in some images
+The integration tests use the example app's sample images in
+`example/assets/samples/pose1.jpg` through `pose7.jpg`. Keep `example/pubspec.yaml`
+asset entries in sync if images are added, renamed, or moved.
 
-## Expected Test Results
+## Adding Tests
 
-When running in a proper environment (device or platform-specific tests):
-- ✅ All 28 tests should pass
-- Detection should find people in all sample images
-- Landmarks should have valid coordinates within image bounds
-- Visibility scores should be between 0.0 and 1.0
-
-## Troubleshooting
-
-### "Failed to load dynamic library" error
-This error occurs when running `flutter test` without a proper platform environment. The TensorFlow Lite native library is not available to pure Dart tests.
-
-**Solutions:**
-- Preferred: Run tests on a device or use platform-specific test commands.
-- Local macOS-only fallback: `lib/src/pose_landmark_model.dart` now checks `POSE_TFLITE_LIB` and the repo path `macos/Frameworks/libtensorflowlite_c-mac.dylib`. On macOS you can point directly to a dylib for host tests:
-  ```bash
-  POSE_TFLITE_LIB=$PWD/macos/Frameworks/libtensorflowlite_c-mac.dylib flutter test test/pose_detector_test.dart
-  ```
-
-### Tests timing out
-Some tests process multiple images and may take longer on slower devices.
-
-**Solution:** Increase the test timeout or use the lite model for faster processing.
-
-### No people detected in images
-If tests fail because no people are detected, verify:
-1. Sample images are properly bundled (check pubspec.yaml)
-2. Model files are accessible
-3. Configuration thresholds aren't too strict
-
-## Adding New Tests
-
-When adding new tests:
-
-1. Use real sample images when possible
-2. Verify results are within expected bounds
-3. Test edge cases and error conditions
-4. Clean up resources with `await detector.dispose()`
-
-## CI/CD Integration
-
-For CI/CD pipelines, consider:
-- Running tests on emulators/simulators
-- Using integration_test package for full E2E tests
-- Splitting unit tests (pure Dart) from integration tests (require TFLite)
+When adding inference tests, prefer `example/integration_test/` and clean up
+detectors with `await detector.dispose()`. Use root `test/` for pure Dart or
+Flutter-test-safe API behavior only.

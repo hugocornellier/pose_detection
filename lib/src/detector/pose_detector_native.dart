@@ -61,6 +61,8 @@ class _DetectionIsolateStartupData {
 class PoseDetector {
   static const String _packageVersion = '3.1.0';
   static const String _pipelineVersion = 'pipeline_v1';
+  static const String _decodeFailureErrorPrefix =
+      'pose_detection_decode_failure:';
 
   /// Version key for the default pose detection pipeline.
   static const String modelVersion =
@@ -247,12 +249,24 @@ class PoseDetector {
         'PoseDetector not initialized. Call initialize() first.',
       );
     }
-    final List<dynamic> result = await _worker!.sendRequest<List<dynamic>>(
-      'detect',
-      {
+    final List<dynamic> result;
+    try {
+      result = await _worker!.sendRequest<List<dynamic>>('detect', {
         'bytes': TransferableTypedData.fromList([imageBytes]),
-      },
-    );
+      });
+    } on StateError catch (error) {
+      final String message = error.message;
+      if (message.startsWith(_decodeFailureErrorPrefix)) {
+        final detail = message.substring(_decodeFailureErrorPrefix.length);
+        throw FormatException(
+          detail.trim().isEmpty
+              ? 'Image bytes could not be decoded.'
+              : detail.trim(),
+          imageBytes,
+        );
+      }
+      rethrow;
+    }
     return _deserializePoses(result);
   }
 
@@ -263,6 +277,7 @@ class PoseDetector {
   ///
   /// Throws [StateError] if [initialize] has not been called successfully.
   /// Throws [FileSystemException] if the file cannot be read.
+  /// Throws [FormatException] if the file bytes cannot be decoded as an image.
   Future<List<Pose>> detectFromFilepath(String path) async {
     final bytes = await File(path).readAsBytes();
     return detect(bytes);
@@ -326,10 +341,10 @@ class PoseDetector {
   /// Detects poses directly from a [CameraFrame] produced by
   /// [prepareCameraFrame].
   ///
-  /// The frame's YUV→BGR colour conversion and any optional rotation happen
-  /// inside the detection isolate, not on the calling thread. Use this from a
-  /// `CameraController.startImageStream` callback to keep the UI thread free
-  /// of OpenCV work.
+  /// The frame's YUV/BGRA/RGBA to BGR colour conversion and any optional
+  /// rotation happen inside the detection isolate, not on the calling thread.
+  /// Use this from a `CameraController.startImageStream` callback to keep the
+  /// UI thread free of OpenCV work.
   ///
   /// Throws [StateError] if called before [initialize].
   Future<List<Pose>> detectFromCameraFrame(
@@ -358,9 +373,11 @@ class PoseDetector {
 
   /// One-call wrapper for live camera streams: takes a `CameraImage`-shaped
   /// object directly (any object exposing `width`, `height`, and `planes` with
-  /// `bytes` / `bytesPerRow` / `bytesPerPixel`) and runs YUV packing, colour
-  /// conversion, rotation, and downscale in the detection isolate, all off
-  /// the UI thread.
+  /// `bytes` / `bytesPerRow` / `bytesPerPixel`).
+  ///
+  /// The frame is packed into a transferable [CameraFrame] on the calling
+  /// isolate. OpenCV colour conversion, optional rotation, optional downscale,
+  /// and inference run inside the detection isolate.
   ///
   /// Returns an empty list (not an error) when the plane shape can't be
   /// decoded. Throws at runtime if [cameraImage] doesn't expose the expected
@@ -483,7 +500,24 @@ class PoseDetector {
             final ByteBuffer bb = (message['bytes'] as TransferableTypedData)
                 .materialize();
             final Uint8List imageBytes = bb.asUint8List();
-            final cv.Mat mat = cv.imdecode(imageBytes, cv.IMREAD_COLOR);
+            cv.Mat? decoded;
+            try {
+              decoded = cv.imdecode(imageBytes, cv.IMREAD_COLOR);
+              if (decoded.isEmpty) {
+                throw const FormatException(
+                  'Image bytes could not be decoded.',
+                );
+              }
+            } catch (e) {
+              decoded?.dispose();
+              mainSendPort.send({
+                'id': id,
+                'error':
+                    '$_decodeFailureErrorPrefix Image bytes could not be decoded: $e',
+              });
+              return;
+            }
+            final cv.Mat mat = decoded;
             try {
               final poses = await core!.detectDirect(
                 mat,

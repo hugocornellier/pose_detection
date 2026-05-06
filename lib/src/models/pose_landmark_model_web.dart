@@ -23,9 +23,10 @@ import '../util/web_image_utils.dart';
 /// Key differences from native:
 /// - No opencv_dart (no cv.Mat); input is RGBA Uint8List from Canvas
 /// - No dart:io
-/// - No IsolateInterpreter (uses a single web model instance)
+/// - No IsolateInterpreter
 /// - WebGPU when on the LiteRT.js path with browser support, else WASM
-/// - Single model instance (no pool; JS is single-threaded)
+/// - Legacy tflite-js uses one model; LiteRT.js can load multiple compiled
+///   instances for pipelined landmark inference.
 class PoseLandmarkModelRunner {
   litert_web.Model? _model;
   // LiteRT.js path may use multiple compiled instances (round-robin) so
@@ -34,8 +35,8 @@ class PoseLandmarkModelRunner {
   // WebGPU may interleave their command submissions.
   final List<LiteRtInterpreter> _liteRtItps = <LiteRtInterpreter>[];
 
-  /// The accelerator passed to [LiteRtInterpreter.fromBytes] (`'webgpu'` /
-  /// `'wasm'`), or null on the legacy tflite-js path.
+  /// The accelerator that compiled this model (`'webgpu'` / `'wasm'`), or
+  /// null on the legacy tflite-js path.
   String? _activeAccelerator;
 
   /// The accelerator that compiled the landmark model (`'webgpu'` / `'wasm'`),
@@ -45,7 +46,7 @@ class PoseLandmarkModelRunner {
   int _liteRtNext = 0;
   bool _isInitialized = false;
   Float32List? _inputBufferFlat;
-  // Reusable owned buffers for LiteRT.js outputs (landmarks: 33*5 = 195
+  // Reusable owned buffers for LiteRT.js outputs (landmarks: 165 or 195
   // floats, score: 1 float). The output indices are looked up at init time
   // because the .tflite export's output order is not guaranteed.
   Float32List? _liteRtLandmarks;
@@ -68,8 +69,8 @@ class PoseLandmarkModelRunner {
   ///
   /// Parameters:
   /// - [model]: Which BlazePose variant to use (lite, full, or heavy)
-  /// - [performanceConfig]: Accepted for API compatibility but ignored on web
-  ///   (web always uses CPU/WASM execution via TFLite.js)
+  /// - [performanceConfig]: Accepted for API compatibility. Web runtime
+  ///   selection is controlled by [useLiteRt] and [liteRtAccelerator].
   ///
   /// If already initialized, this will dispose the previous instance first.
   Future<void> initialize(
@@ -95,9 +96,13 @@ class PoseLandmarkModelRunner {
           await LiteRtInterpreter.fromBytes(bytes, accelerator: resolved),
         );
       }
-      _activeAccelerator = resolved;
+      _activeAccelerator =
+          _liteRtItps.any((itp) => itp.activeAccelerator == 'webgpu')
+          ? 'webgpu'
+          : _liteRtItps.first.activeAccelerator;
       // BlazePose has 5 outputs in some unspecified order; look up by shape.
-      //   landmarks  shape == [1, 195]  (33 landmarks × 5 channels)
+      //   landmarks  shape == [1, 165] for 33 landmarks or [1, 195] for
+      //              heavy exports that include 6 virtual landmarks.
       //   score      shape == [1, 1]
       // The other outputs are segmentation / heatmap / world coords.
       // Locate landmarks + score outputs by total element count. The .tflite
@@ -146,7 +151,8 @@ class PoseLandmarkModelRunner {
   /// Returns true if the model runner has been initialized and is ready to use.
   bool get isInitialized => _isInitialized;
 
-  /// Always returns 1 on web (single-threaded).
+  /// Public pool size is 1 on web. LiteRT.js internal parallelism is managed
+  /// separately with compiled interpreter instances.
   int get poolSize => 1;
 
   /// Output landmark buffer length (e.g. 165 or 195 floats); valid after

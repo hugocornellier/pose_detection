@@ -14,7 +14,9 @@
 Flutter plugin for on-device, multi-person pose detection and landmark estimation using TensorFlow Lite. Uses YOLOv8n for person detection and Google's [BlazePose](https://ai.google.dev/edge/mediapipe/solutions/vision/pose_landmarker) for 33-keypoint landmark extraction.
 
 <p align="center">
-  <img src="assets/screenshots/demo.gif" alt="Pose Detection Demo" width="600">
+  <img src="assets/screenshots/demo.gif" alt="Pose Detection Demo" width="420">
+  <br>
+  <sub><i style="color: #888;">Generated using the built-in example app with <code>sample_videos/dancing_10s.mp4</code> as input.</i></sub>
 </p>
 
 ## Quick Start
@@ -259,6 +261,10 @@ The `poseLandmarkConnections` constant contains 27 connections organized by body
 - **Arms**: Shoulders → elbows → wrists → fingers (left and right)
 - **Legs**: Hips → knees → ankles → feet (left and right)
 
+<p align="center">
+  <img src="assets/screenshots/ex1.png" alt="Multi-person pose detection with bounding boxes and skeleton overlay" width="600">
+</p>
+
 ### Built-in Overlay Painters
 
 The package ships two ready-to-use `CustomPainter` implementations:
@@ -288,7 +294,7 @@ CustomPaint(
 
 ## Live Camera Detection
 
-For real-time pose detection with a camera feed, use `detectFromCameraImage`. It auto-detects YUV420 (NV12 / NV21 / I420) and desktop single-plane 4-channel layouts, and the `cvtColor`, optional `rotate`, and `maxDim` downscale all run inside the detector's existing isolate on native platforms: the UI thread is never blocked by OpenCV work.
+For real-time pose detection with a camera feed, use `detectFromCameraImage`. It auto-detects YUV420 (NV12 / NV21 / I420) and desktop single-plane 4-channel layouts. The frame is packed before transfer, then OpenCV `cvtColor`, optional `rotate`, optional `maxDim` downscale, and inference run inside the detector's existing isolate on native platforms.
 
 ```dart
 import 'package:camera/camera.dart';
@@ -320,7 +326,7 @@ camera.startImageStream((CameraImage image) async {
 **Tips for camera detection:**
 - `detectFromCameraImage` replaces the old `packYuv420` + manual `cv.cvtColor` + `cv.rotate` dance in one call; no `cv.Mat` on the UI thread.
 - Pass `rotation:` so the detector sees upright frames (Android back/front + device orientation logic); on iOS the camera plugin pre-rotates so this is often null.
-- Pass `maxDim:` (e.g. 640) to downscale in-isolate; the detection model internally resizes to 256px, so full-res frames just waste IPC bandwidth.
+- Pass `maxDim:` (e.g. 640) to downscale in-isolate before YOLO. YOLO still letterboxes to its model input, and BlazePose crops are resized to 256x256, so full-res camera frames mostly waste transfer and preprocessing bandwidth.
 - For desktop single-plane frames, `isBgra` defaults to `true` for macOS camera frames. Pass `isBgra: false` for Linux RGBA frames.
 - Use `PoseLandmarkModel.lite` for fastest real-time performance.
 - Mirror the overlay on the front camera to match `CameraPreview`'s auto-mirrored texture.
@@ -361,7 +367,7 @@ cap.release();
 writer.release();
 ```
 
-The output is a standard H.264 MP4 with the pose overlay baked in. See `VideoFileScreen` in the [example app](https://pub.dev/packages/pose_detection/example) for the full implementation including progress tracking, cancellation, temporal smoothing, and playback.
+When the OS video backend has the `avc1` writer available, the output is an H.264 MP4 with the pose overlay baked in. See `VideoFileScreen` in the [example app](https://pub.dev/packages/pose_detection/example) for the full implementation including progress tracking, cancellation, temporal smoothing, and playback.
 
 **Notes:**
 - Video processing is CPU-bound and runs off the UI thread via the detector's isolate. The UI stays responsive.
@@ -434,14 +440,14 @@ import 'package:pose_detection/pose_detection.dart';
 
 Two web runtimes are available, selectable per `PoseDetector`:
 
-1. **LiteRT.js with WebGPU delegate (default).** Google's official web runtime via `flutter_litert ≥ 2.5.1`. ~18× faster in real measurements (446 ms → 25 ms / call on the heavy BlazePose model with mixed single/multi-person images). Auto-loaded from CDN on first use, no `web/index.html` changes required. Prefers WebGPU; falls back to WASM automatically on unsupported browsers.
+1. **LiteRT.js with WebGPU delegate (default).** Google's official web runtime via `flutter_litert >= 2.5.2`. ~18x faster in real measurements (446 ms -> 25 ms / call on the heavy BlazePose model with mixed single/multi-person images). Auto-loaded from CDN on first use, no `web/index.html` changes required. Prefers WebGPU; falls back to WASM automatically on unsupported browsers.
 2. **`tflite-js` (CPU/WASM, legacy).** Pass `useLiteRt: false` to opt into the previous default. No additional CDN scripts beyond those already loaded.
 
 The main difference from native is how you load images:
 
 - The Quick Start example above uses `dart:io` (`File(...)`), which is not available on web.
 - On web, load an image as `Uint8List` (for example from a file picker, drag-and-drop, or network response) and call `detect(imageBytes)`.
-- `detectFromMat(...)` (OpenCV `cv.Mat`) is native-only and is not available on web.
+- `detectFromMat(...)`, `detectFromMatBytes(...)`, `detectFromCameraFrame(...)`, `detectFromCameraImage(...)`, and `detectFromFilepath(...)` are unsupported on web and throw `UnsupportedError`. Use `detect(imageBytes)` instead.
 - `interpreterPoolSize` and `performanceConfig` are accepted for API compatibility but are ignored on web.
 
 ```dart
@@ -472,8 +478,8 @@ final detector = await PoseDetector.create(
 | Value | Behavior |
 |---|---|
 | `'auto'` (default) | Try WebGPU; if compile fails (no `navigator.gpu`, or unsupported ops) fall back to WASM. |
-| `'webgpu'` | Force WebGPU; same compile-time fallback to WASM if anything fails. |
-| `'wasm'` | Force SIMD-optimized WASM. Use this to opt out of GPU even when available. |
+| `'webgpu'` | Request WebGPU; falls back to WASM if WebGPU compile fails. |
+| `'wasm'` | Use SIMD-optimized WASM. Use this to opt out of GPU even when available. |
 
 The WASM fallback is still substantially faster than the legacy `tflite-js` path because LiteRT.js's WASM is SIMD-optimized.
 
@@ -485,7 +491,7 @@ If you need to self-host the runtime (offline, strict CSP, or to pin a specific 
 
 Heavy BlazePose model on macOS Chrome 147, 5 images, 10 timed iterations each, averaged over 2 runs (see `runWebBenchmark.sh`):
 
-| Image | Detections | Default (tflite-js) | LiteRT.js webgpu | Speedup |
+| Image | Detections | Legacy tflite-js | LiteRT.js webgpu | Speedup |
 |---|---|---|---|---|
 | pose1 | 1 | 357 ms | 20 ms | 17.8× |
 | pose2 | 1 | 357 ms | 18 ms | 19.9× |
@@ -542,7 +548,7 @@ final detector = await PoseDetector.create(
   performanceConfig: PerformanceConfig.xnnpack(numThreads: 4),
 );
 
-// Force GPU delegate
+// Request GPU delegate (iOS/macOS/Android; other native platforms fall back)
 final detector = await PoseDetector.create(
   performanceConfig: PerformanceConfig.gpu(),
 );
@@ -599,7 +605,7 @@ final poses = await detector.detectFromMat(mat);
 
 #### Native `detect(...)` decode failures now throw
 
-On native platforms, undecodable image bytes now propagate as an error instead of returning an empty list. Wrap `detect(...)` in a `try/catch` if your 2.x call site depended on silent failure. On web, decode failure still returns an empty list because browser image decode failure does not throw.
+On native platforms, undecodable image bytes now throw `FormatException` instead of returning an empty list. Wrap `detect(...)` in a `try/catch` if your 2.x call site depended on silent failure. On web, decode failure still returns an empty list because browser image decode failure does not throw through this API.
 
 ```dart
 try {

@@ -1,7 +1,11 @@
+## 3.1.1
+
+* Update documentation and dartdocs
+
 ## 3.1.0
 
-**Web:** LiteRT.js (WebGPU + WASM fallback) is now the default web runtime. 
-  * `useLiteRt` now defaults to `true` so no opt-in is required. Pass `useLiteRt: false` to use the legacy tflite-js path. `liteRtAccelerator` (`String`, default `'auto'`) controls the backend: `'auto'` prefers WebGPU with automatic WASM fallback, `'webgpu'` / `'wasm'` force a specific backend. On browsers without WebGPU support, `'auto'` falls back to WASM transparently. Both runtimes load from CDN on first use with no `web/index.html` changes required; see `configureLiteRtLoader` in `flutter_litert` for self-hosting options.
+**Web:** LiteRT.js (WebGPU + WASM fallback) is now the default web runtime.
+  * `useLiteRt` now defaults to `true` so no opt-in is required. Pass `useLiteRt: false` to use the legacy tflite-js path. `liteRtAccelerator` (`String`, default `'auto'`) controls the backend: `'auto'` and `'webgpu'` request WebGPU with WASM fallback when WebGPU compile fails, while `'wasm'` opts out of GPU. On browsers without WebGPU support, `'auto'` falls back to WASM transparently. Both runtimes load from CDN on first use with no `web/index.html` changes required; see `configureLiteRtLoader` in `flutter_litert` for self-hosting options.
 * Update flutter_litert -> 2.5.2
 
 ## 3.0.2
@@ -17,9 +21,9 @@
 **Breaking:**
 * `PoseDetector` configuration moves from the constructor to `initialize()`. `PoseDetector({mode: ..., landmarkModel: ..., ...})` → `PoseDetector()` + `await detector.initialize(mode: ..., landmarkModel: ..., ...)`. Matches `FaceDetector`'s shape. `PoseDetector.create({...})` continues to accept the same named params unchanged.
 * `PoseDetector.detectFromMat` signature changed. `detectFromMat(cv.Mat, {required int imageWidth, required int imageHeight})` is now `detectFromMat(cv.Mat)`. Dimensions are read from the Mat directly. Existing callers must drop the `imageWidth` and `imageHeight` named arguments.
-* `detect(...)` no longer swallows exceptions. Undecodable image bytes now propagate as an error (matching `FaceDetector` and `HandDetector` behaviour) rather than silently returning an empty list. Wrap `detect(...)` in a `try/catch` if your callsite depended on the previous silent-failure behaviour. On web, decode failure still returns an empty list because browser HTMLImageElement decode does not throw.
+* `detect(...)` no longer swallows exceptions. Undecodable native image bytes now throw `FormatException` (matching `FaceDetector` and `HandDetector` behaviour) rather than silently returning an empty list. Wrap `detect(...)` in a `try/catch` if your callsite depended on the previous silent-failure behaviour. On web, decode failure still returns an empty list because browser image decode failure does not throw through this API.
 
-* All inference now runs in a dedicated background isolate, keeping the UI thread free. Previously, inference ran on the calling thread.
+* On native platforms, inference now runs in a dedicated background isolate, keeping the UI thread free. Previously, native inference ran on the calling thread.
 * Add `PoseDetector.create({...})` one-step factory (mirrors `FaceDetector.create` and `HandDetector.create`).
 * Add `detectFromFilepath(String path)`: reads the file and delegates to `detect`.
 * Add `detectFromMatBytes(Uint8List, {required int width, required int height, int matType})` zero-copy fast path via `TransferableTypedData`.
