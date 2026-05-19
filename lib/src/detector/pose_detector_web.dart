@@ -606,7 +606,7 @@ class PoseDetector with WebGpuFallback {
   Future<List<Pose>> detectFromCameraImage(
     Object cameraImage, {
     CameraFrameRotation? rotation,
-    bool isBgra = true,
+    bool? isBgra,
     int? maxDim,
   }) {
     throw UnsupportedError(

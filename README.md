@@ -294,7 +294,14 @@ CustomPaint(
 
 ## Live Camera Detection
 
-For real-time pose detection with a camera feed, use `detectFromCameraImage`. It auto-detects YUV420 (NV12 / NV21 / I420) and desktop single-plane 4-channel layouts. The frame is packed before transfer, then OpenCV `cvtColor`, optional `rotate`, optional `maxDim` downscale, and inference run inside the detector's existing isolate on native platforms.
+For real-time pose detection from a camera feed, use `detectFromCameraImage`. All processing runs off the UI thread.
+
+> **Desktop (Windows / macOS / Linux):** The default `camera` package does not include a streaming implementation for desktop platforms. You must also add [`camera_desktop`](https://pub.dev/packages/camera_desktop) to your `pubspec.yaml`, otherwise `startImageStream` throws `UnimplementedError: onStreamedFrameAvailable() is not implemented`.
+> ```yaml
+> dependencies:
+>   camera: ^0.12.0
+>   camera_desktop: ^1.1.4   # required for Windows, macOS, and Linux streaming
+> ```
 
 ```dart
 import 'package:camera/camera.dart';
@@ -309,30 +316,28 @@ final camera = CameraController(
   cameras.first,
   ResolutionPreset.medium,
   enableAudio: false,
-  imageFormatGroup: ImageFormatGroup.yuv420,
+  imageFormatGroup: ImageFormatGroup.yuv420, // prevents JPEG fallback on Android; ignored on desktop
 );
 await camera.initialize();
 
 camera.startImageStream((CameraImage image) async {
   final poses = await detector.detectFromCameraImage(
     image,
-    // rotation: CameraFrameRotation.cw90, // based on device orientation
-    maxDim: 640, // optional in-isolate downscale before inference
+    // rotation: rotationForFrame(...), // recommended on Android/iOS
+    maxDim: 640,
   );
   // Process poses...
 });
 ```
 
-**Tips for camera detection:**
-- `detectFromCameraImage` replaces the old `packYuv420` + manual `cv.cvtColor` + `cv.rotate` dance in one call; no `cv.Mat` on the UI thread.
-- Pass `rotation:` so the detector sees upright frames (Android back/front + device orientation logic); on iOS the camera plugin pre-rotates so this is often null.
-- Pass `maxDim:` (e.g. 640) to downscale in-isolate before YOLO. YOLO still letterboxes to its model input, and BlazePose crops are resized to 256x256, so full-res camera frames mostly waste transfer and preprocessing bandwidth.
-- For desktop single-plane frames, `isBgra` defaults to `true` for macOS camera frames. Pass `isBgra: false` for Linux RGBA frames.
+Tips:
+- Pass `rotation:` on Android/iOS so the detector sees upright frames. Use `rotationForFrame(...)` to compute the correct value from sensor orientation and device orientation. On desktop frames are always upright so omit it.
+- Pass `maxDim: 640` to downscale frames before inference. Recommended: full-res frames waste bandwidth since the model input is much smaller.
 - Use `PoseLandmarkModel.lite` for fastest real-time performance.
 - Mirror the overlay on the front camera to match `CameraPreview`'s auto-mirrored texture.
-- For advanced use (e.g. reusing a frame across multiple detectors), `prepareCameraFrame(...)` + `detectFromCameraFrame(...)` is the underlying two-step API.
+- For advanced use, `prepareCameraFrame(...)` + `detectFromCameraFrame(...)` is the lower-level two-step API.
 
-See the full [example app](https://pub.dev/packages/pose_detection/example) for a production implementation including orientation handling, mirror handling, and frame throttling.
+See the full [example app](https://pub.dev/packages/pose_detection/example) for a complete implementation.
 
 ## Video Detection
 

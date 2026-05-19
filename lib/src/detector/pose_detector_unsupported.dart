@@ -86,7 +86,7 @@ class PoseDetector {
   Future<List<Pose>> detectFromCameraImage(
     Object cameraImage, {
     CameraFrameRotation? rotation,
-    bool isBgra = true,
+    bool? isBgra,
     int? maxDim,
   }) => throw UnsupportedError('Not supported');
 }
