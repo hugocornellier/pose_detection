@@ -18,7 +18,7 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  flutter_litert: ^2.5.5
+  flutter_litert: ^2.5.7
   opencv_dart: ^2.2.1+4
   meta: ^1.17.0
   web: ^1.1.1
@@ -44,7 +44,7 @@ flutter:
       android:
         dartPluginClass: PoseDetectionDart
       macos:
-        pluginClass: PoseDetectionPlugin
+        dartPluginClass: PoseDetectionDart
       windows:
         pluginClass: PoseDetectionPlugin
       linux:

@@ -9,13 +9,6 @@ Pod::Spec.new do |s|
   s.source                = { :path => '.' }
 
   s.platform              = :osx, '11.0'
-  s.swift_version         = '5.0'
-
-  s.source_files          = 'pose_detection/Sources/pose_detection/**/*.{swift,h,m}'
-  s.resource_bundles      = { 'pose_detection_privacy' => ['pose_detection/Sources/pose_detection/PrivacyInfo.xcprivacy'] }
-
-  s.dependency            'FlutterMacOS'
-  s.static_framework      = true
 
   # TFLite libraries are provided by flutter_litert dependency
 end

@@ -300,7 +300,7 @@ For real-time pose detection from a camera feed, use `detectFromCameraImage`. Al
 > ```yaml
 > dependencies:
 >   camera: ^0.12.0
->   camera_desktop: ^1.1.4   # required for Windows, macOS, and Linux streaming
+>   camera_desktop: ^1.1.6   # required for Windows, macOS, and Linux streaming
 > ```
 
 ```dart
