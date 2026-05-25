@@ -1,3 +1,11 @@
+## 3.1.5
+
+* Remove unused Darwin podspecs for Dart-only iOS/macOS plugin registration.
+
+## 3.1.4
+
+* Update flutter_litert -> 2.5.8
+
 ## 3.1.3
 
 * Update flutter_litert -> 2.5.5
