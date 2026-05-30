@@ -36,8 +36,18 @@ migrate_working_dir/
 /coverage/
 **/coverage/
 
-# Explicitly exclude generated example web output (very large, duplicated assets)
-example_web/build/
+# Second example app: pub.dev only renders example/, so this just duplicates assets.
+example_web/
+
+# Example sample images: not declared as runtime assets (only assets/models is).
+example/assets/
+
+# Demo videos used only by the example app, not loaded by the package at runtime.
+sample_videos/
+
+# Example Podfile (gitignored; not needed in the published tarball).
+example/**/Podfile
+example/**/Podfile.lock
 
 # Symbolication related
 app.*.symbols
