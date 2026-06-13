@@ -11,6 +11,7 @@
 //
 //   flutter test integration_test/pose_delegate_sweep_test.dart -d macos
 
+import 'dart:io' show Platform;
 import 'dart:math';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -78,6 +79,11 @@ Future<List<int>> _benchModel({
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
+  // Use dart:io Platform rather than defaultTargetPlatform: under
+  // `flutter test`, defaultTargetPlatform is forced to android in debug
+  // builds, which would skip the sweep even on a real macOS run.
+  final isMacOS = Platform.isMacOS;
+
   const modes = <String, PerformanceConfig>{
     'disabled': PerformanceConfig(mode: PerformanceMode.disabled),
     'xnnpack': PerformanceConfig.xnnpack(),
@@ -98,6 +104,7 @@ void main() {
         test(
           '$modelName / $modeName',
           timeout: const Timeout(Duration(minutes: 10)),
+          skip: isMacOS ? false : 'macOS-only delegate sweep',
           () async {
             final t = await _benchModel(model: model, config: config);
             final line =

@@ -152,7 +152,10 @@ jobs:
           emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim
           disable-animations: true
           working-directory: example
-          script: flutter test integration_test/ -d emulator-5554
+          script: |
+            set -e
+            flutter test integration_test/pose_detector_integration_test.dart -d emulator-5554
+            flutter test integration_test/pose_detector_benchmark_test.dart -d emulator-5554
 
   integration-linux:
     name: Integration Linux (${{ matrix.flutter-channel }})
