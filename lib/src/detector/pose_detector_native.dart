@@ -9,6 +9,7 @@ import 'package:opencv_dart/opencv_dart.dart' as cv;
 
 import '../types.dart';
 import '../isolate/pose_detector_core.dart';
+import '../util/native_image_utils.dart';
 
 /// Startup payload transferred to the background isolate via [Isolate.spawn].
 class _DetectionIsolateStartupData {
@@ -24,6 +25,7 @@ class _DetectionIsolateStartupData {
   final int interpreterPoolSize;
   final String performanceModeName;
   final int? numThreads;
+  final bool useCompiledModel;
 
   _DetectionIsolateStartupData({
     required this.sendPort,
@@ -38,6 +40,7 @@ class _DetectionIsolateStartupData {
     required this.interpreterPoolSize,
     required this.performanceModeName,
     required this.numThreads,
+    required this.useCompiledModel,
   });
 }
 
@@ -107,6 +110,7 @@ class PoseDetector {
     double minLandmarkScore = 0.5,
     int interpreterPoolSize = 1,
     PerformanceConfig performanceConfig = const PerformanceConfig(),
+    bool useCompiledModel = true,
     // Web-only; accepted here for API parity but ignored on native.
     bool useLiteRt = true,
     String liteRtAccelerator = 'auto',
@@ -121,6 +125,7 @@ class PoseDetector {
       minLandmarkScore: minLandmarkScore,
       interpreterPoolSize: interpreterPoolSize,
       performanceConfig: performanceConfig,
+      useCompiledModel: useCompiledModel,
     );
     return detector;
   }
@@ -145,6 +150,7 @@ class PoseDetector {
     double minLandmarkScore = 0.5,
     int interpreterPoolSize = 1,
     PerformanceConfig performanceConfig = const PerformanceConfig(),
+    bool useCompiledModel = true,
     // Web-only; accepted here for API parity but ignored on native.
     bool useLiteRt = true,
     String liteRtAccelerator = 'auto',
@@ -177,6 +183,7 @@ class PoseDetector {
       minLandmarkScore: minLandmarkScore,
       interpreterPoolSize: interpreterPoolSize,
       performanceConfig: performanceConfig,
+      useCompiledModel: useCompiledModel,
     );
   }
 
@@ -200,12 +207,17 @@ class PoseDetector {
     double minLandmarkScore = 0.5,
     int interpreterPoolSize = 1,
     PerformanceConfig performanceConfig = const PerformanceConfig(),
+    bool useCompiledModel = true,
   }) async {
     if (isReady) {
       throw StateError('PoseDetector already initialized');
     }
 
-    final effectivePoolSize = performanceConfig.mode == PerformanceMode.disabled
+    // The interpreter path forces a single slot unless delegates are disabled
+    // (XNNPACK thread contention). The CompiledModel path serializes per slot
+    // itself, so it honours the requested pool size to allow parallel inference.
+    final effectivePoolSize =
+        (useCompiledModel || performanceConfig.mode == PerformanceMode.disabled)
         ? interpreterPoolSize
         : 1;
 
@@ -223,6 +235,7 @@ class PoseDetector {
         minLandmarkScore: minLandmarkScore,
         interpreterPoolSize: effectivePoolSize,
         performanceConfig: performanceConfig,
+        useCompiledModel: useCompiledModel,
       );
     } catch (e) {
       if (worker.isReady) {
@@ -471,6 +484,7 @@ class PoseDetector {
           mode: performanceMode,
           numThreads: data.numThreads,
         ),
+        useCompiledModel: data.useCompiledModel,
       );
 
       mainSendPort.send(workerReceivePort.sendPort);
@@ -549,7 +563,12 @@ class PoseDetector {
             final int height = message['height'] as int;
             final int matTypeValue = message['matType'] as int;
             final matType = cv.MatType(matTypeValue);
-            final mat = cv.Mat.fromList(height, width, matType, matBytes);
+            final mat = NativeImageUtils.matFromPackedBytes(
+              height,
+              width,
+              matType,
+              matBytes,
+            );
             try {
               final poses = await core!.detectDirect(
                 mat,
@@ -627,96 +646,17 @@ class PoseDetector {
     final int? rotationIndex = message['rotation'] as int?;
     final int? maxDim = message['maxDim'] as int?;
 
-    int? rotateFlag() {
-      if (rotationIndex == null) return null;
-      return switch (CameraFrameRotation.values[rotationIndex]) {
-        CameraFrameRotation.cw90 => cv.ROTATE_90_CLOCKWISE,
-        CameraFrameRotation.cw180 => cv.ROTATE_180,
-        CameraFrameRotation.cw270 => cv.ROTATE_90_COUNTERCLOCKWISE,
-      };
-    }
-
-    cv.Mat maybeResize(cv.Mat m) {
-      if (maxDim == null || (m.cols <= maxDim && m.rows <= maxDim)) return m;
-      final double scale = maxDim / (m.cols > m.rows ? m.cols : m.rows);
-      final resized = cv.resize(m, (
-        (m.cols * scale).toInt(),
-        (m.rows * scale).toInt(),
-      ), interpolation: cv.INTER_LINEAR);
-      m.dispose();
-      return resized;
-    }
-
-    cv.Mat maybeRotate(cv.Mat m) {
-      final flag = rotateFlag();
-      if (flag == null) return m;
-      final rotated = cv.rotate(m, flag);
-      m.dispose();
-      return rotated;
-    }
-
-    switch (conversion) {
-      case CameraFrameConversion.bgra2bgr:
-      case CameraFrameConversion.rgba2bgr:
-        final bgraOrRgba = cv.Mat.fromList(
-          height,
-          strideCols,
-          cv.MatType.CV_8UC4,
-          bytes,
-        );
-        cv.Mat current = strideCols != width
-            ? bgraOrRgba.region(cv.Rect(0, 0, width, height))
-            : bgraOrRgba;
-
-        if (maxDim != null &&
-            (current.cols > maxDim || current.rows > maxDim)) {
-          final double scale =
-              maxDim /
-              (current.cols > current.rows ? current.cols : current.rows);
-          final resized = cv.resize(current, (
-            (current.cols * scale).toInt(),
-            (current.rows * scale).toInt(),
-          ), interpolation: cv.INTER_LINEAR);
-          if (!identical(current, bgraOrRgba)) current.dispose();
-          current = resized;
-        }
-
-        final flag = rotateFlag();
-        if (flag != null) {
-          final rotated = cv.rotate(current, flag);
-          if (!identical(current, bgraOrRgba)) current.dispose();
-          current = rotated;
-        }
-
-        final cvtCode = conversion == CameraFrameConversion.bgra2bgr
-            ? cv.COLOR_BGRA2BGR
-            : cv.COLOR_RGBA2BGR;
-        final bgr = cv.cvtColor(current, cvtCode);
-        if (!identical(current, bgraOrRgba)) current.dispose();
-        bgraOrRgba.dispose();
-        return bgr;
-
-      case CameraFrameConversion.yuv2bgrNv12:
-      case CameraFrameConversion.yuv2bgrNv21:
-      case CameraFrameConversion.yuv2bgrI420:
-        final yuvMat = cv.Mat.fromList(
-          height + height ~/ 2,
-          width,
-          cv.MatType.CV_8UC1,
-          bytes,
-        );
-        final cvtCode = switch (conversion) {
-          CameraFrameConversion.yuv2bgrNv12 => cv.COLOR_YUV2BGR_NV12,
-          CameraFrameConversion.yuv2bgrNv21 => cv.COLOR_YUV2BGR_NV21,
-          CameraFrameConversion.yuv2bgrI420 => cv.COLOR_YUV2BGR_I420,
-          _ => cv.COLOR_YUV2BGR_NV12,
-        };
-        cv.Mat current = cv.cvtColor(yuvMat, cvtCode);
-        yuvMat.dispose();
-        current = maybeResize(current);
-        current = maybeRotate(current);
-        return current;
-    }
+    final frame = CameraFrame(
+      bytes: bytes,
+      width: width,
+      height: height,
+      strideCols: strideCols,
+      conversion: conversion,
+      rotation: rotationIndex == null
+          ? null
+          : CameraFrameRotation.values[rotationIndex],
+    );
+    return NativeImageUtils.cameraFrameToBgrMat(frame, maxDim: maxDim);
   }
 }
 
@@ -735,6 +675,7 @@ class _PoseDetectorWorker extends IsolateWorkerBase {
     required double minLandmarkScore,
     required int interpreterPoolSize,
     required PerformanceConfig performanceConfig,
+    required bool useCompiledModel,
   }) async {
     await initWorker(
       (sendPort) => Isolate.spawn(
@@ -752,6 +693,7 @@ class _PoseDetectorWorker extends IsolateWorkerBase {
           interpreterPoolSize: interpreterPoolSize,
           performanceModeName: performanceConfig.mode.name,
           numThreads: performanceConfig.numThreads,
+          useCompiledModel: useCompiledModel,
         ),
         debugName: 'PoseDetector',
       ),

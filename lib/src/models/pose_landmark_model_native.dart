@@ -31,6 +31,21 @@ class _PoseBuffers {
   });
 }
 
+/// One CompiledModel pool slot: a [CompiledModel] plus a reusable input buffer.
+///
+/// A single [CompiledModel] is not thread-safe, so each slot serializes its own
+/// calls through an [AsyncLock]. The pool selects slots round-robin, so
+/// concurrent [PoseLandmarkModelRunner.run] calls (one per detected person,
+/// dispatched via `Future.wait`) land on different slots and overlap, while
+/// calls colliding on the same slot run back-to-back.
+class _CompiledSlot {
+  final CompiledModel model;
+  final Float32List input;
+  final AsyncLock lock = AsyncLock();
+
+  _CompiledSlot(this.model, this.input);
+}
+
 /// BlazePose landmark extraction model runner for Stage 2 of the pose detection pipeline.
 ///
 /// Extracts 33 body landmarks from person crops using the BlazePose model.
@@ -59,6 +74,17 @@ class PoseLandmarkModelRunner {
 
   /// Per-slot pre-allocated buffers, keyed by interpreter identity.
   final Map<Interpreter, _PoseBuffers> _buffers = {};
+
+  /// CompiledModel pool slots, used instead of [_pool] when initialized with
+  /// `useCompiledModel: true`. Empty in interpreter mode.
+  final List<_CompiledSlot> _compiledSlots = [];
+  int _nextCompiled = 0;
+
+  /// Output tensor indices for the CompiledModel path, resolved at init from
+  /// output byte sizes (landmarks = floats divisible by 5 and >= 165; score =
+  /// a single float).
+  int _landmarksIdx = 0;
+  int _scoreIdx = 1;
 
   bool _isInitialized = false;
 
@@ -104,11 +130,21 @@ class PoseLandmarkModelRunner {
 
   /// Initializes from pre-loaded model bytes (used inside a background isolate
   /// where Flutter asset loading is not available).
+  ///
+  /// When [useCompiledModel] is true, the runner builds a pool of LiteRT Next
+  /// [CompiledModel] instances ([poolSize] of them) instead of an
+  /// [InterpreterPool]. [compiledForceCpu] pins each CompiledModel to CPU.
   Future<void> initializeFromBuffer(
     Uint8List modelBytes, {
     PerformanceConfig? performanceConfig,
+    bool useCompiledModel = false,
+    bool compiledForceCpu = false,
   }) async {
     if (_isInitialized) await dispose();
+    if (useCompiledModel) {
+      await _initCompiled(modelBytes, forceCpu: compiledForceCpu);
+      return;
+    }
     await _initWith(
       (options) async {
         final interpreter = Interpreter.fromBuffer(
@@ -120,6 +156,41 @@ class PoseLandmarkModelRunner {
       performanceConfig: performanceConfig,
       useIsolateInterpreter: false,
     );
+  }
+
+  /// Builds the CompiledModel pool. One CompiledModel per [poolSize] slot, each
+  /// with its own reusable input buffer, so multiple landmark inferences can be
+  /// in flight on distinct models.
+  Future<void> _initCompiled(
+    Uint8List modelBytes, {
+    required bool forceCpu,
+  }) async {
+    _compiledSlots.clear();
+    _nextCompiled = 0;
+    final int slots = poolSize;
+    for (int i = 0; i < slots; i++) {
+      final CompiledModel model = CompiledModel.fromBufferWithGpuFallback(
+        modelBytes,
+        forceCpu: forceCpu,
+      );
+      if (i == 0) _identifyCompiledOutputs(model);
+      _compiledSlots.add(_CompiledSlot(model, Float32List(256 * 256 * 3)));
+    }
+    _isInitialized = true;
+  }
+
+  /// Resolves landmark/score output indices from CompiledModel byte sizes.
+  /// BlazePose outputs are {landmarks(195), score(1), mask, heatmap, world}.
+  void _identifyCompiledOutputs(CompiledModel model) {
+    final List<int> sizes = model.outputByteSizes;
+    for (int i = 0; i < sizes.length; i++) {
+      final int floatCount = sizes[i] ~/ 4;
+      if (floatCount == 1) {
+        _scoreIdx = i;
+      } else if (floatCount >= 165 && floatCount % 5 == 0) {
+        _landmarksIdx = i;
+      }
+    }
   }
 
   Future<void> _initWith(
@@ -165,6 +236,10 @@ class PoseLandmarkModelRunner {
   /// After disposal, [initialize] must be called again before using the runner.
   Future<void> dispose() async {
     await _pool.dispose();
+    for (final _CompiledSlot slot in _compiledSlots) {
+      slot.model.close();
+    }
+    _compiledSlots.clear();
     _buffers.clear();
     _isInitialized = false;
   }
@@ -189,6 +264,20 @@ class PoseLandmarkModelRunner {
       throw StateError(
         'PoseLandmarkModelRunner not initialized. Call initialize() first.',
       );
+    }
+
+    if (_compiledSlots.isNotEmpty) {
+      final _CompiledSlot slot = _compiledSlots[_nextCompiled];
+      _nextCompiled = (_nextCompiled + 1) % _compiledSlots.length;
+      return slot.lock.run(() async {
+        bgrBytesToRgbFloat32(
+          bytes: mat.data,
+          totalPixels: mat.rows * mat.cols,
+          buffer: slot.input,
+        );
+        final List<Float32List> outs = await slot.model.runAsync([slot.input]);
+        return parsePoseLandmarksFlat(outs[_landmarksIdx], outs[_scoreIdx]);
+      });
     }
 
     return _pool.withInterpreter((interp, iso) async {

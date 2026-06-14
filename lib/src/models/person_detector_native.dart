@@ -13,6 +13,22 @@ class YoloV8PersonDetector extends PersonDetectorBase {
   IsolateInterpreter? _iso;
   Delegate? _delegate;
 
+  /// LiteRT Next CompiledModel, used instead of [interpreter]/[_iso] when the
+  /// detector is initialized with `useCompiledModel: true`. Created from bytes
+  /// inside the background isolate.
+  CompiledModel? _compiled;
+
+  /// YOLO output-head layout, resolved once at init from the output tensor
+  /// shape. Used by the flat decoder ([postProcessDetectionsFlat]) to index without
+  /// rebuilding the dense tensor as nested lists.
+  int _yoloChannels = 0;
+  int _yoloAnchors = 0;
+  bool _yoloChannelMajor = true;
+
+  /// Flat output buffer reused by the interpreter path (the CompiledModel path
+  /// reads the flat list returned by runAsync directly).
+  Float32List? _flatOut;
+
   /// COCO dataset class ID for the "person" class.
   static const int cocoPersonClassId = 0;
 
@@ -42,16 +58,77 @@ class YoloV8PersonDetector extends PersonDetectorBase {
 
   /// Initializes from pre-loaded model bytes (used inside a background isolate
   /// where Flutter asset loading is not available).
+  ///
+  /// When [useCompiledModel] is true, a LiteRT Next [CompiledModel] backs
+  /// inference instead of an [Interpreter]. [compiledForceCpu] pins the
+  /// CompiledModel to CPU (no GPU attempt); the caller uses this on iOS to
+  /// avoid Metal floating-point variance changing detection counts.
   Future<void> initializeFromBuffer(
     Uint8List modelBytes, {
     PerformanceConfig? performanceConfig,
+    bool useCompiledModel = false,
+    bool compiledForceCpu = false,
   }) async {
     if (isInitializedFlag) await dispose();
+    if (useCompiledModel) {
+      await _initCompiled(modelBytes, forceCpu: compiledForceCpu);
+      return;
+    }
     await _initWith(
       (options) async => Interpreter.fromBuffer(modelBytes, options: options),
       performanceConfig,
       useIsolateInterpreter: false,
     );
+  }
+
+  /// Builds the CompiledModel path. Input/output shapes are read once from a
+  /// plain throwaway [Interpreter] because [CompiledModel] exposes only byte
+  /// sizes, not tensor shapes, and the flat YOLO decoder needs the output
+  /// shape to index the flat CompiledModel output.
+  Future<void> _initCompiled(
+    Uint8List modelBytes, {
+    required bool forceCpu,
+  }) async {
+    final Interpreter probe = Interpreter.fromBuffer(modelBytes);
+    try {
+      probe.allocateTensors();
+      final List<int> inShape = probe.getInputTensor(0).shape;
+      inH = inShape[1];
+      inW = inShape[2];
+      outShapes.clear();
+      for (final Tensor t in probe.getOutputTensors()) {
+        outShapes.add(List<int>.from(t.shape));
+      }
+    } finally {
+      probe.close();
+    }
+    _computeYoloLayout();
+
+    _compiled = CompiledModel.fromBufferWithGpuFallback(
+      modelBytes,
+      forceCpu: forceCpu,
+    );
+    isInitializedFlag = true;
+  }
+
+  /// Resolves [_yoloChannels]/[_yoloAnchors]/[_yoloChannelMajor] from the
+  /// single output tensor's shape `[1, d1, d2]`, matching the layout heuristic
+  /// in flutter_litert's decodeDetectionOutputs (channel-major when the smaller
+  /// dim is 84/85). Also allocates the reusable flat output buffer.
+  void _computeYoloLayout() {
+    final List<int> shape = outShapes[0];
+    final int d1 = shape[shape.length - 2];
+    final int d2 = shape[shape.length - 1];
+    if (d1 < d2 && (d1 == 84 || d1 == 85)) {
+      _yoloChannels = d1;
+      _yoloAnchors = d2;
+      _yoloChannelMajor = true;
+    } else {
+      _yoloChannels = d2;
+      _yoloAnchors = d1;
+      _yoloChannelMajor = false;
+    }
+    _flatOut = Float32List(_yoloChannels * _yoloAnchors);
   }
 
   Future<void> _initWith(
@@ -76,6 +153,7 @@ class YoloV8PersonDetector extends PersonDetectorBase {
     for (final Tensor t in outs) {
       outShapes.add(List<int>.from(t.shape));
     }
+    _computeYoloLayout();
 
     if (useIsolateInterpreter) {
       _iso = await InterpreterFactory.createIsolateIfNeeded(itp, _delegate);
@@ -94,6 +172,8 @@ class YoloV8PersonDetector extends PersonDetectorBase {
     _iso = null;
     _delegate?.delete();
     _delegate = null;
+    _compiled?.close();
+    _compiled = null;
     disposeBase();
   }
 
@@ -121,7 +201,7 @@ class YoloV8PersonDetector extends PersonDetectorBase {
     int maxDet = 10,
     bool personOnly = true,
   }) async {
-    if (!isInitializedFlag || interpreter == null) {
+    if (!isInitializedFlag || (interpreter == null && _compiled == null)) {
       throw StateError('YoloV8PersonDetector not initialized.');
     }
 
@@ -133,24 +213,33 @@ class YoloV8PersonDetector extends PersonDetectorBase {
     NativeImageUtils.matToTensorYolo(letter, buffer: inputBuffer);
     letter.dispose();
 
-    final int inputCount = interpreter!.getInputTensors().length;
-    final List<Object> inputs = List<Object>.filled(
-      inputCount,
-      inputBuffer!.buffer,
-      growable: false,
-    );
-
-    cachedOutputs ??= createOutputBuffers(outShapes);
-    zeroOutputBuffers(cachedOutputs!, outShapes);
-
-    if (_iso != null) {
-      await _iso!.runForMultipleInputs(inputs, cachedOutputs!);
+    final Float32List out0;
+    if (_compiled != null) {
+      final List<Float32List> flat = await _compiled!.runAsync([inputBuffer!]);
+      out0 = flat[0];
     } else {
-      interpreter!.runForMultipleInputs(inputs, cachedOutputs!);
+      final int inputCount = interpreter!.getInputTensors().length;
+      final List<Object> inputs = List<Object>.filled(
+        inputCount,
+        inputBuffer!.buffer,
+        growable: false,
+      );
+      // Write the detection head into a flat reusable buffer (raw float bytes),
+      // so it can be decoded by index without a nested-list rebuild.
+      final Map<int, Object> outputs = <int, Object>{0: _flatOut!.buffer};
+      if (_iso != null) {
+        await _iso!.runForMultipleInputs(inputs, outputs);
+      } else {
+        interpreter!.runForMultipleInputs(inputs, outputs);
+      }
+      out0 = _flatOut!;
     }
 
-    return postProcessDetections(
-      outputs: cachedOutputs!.values.toList(),
+    return postProcessDetectionsFlat(
+      out0,
+      channels: _yoloChannels,
+      anchors: _yoloAnchors,
+      channelMajor: _yoloChannelMajor,
       inputWidth: inW,
       inputHeight: inH,
       r: r,
@@ -160,7 +249,6 @@ class YoloV8PersonDetector extends PersonDetectorBase {
       imageHeight: imageHeight,
       confThres: confThres,
       iouThres: iouThres,
-      topkPreNms: 0,
       maxDet: maxDet,
       filterClassId: personOnly ? cocoPersonClassId : null,
     );

@@ -15,13 +15,23 @@ dependencies:
   file_selector_macos: ^0.9.5
   pose_detection:
     path: ../
+  # Direct dependency so the example can import OneEuroFilter (and CompiledModel
+  # benchmarks can import flutter_litert).
+  flutter_litert: ^3.0.0
   flutter_colorpicker: ^1.1.0
   path_provider: ^2.1.5
   camera: ^0.12.0
-  camera_desktop: ^1.1.8
+  camera_desktop: ^1.2.1
   opencv_dart: ^2.2.1+4
   sensors_plus: ^6.1.1
   video_player: ^2.9.2
+
+# video_player_avfoundation 2.9.7's macOS Swift Package imports the iOS-only
+# <Flutter/Flutter.h> module, which fails to build on macOS ("module 'Flutter'
+# not found"). Pin to 2.9.4, the last version that builds on macOS, until the
+# upstream package is fixed.
+dependency_overrides:
+  video_player_avfoundation: 2.9.4
 
 dev_dependencies:
   flutter_test:

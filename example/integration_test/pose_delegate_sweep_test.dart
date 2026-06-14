@@ -53,6 +53,9 @@ Future<List<int>> _benchModel({
     mode: PoseMode.boxesAndLandmarks,
     landmarkModel: model,
     performanceConfig: config,
+    // This sweep measures the interpreter-path PerformanceMode delegates, so
+    // it must opt out of the now-default CompiledModel path.
+    useCompiledModel: false,
   );
 
   final all = <int>[];
@@ -93,6 +96,7 @@ void main() {
 
   const models = <String, PoseLandmarkModel>{
     'lite': PoseLandmarkModel.lite,
+    'full': PoseLandmarkModel.full,
     'heavy': PoseLandmarkModel.heavy,
   };
 

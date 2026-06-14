@@ -63,6 +63,7 @@ class PoseDetectorCore {
     required double minLandmarkScore,
     required int interpreterPoolSize,
     required PerformanceConfig performanceConfig,
+    bool useCompiledModel = false,
   }) async {
     _mode = mode;
     _maxDetections = maxDetections;
@@ -78,13 +79,24 @@ class PoseDetectorCore {
         ? PerformanceConfig.xnnpack()
         : performanceConfig;
 
+    // The CompiledModel analogue of the iOS XNNPACK override: pin the YOLO
+    // CompiledModel to CPU on iOS so Metal floating-point variance does not
+    // change detection counts. The landmark model keeps the GPU|CPU fallback.
+    final bool yoloCompiledForceCpu = Platform.isIOS;
+
     _yolo = YoloV8PersonDetector();
-    await _yolo!.initializeFromBuffer(yoloBytes, performanceConfig: yoloConfig);
+    await _yolo!.initializeFromBuffer(
+      yoloBytes,
+      performanceConfig: yoloConfig,
+      useCompiledModel: useCompiledModel,
+      compiledForceCpu: yoloCompiledForceCpu,
+    );
 
     _lm = PoseLandmarkModelRunner(poolSize: interpreterPoolSize);
     await _lm!.initializeFromBuffer(
       landmarkBytes,
       performanceConfig: performanceConfig,
+      useCompiledModel: useCompiledModel,
     );
   }
 
@@ -126,21 +138,19 @@ class PoseDetectorCore {
       final double cy = (y1 + y2) / 2.0;
       final double side = (bw > bh ? bw : bh) * 1.25;
 
-      final cv.Mat? square = NativeImageUtils.extractAlignedSquare(
+      // Fused crop + resize: warp the aligned square straight to the 256x256
+      // landmark input in one resample instead of cropping at native size and
+      // then calling cv.resize.
+      final cv.Mat? resized = NativeImageUtils.extractAlignedSquare(
         image,
         cx,
         cy,
         side,
         0.0,
+        outSize: 256,
       );
 
-      if (square == null) continue;
-
-      final cv.Mat resized = cv.resize(square, (
-        256,
-        256,
-      ), interpolation: cv.INTER_LINEAR);
-      square.dispose();
+      if (resized == null) continue;
 
       final double sqX1 = cx - side / 2.0;
       final double sqY1 = cy - side / 2.0;
@@ -157,15 +167,19 @@ class PoseDetectorCore {
       );
     }
 
-    final List<PoseLandmarks?> allLandmarks = <PoseLandmarks?>[];
-    for (final _PersonCropData data in cropDataList) {
-      try {
-        final PoseLandmarks lms = await _lm!.run(data.letterboxedMat!);
-        allLandmarks.add(lms);
-      } catch (_) {
-        allLandmarks.add(null);
-      }
-    }
+    // Run landmark inference for all people concurrently. The runner's pool
+    // (interpreter or CompiledModel) round-robins across slots and serializes
+    // per slot, so this overlaps inference across people when the pool has more
+    // than one slot and is safe (back-to-back) when it has one.
+    final List<PoseLandmarks?> allLandmarks = await Future.wait(
+      cropDataList.map<Future<PoseLandmarks?>>((data) async {
+        try {
+          return await _lm!.run(data.letterboxedMat!);
+        } catch (_) {
+          return null;
+        }
+      }),
+    );
 
     final List<Pose> results = _buildLandmarkResults(
       cropDataList,

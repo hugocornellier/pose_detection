@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_litert/flutter_litert.dart' show drawLandmarkMarker;
 import '../types.dart';
@@ -284,6 +286,192 @@ class CameraPoseOverlayPainter extends CustomPainter {
   bool shouldRepaint(covariant CameraPoseOverlayPainter old) {
     return old.poses != poses ||
         old.cameraSize != cameraSize ||
+        old.mirrorHorizontally != mirrorHorizontally;
+  }
+}
+
+/// Drop-in live-camera overlay: an [AspectRatio] box wrapping the camera
+/// preview and a pose overlay painter, sized and aligned the same way across
+/// devices. Mirrors the structure of face_detection_tflite's camera overlay so
+/// the same device/orientation/mirroring handling carries over unchanged.
+///
+/// Detection coordinates are mapped from [imageSize] (the post-rotation image
+/// the detector ran on) onto the display box with an aspect-fit transform plus
+/// optional horizontal mirroring; rotation is handled upstream when the frame
+/// is prepared, so this widget only fits and mirrors.
+class CameraPoseOverlay extends StatelessWidget {
+  /// The camera preview widget (typically a `CameraPreview`).
+  final Widget cameraPreview;
+
+  /// Aspect ratio of the raw camera frames (width / height). Retained for
+  /// repaint comparisons / API parity; the coordinate mapping uses [imageSize].
+  final double cameraAspectRatio;
+
+  /// Aspect ratio used for the display [AspectRatio] box (often the inverse of
+  /// [cameraAspectRatio] in portrait).
+  final double displayAspectRatio;
+
+  /// Whether the overlay should be mirrored horizontally (front cameras).
+  final bool mirrorHorizontally;
+
+  /// Sensor mount orientation in degrees (0/90/180/270). Retained for repaint
+  /// comparisons / API parity.
+  final int sensorOrientation;
+
+  /// Current device orientation. Retained for repaint comparisons / API parity.
+  final Orientation deviceOrientation;
+
+  /// Whether the active camera is front-facing.
+  final bool isFrontCamera;
+
+  /// Poses to draw via the overlay painter.
+  final List<Pose> poses;
+
+  /// Size of the image used for detection (post-rotation). The overlay painter
+  /// is skipped when null.
+  final Size? imageSize;
+
+  /// Creates a live-camera pose overlay.
+  const CameraPoseOverlay({
+    super.key,
+    required this.cameraPreview,
+    required this.cameraAspectRatio,
+    required this.displayAspectRatio,
+    required this.mirrorHorizontally,
+    required this.sensorOrientation,
+    required this.deviceOrientation,
+    required this.isFrontCamera,
+    required this.poses,
+    this.imageSize,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: AspectRatio(
+        aspectRatio: displayAspectRatio,
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            cameraPreview,
+            if (imageSize != null)
+              CustomPaint(
+                painter: _CameraPoseStreamPainter(
+                  poses: poses,
+                  imageSize: imageSize!,
+                  mirrorHorizontally: mirrorHorizontally,
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Painter used by [CameraPoseOverlay]. Maps detection coordinates from the
+/// source [imageSize] onto the display canvas with an aspect-fit transform and
+/// optional horizontal mirroring, then draws bounding boxes, skeleton
+/// connections, and landmark markers.
+class _CameraPoseStreamPainter extends CustomPainter {
+  final List<Pose> poses;
+  final Size imageSize;
+  final bool mirrorHorizontally;
+
+  late final Paint _glowPaint = Paint()
+    ..color = Colors.blue.withValues(alpha: 0.3);
+  late final Paint _pointPaint = Paint()..color = Colors.red;
+  late final Paint _dotPaint = Paint()..color = Colors.white;
+
+  _CameraPoseStreamPainter({
+    required this.poses,
+    required this.imageSize,
+    required this.mirrorHorizontally,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (poses.isEmpty) return;
+
+    final double sourceWidth = imageSize.width;
+    final double sourceHeight = imageSize.height;
+    if (sourceWidth <= 0 || sourceHeight <= 0) return;
+
+    final double sourceAspect = sourceWidth / sourceHeight;
+    final double viewportAspect = size.width / size.height;
+
+    final double scale;
+    double offsetX = 0;
+    double offsetY = 0;
+    if (sourceAspect > viewportAspect) {
+      scale = size.height / sourceHeight;
+      offsetX = (size.width - sourceWidth * scale) / 2;
+    } else {
+      scale = size.width / sourceWidth;
+      offsetY = (size.height - sourceHeight * scale) / 2;
+    }
+
+    Offset transform(double x, double y) {
+      final double mx = mirrorHorizontally ? sourceWidth - x : x;
+      return Offset(mx * scale + offsetX, y * scale + offsetY);
+    }
+
+    final Paint boxPaint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 3.0
+      ..color = const Color(0xFF00FFCC);
+
+    final Paint linePaint = Paint()
+      ..color = Colors.green.withValues(alpha: 0.8)
+      ..strokeWidth = 3
+      ..strokeCap = StrokeCap.round;
+
+    for (final pose in poses) {
+      final p1 = transform(pose.boundingBox.left, pose.boundingBox.top);
+      final p2 = transform(pose.boundingBox.right, pose.boundingBox.bottom);
+      canvas.drawRect(
+        Rect.fromLTRB(
+          math.min(p1.dx, p2.dx),
+          math.min(p1.dy, p2.dy),
+          math.max(p1.dx, p2.dx),
+          math.max(p1.dy, p2.dy),
+        ),
+        boxPaint,
+      );
+
+      if (!pose.hasLandmarks) continue;
+
+      for (final c in poseLandmarkConnections) {
+        final PoseLandmark? a = pose.getLandmark(c[0]);
+        final PoseLandmark? b = pose.getLandmark(c[1]);
+        if (a != null &&
+            b != null &&
+            a.visibility > 0.5 &&
+            b.visibility > 0.5) {
+          canvas.drawLine(transform(a.x, a.y), transform(b.x, b.y), linePaint);
+        }
+      }
+
+      for (final l in pose.landmarks) {
+        if (l.visibility > 0.5) {
+          final o = transform(l.x, l.y);
+          drawLandmarkMarker(
+            canvas,
+            o.dx,
+            o.dy,
+            glowPaint: _glowPaint,
+            pointPaint: _pointPaint,
+            centerPaint: _dotPaint,
+          );
+        }
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _CameraPoseStreamPainter old) {
+    return old.poses != poses ||
+        old.imageSize != imageSize ||
         old.mirrorHorizontally != mirrorHorizontally;
   }
 }

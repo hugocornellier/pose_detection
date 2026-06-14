@@ -48,6 +48,8 @@ export 'src/types.dart';
 export 'src/detector/pose_detector.dart' show PoseDetector;
 export 'src/dart_registration.dart';
 export 'src/ui/pose_overlay.dart';
+export 'src/ui/demo_controls.dart';
+export 'src/ui/timing_widgets.dart';
 
 export 'src/exports/opencv_exports.dart';
 

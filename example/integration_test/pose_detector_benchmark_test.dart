@@ -134,6 +134,9 @@ void main() {
           mode: PoseMode.boxesAndLandmarks,
           landmarkModel: PoseLandmarkModel.heavy,
           performanceConfig: const PerformanceConfig.xnnpack(),
+          // Interpreter-path XNNPACK benchmark: opt out of the now-default
+          // CompiledModel path.
+          useCompiledModel: false,
         );
 
         print('\n${'=' * 60}');

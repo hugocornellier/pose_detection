@@ -147,6 +147,9 @@ class PoseDetector with WebGpuFallback {
     double minLandmarkScore = 0.5,
     int interpreterPoolSize = 1,
     PerformanceConfig performanceConfig = PerformanceConfig.disabled,
+    // Native-only; accepted here for API parity but ignored on web (the web
+    // path uses its own CompiledModel pool via liteRtParallelism).
+    bool useCompiledModel = true,
     bool useLiteRt = true,
     String liteRtAccelerator = 'auto',
   }) async {
@@ -182,6 +185,9 @@ class PoseDetector with WebGpuFallback {
     double minLandmarkScore = 0.5,
     int interpreterPoolSize = 1,
     PerformanceConfig performanceConfig = PerformanceConfig.disabled,
+    // Native-only; accepted here for API parity but ignored on web (the web
+    // path uses its own CompiledModel pool via liteRtParallelism).
+    bool useCompiledModel = true,
     bool useLiteRt = true,
     String liteRtAccelerator = 'auto',
   }) async {
@@ -328,13 +334,64 @@ class PoseDetector with WebGpuFallback {
       return <Pose>[];
     }
 
-    final int imageWidth = bitmap.width;
-    final int imageHeight = bitmap.height;
+    try {
+      return await _detectFromSource(
+        bitmap,
+        bitmap.width,
+        bitmap.height,
+        t,
+        totalSw,
+        sw,
+      );
+    } finally {
+      bitmap.close();
+    }
+  }
 
+  /// Detects poses directly from a live [web.HTMLVideoElement] frame.
+  ///
+  /// Skips the image-decode step [detect] performs by feeding the video element
+  /// straight into the detection pipeline (saves ~1ms per frame at 30fps).
+  /// Web-only; used by the live-camera and video-file example screens.
+  Future<List<Pose>> detectFromVideo(web.HTMLVideoElement video) async {
+    if (!_isInitialized) {
+      throw StateError(
+        'PoseDetector not initialized. Call initialize() first.',
+      );
+    }
+    return withFallback(() {
+      final WebDetectTimings? t = debugTimings ? WebDetectTimings() : null;
+      final Stopwatch totalSw = (t != null)
+          ? (Stopwatch()..start())
+          : Stopwatch();
+      final Stopwatch sw = Stopwatch();
+      return _detectFromSource(
+        video,
+        video.videoWidth,
+        video.videoHeight,
+        t,
+        totalSw,
+        sw,
+      );
+    });
+  }
+
+  /// Runs the two-stage pipeline on an already-resolved frame [source]
+  /// (an `ImageBitmap` or `HTMLVideoElement`). The caller owns the [source]
+  /// lifecycle (e.g. [detect] closes the decoded bitmap; the video element is
+  /// owned by the caller).
+  Future<List<Pose>> _detectFromSource(
+    JSObject source,
+    int imageWidth,
+    int imageHeight,
+    WebDetectTimings? t,
+    Stopwatch totalSw,
+    Stopwatch sw,
+  ) async {
     // Stage 1: Person detection
     if (t != null) sw.start();
     final List<Detection> dets = await _yolo.detect(
-      bitmap,
+      source,
       imageWidth: imageWidth,
       imageHeight: imageHeight,
       confThres: _detectorConf,
@@ -411,7 +468,7 @@ class PoseDetector with WebGpuFallback {
       ctx.fillStyle = 'rgb(114,114,114)'.toJS;
       ctx.fillRect(0, 0, 256, 256);
       ctx.drawImage(
-        bitmap,
+        source,
         x1,
         y1,
         cropWidth,
@@ -497,7 +554,6 @@ class PoseDetector with WebGpuFallback {
       );
     }
 
-    bitmap.close();
     if (t != null) {
       totalSw.stop();
       t.totalUs = totalSw.elapsedMicroseconds;
