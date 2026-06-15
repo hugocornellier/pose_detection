@@ -11,18 +11,17 @@ concurrency:
 
 jobs:
   format-and-analyze:
-    name: Format & Analyze (${{ matrix.flutter-channel }})
+    name: Format & Analyze
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        flutter-channel: [stable, beta]
     steps:
       - uses: actions/checkout@v5
 
+      # Pin the formatter/analyzer to the dev SDK so a floating channel's
+      # newer `dart format` / lints don't spontaneously fail CI. Build and
+      # integration jobs still run the stable + beta matrix below.
       - uses: subosito/flutter-action@v2
         with:
-          channel: ${{ matrix.flutter-channel }}
+          flutter-version: 3.44.0
           cache: true
 
       - name: Install root dependencies
