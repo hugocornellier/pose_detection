@@ -64,8 +64,6 @@ class _DetectionIsolateStartupData {
 class PoseDetector {
   static const String _packageVersion = '3.1.0';
   static const String _pipelineVersion = 'pipeline_v1';
-  static const String _decodeFailureErrorPrefix =
-      'pose_detection_decode_failure:';
 
   /// Version key for the default pose detection pipeline.
   static const String modelVersion =
@@ -267,18 +265,8 @@ class PoseDetector {
       result = await _worker!.sendRequest<List<dynamic>>('detect', {
         'bytes': TransferableTypedData.fromList([imageBytes]),
       });
-    } on StateError catch (error) {
-      final String message = error.message;
-      if (message.startsWith(_decodeFailureErrorPrefix)) {
-        final detail = message.substring(_decodeFailureErrorPrefix.length);
-        throw FormatException(
-          detail.trim().isEmpty
-              ? 'Image bytes could not be decoded.'
-              : detail.trim(),
-          imageBytes,
-        );
-      }
-      rethrow;
+    } catch (e) {
+      rethrowOrFormatException(e, imageBytes);
     }
     return _deserializePoses(result);
   }
@@ -309,11 +297,20 @@ class PoseDetector {
         'PoseDetector not initialized. Call initialize() first.',
       );
     }
-    final int rows = image.rows;
-    final int cols = image.cols;
-    final int type = image.type.value;
-    final Uint8List data = image.data;
-    return detectFromMatBytes(data, width: cols, height: rows, matType: type);
+    // A non-continuous Mat (e.g. a region()/ROI view) yields scrambled bytes
+    // from .data, which reads total*elemSize contiguous bytes and ignores row
+    // stride. Clone to a continuous copy first; detectFromMatBytes copies the
+    // bytes into a TransferableTypedData synchronously, so the clone can be
+    // disposed immediately after.
+    final cv.Mat src = image.isContinuous ? image : image.clone();
+    final result = detectFromMatBytes(
+      src.data,
+      width: src.cols,
+      height: src.rows,
+      matType: src.type.value,
+    );
+    if (!identical(src, image)) src.dispose();
+    return result;
   }
 
   /// Detects poses from raw pixel bytes without constructing a [cv.Mat] first.
@@ -511,12 +508,9 @@ class PoseDetector {
             }
           } catch (e) {
             decoded?.dispose();
-            // Exact wire string so the main side's startsWith() ->
-            // FormatException translation survives (see
-            // _decodeFailureErrorPrefix).
-            throw IsolateRpcExactError(
-              '$_decodeFailureErrorPrefix Image bytes could not be decoded: $e',
-            );
+            // Maps to FormatException on the main side via the shared
+            // decode-failure prefix. See rethrowOrFormatException.
+            throwDecodeFailure('Image bytes could not be decoded: $e');
           }
           final cv.Mat mat = decoded;
           return detectOnMat(mat, mat.cols, mat.rows);
