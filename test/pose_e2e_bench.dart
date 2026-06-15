@@ -56,11 +56,13 @@ void main() {
     double ms(int u) => u / 1000.0;
     final double mean = us.reduce((a, b) => a + b) / iters;
     // ignore: avoid_print
-    print('[pose-e2e] poses=$poses iters=$iters '
-        'mean=${ms(mean.round()).toStringAsFixed(2)}ms '
-        'median=${ms(us[iters ~/ 2]).toStringAsFixed(2)}ms '
-        'p10=${ms(us[iters ~/ 10]).toStringAsFixed(2)}ms '
-        'p90=${ms(us[(iters * 9) ~/ 10]).toStringAsFixed(2)}ms');
+    print(
+      '[pose-e2e] poses=$poses iters=$iters '
+      'mean=${ms(mean.round()).toStringAsFixed(2)}ms '
+      'median=${ms(us[iters ~/ 2]).toStringAsFixed(2)}ms '
+      'p10=${ms(us[iters ~/ 10]).toStringAsFixed(2)}ms '
+      'p90=${ms(us[(iters * 9) ~/ 10]).toStringAsFixed(2)}ms',
+    );
 
     img.dispose();
     await core.dispose();

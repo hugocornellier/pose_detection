@@ -371,15 +371,7 @@ class PoseDetector {
     }
     final List<dynamic> result = await _worker!.sendRequest<List<dynamic>>(
       'detectCameraFrame',
-      {
-        'bytes': TransferableTypedData.fromList([frame.bytes]),
-        'width': frame.width,
-        'height': frame.height,
-        'strideCols': frame.strideCols,
-        'conversion': frame.conversion.index,
-        'rotation': frame.rotation?.index,
-        'maxDim': maxDim,
-      },
+      cameraFrameRpcFields(frame, {'maxDim': maxDim}),
     );
     return _deserializePoses(result);
   }
@@ -573,25 +565,10 @@ class PoseDetector {
   /// (`INTER_LINEAR`) interpolates each channel independently, and the
   /// BGRA→BGR conversion is a per-pixel alpha drop.
   static cv.Mat _matFromCameraFrameMessage(Map message, Uint8List bytes) {
-    final int width = message['width'] as int;
-    final int height = message['height'] as int;
-    final int strideCols = message['strideCols'] as int;
-    final conversion =
-        CameraFrameConversion.values[message['conversion'] as int];
-    final int? rotationIndex = message['rotation'] as int?;
-    final int? maxDim = message['maxDim'] as int?;
-
-    final frame = CameraFrame(
-      bytes: bytes,
-      width: width,
-      height: height,
-      strideCols: strideCols,
-      conversion: conversion,
-      rotation: rotationIndex == null
-          ? null
-          : CameraFrameRotation.values[rotationIndex],
+    return NativeImageUtils.cameraFrameToBgrMat(
+      cameraFrameFromRpcMessage(message, bytes),
+      maxDim: message['maxDim'] as int?,
     );
-    return NativeImageUtils.cameraFrameToBgrMat(frame, maxDim: maxDim);
   }
 }
 
