@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:opencv_dart/opencv_dart.dart' as cv;
 import 'package:flutter_litert/flutter_litert.dart';
 import '../types.dart';
+import '../util/native_image_utils.dart';
 import '../util/pose_helpers.dart';
 
 /// Pre-allocated inference buffers for one pool slot.
@@ -29,21 +30,6 @@ class _PoseBuffers {
     required this.outputHeatmap,
     required this.outputWorld,
   });
-}
-
-/// One CompiledModel pool slot: a [CompiledModel] plus a reusable input buffer.
-///
-/// A single [CompiledModel] is not thread-safe, so each slot serializes its own
-/// calls through an [AsyncLock]. The pool selects slots round-robin, so
-/// concurrent [PoseLandmarkModelRunner.run] calls (one per detected person,
-/// dispatched via `Future.wait`) land on different slots and overlap, while
-/// calls colliding on the same slot run back-to-back.
-class _CompiledSlot {
-  final CompiledModel model;
-  final Float32List input;
-  final AsyncLock lock = AsyncLock();
-
-  _CompiledSlot(this.model, this.input);
 }
 
 /// BlazePose landmark extraction model runner for Stage 2 of the pose detection pipeline.
@@ -75,10 +61,9 @@ class PoseLandmarkModelRunner {
   /// Per-slot pre-allocated buffers, keyed by interpreter identity.
   final Map<Interpreter, _PoseBuffers> _buffers = {};
 
-  /// CompiledModel pool slots, used instead of [_pool] when initialized with
-  /// `useCompiledModel: true`. Empty in interpreter mode.
-  final List<_CompiledSlot> _compiledSlots = [];
-  int _nextCompiled = 0;
+  /// CompiledModel pool, used instead of [_pool] when initialized with
+  /// `useCompiledModel: true`. Uninitialized in interpreter mode.
+  final CompiledModelPool _compiledPool = CompiledModelPool();
 
   /// Output tensor indices for the CompiledModel path, resolved at init from
   /// output byte sizes (landmarks = floats divisible by 5 and >= 165; score =
@@ -165,29 +150,29 @@ class PoseLandmarkModelRunner {
     Uint8List modelBytes, {
     required bool forceCpu,
   }) async {
-    _compiledSlots.clear();
-    _nextCompiled = 0;
-    final int slots = poolSize;
-    for (int i = 0; i < slots; i++) {
-      final CompiledModel model = CompiledModel.fromBufferWithGpuFallback(
+    _compiledPool.initialize(
+      poolSize: poolSize,
+      inputFloats: 256 * 256 * 3,
+      create: () => CompiledModel.fromBufferWithGpuFallback(
         modelBytes,
         forceCpu: forceCpu,
-      );
-      if (i == 0) _identifyCompiledOutputs(model);
-      _compiledSlots.add(_CompiledSlot(model, Float32List(256 * 256 * 3)));
-    }
+      ),
+      onFirstModel: _identifyCompiledOutputs,
+    );
     _isInitialized = true;
   }
 
   /// Resolves landmark/score output indices from CompiledModel byte sizes.
   /// BlazePose outputs are {landmarks(195), score(1), mask, heatmap, world}.
   void _identifyCompiledOutputs(CompiledModel model) {
-    final List<int> sizes = model.outputByteSizes;
-    for (int i = 0; i < sizes.length; i++) {
-      final int floatCount = sizes[i] ~/ 4;
-      if (floatCount == 1) {
+    final List<int> floats = compiledOutputFloatCounts(
+      model,
+      label: 'pose landmark',
+    );
+    for (int i = 0; i < floats.length; i++) {
+      if (floats[i] == 1) {
         _scoreIdx = i;
-      } else if (floatCount >= 165 && floatCount % 5 == 0) {
+      } else if (floats[i] >= 165 && floats[i] % 5 == 0) {
         _landmarksIdx = i;
       }
     }
@@ -236,10 +221,7 @@ class PoseLandmarkModelRunner {
   /// After disposal, [initialize] must be called again before using the runner.
   Future<void> dispose() async {
     await _pool.dispose();
-    for (final _CompiledSlot slot in _compiledSlots) {
-      slot.model.close();
-    }
-    _compiledSlots.clear();
+    _compiledPool.dispose();
     _buffers.clear();
     _isInitialized = false;
   }
@@ -266,27 +248,17 @@ class PoseLandmarkModelRunner {
       );
     }
 
-    if (_compiledSlots.isNotEmpty) {
-      final _CompiledSlot slot = _compiledSlots[_nextCompiled];
-      _nextCompiled = (_nextCompiled + 1) % _compiledSlots.length;
-      return slot.lock.run(() async {
-        bgrBytesToRgbFloat32(
-          bytes: mat.data,
-          totalPixels: mat.rows * mat.cols,
-          buffer: slot.input,
-        );
-        final List<Float32List> outs = await slot.model.runAsync([slot.input]);
+    if (_compiledPool.isInitialized) {
+      return _compiledPool.withModel((model, input) async {
+        NativeImageUtils.matToRgbFloat32Simd(mat, buffer: input);
+        final List<Float32List> outs = await model.runAsync([input]);
         return parsePoseLandmarksFlat(outs[_landmarksIdx], outs[_scoreIdx]);
       });
     }
 
     return _pool.withInterpreter((interp, iso) async {
       final buf = _buffers[interp]!;
-      bgrBytesToRgbFloat32(
-        bytes: mat.data,
-        totalPixels: mat.rows * mat.cols,
-        buffer: buf.flatInputBuffer,
-      );
+      NativeImageUtils.matToRgbFloat32Simd(mat, buffer: buf.flatInputBuffer);
 
       final Map<int, Object> outputs = <int, Object>{
         0: buf.outputLandmarks.buffer,

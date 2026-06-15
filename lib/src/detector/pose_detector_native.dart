@@ -428,21 +428,11 @@ class PoseDetector {
     _worker = null;
     if (worker == null) return;
 
-    // Graceful shutdown: send 'dispose' as an RPC and await the ack before
-    // letting the worker force-kill the isolate. flutter_litert's
-    // IsolateWorkerBase calls Isolate.kill(priority: immediate) which races
-    // past any queued 'dispose' message, so without this round-trip the
-    // isolate dies before it can free its TFLite interpreters. On Android
-    // each detector leaks ~10-26MB of native memory; after ~13 creates the
-    // low-memory killer reaps the test process.
-    try {
-      await worker
-          .sendRequest<dynamic>('dispose', const <String, dynamic>{})
-          .timeout(const Duration(seconds: 5));
-    } catch (_) {
-      // Best-effort: fall through to the force-kill below.
-    }
-    await worker.dispose();
+    // Graceful shutdown via the shared base: sends 'dispose' as an RPC and
+    // awaits the ack before force-killing the isolate, so it can free its
+    // native TFLite interpreters (~10-26MB/detector on Android) instead of
+    // being reaped mid-cleanup by Isolate.kill(priority: immediate).
+    await worker.disposeGracefully();
   }
 
   List<Pose> _deserializePoses(List<dynamic> result) => result
@@ -495,133 +485,78 @@ class PoseDetector {
       return;
     }
 
-    workerReceivePort.listen((message) async {
-      if (message is! Map) return;
-
-      final int? id = message['id'] as int?;
-      final String? op = message['op'] as String?;
-
-      if (id == null || op == null) return;
-
+    Future<Object?> detectOnMat(cv.Mat mat, int width, int height) async {
+      // core-null check inside the try so the finally always disposes the Mat.
       try {
-        switch (op) {
-          case 'detect':
-            if (core == null) {
-              mainSendPort.send({
-                'id': id,
-                'error': 'PoseDetectorCore not initialized in isolate',
-              });
-              return;
-            }
-            final ByteBuffer bb = (message['bytes'] as TransferableTypedData)
-                .materialize();
-            final Uint8List imageBytes = bb.asUint8List();
-            cv.Mat? decoded;
-            try {
-              decoded = cv.imdecode(imageBytes, cv.IMREAD_COLOR);
-              if (decoded.isEmpty) {
-                throw const FormatException(
-                  'Image bytes could not be decoded.',
-                );
-              }
-            } catch (e) {
-              decoded?.dispose();
-              mainSendPort.send({
-                'id': id,
-                'error':
-                    '$_decodeFailureErrorPrefix Image bytes could not be decoded: $e',
-              });
-              return;
-            }
-            final cv.Mat mat = decoded;
-            try {
-              final poses = await core!.detectDirect(
-                mat,
-                imageWidth: mat.cols,
-                imageHeight: mat.rows,
-              );
-              mainSendPort.send({
-                'id': id,
-                'result': poses.map((p) => p.toMap()).toList(),
-              });
-            } finally {
-              mat.dispose();
-            }
-
-          case 'detectMat':
-            if (core == null) {
-              mainSendPort.send({
-                'id': id,
-                'error': 'PoseDetectorCore not initialized in isolate',
-              });
-              return;
-            }
-            final ByteBuffer bb = (message['bytes'] as TransferableTypedData)
-                .materialize();
-            final Uint8List matBytes = bb.asUint8List();
-            final int width = message['width'] as int;
-            final int height = message['height'] as int;
-            final int matTypeValue = message['matType'] as int;
-            final matType = cv.MatType(matTypeValue);
-            final mat = NativeImageUtils.matFromPackedBytes(
-              height,
-              width,
-              matType,
-              matBytes,
-            );
-            try {
-              final poses = await core!.detectDirect(
-                mat,
-                imageWidth: width,
-                imageHeight: height,
-              );
-              mainSendPort.send({
-                'id': id,
-                'result': poses.map((p) => p.toMap()).toList(),
-              });
-            } finally {
-              mat.dispose();
-            }
-
-          case 'detectCameraFrame':
-            if (core == null) {
-              mainSendPort.send({
-                'id': id,
-                'error': 'PoseDetectorCore not initialized in isolate',
-              });
-              return;
-            }
-            final Uint8List frameBytes =
-                (message['bytes'] as TransferableTypedData)
-                    .materialize()
-                    .asUint8List();
-            final frameMat = _matFromCameraFrameMessage(message, frameBytes);
-            try {
-              final poses = await core!.detectDirect(
-                frameMat,
-                imageWidth: frameMat.cols,
-                imageHeight: frameMat.rows,
-              );
-              mainSendPort.send({
-                'id': id,
-                'result': poses.map((p) => p.toMap()).toList(),
-              });
-            } finally {
-              frameMat.dispose();
-            }
-
-          case 'dispose':
-            await core?.dispose();
-            core = null;
-            // ACK the dispose so the main side can await it before force-
-            // killing the isolate. See PoseDetector.dispose().
-            mainSendPort.send({'id': id, 'result': null});
-            workerReceivePort.close();
+        final c = core;
+        if (c == null) {
+          throw StateError('PoseDetectorCore not initialized in isolate');
         }
-      } catch (e, st) {
-        mainSendPort.send({'id': id, 'error': '$e\n$st'});
+        final poses = await c.detectDirect(
+          mat,
+          imageWidth: width,
+          imageHeight: height,
+        );
+        return poses.map((p) => p.toMap()).toList();
+      } finally {
+        mat.dispose();
       }
-    });
+    }
+
+    serveIsolateRpc(
+      mainSendPort: mainSendPort,
+      receivePort: workerReceivePort,
+      handlers: {
+        'detect': (message) {
+          final ByteBuffer bb = (message['bytes'] as TransferableTypedData)
+              .materialize();
+          final Uint8List imageBytes = bb.asUint8List();
+          cv.Mat? decoded;
+          try {
+            decoded = cv.imdecode(imageBytes, cv.IMREAD_COLOR);
+            if (decoded.isEmpty) {
+              throw const FormatException('Image bytes could not be decoded.');
+            }
+          } catch (e) {
+            decoded?.dispose();
+            // Exact wire string so the main side's startsWith() ->
+            // FormatException translation survives (see
+            // _decodeFailureErrorPrefix).
+            throw IsolateRpcExactError(
+              '$_decodeFailureErrorPrefix Image bytes could not be decoded: $e',
+            );
+          }
+          final cv.Mat mat = decoded;
+          return detectOnMat(mat, mat.cols, mat.rows);
+        },
+        'detectMat': (message) {
+          final ByteBuffer bb = (message['bytes'] as TransferableTypedData)
+              .materialize();
+          final int width = message['width'] as int;
+          final int height = message['height'] as int;
+          final matType = cv.MatType(message['matType'] as int);
+          final mat = NativeImageUtils.matFromPackedBytes(
+            height,
+            width,
+            matType,
+            bb.asUint8List(),
+          );
+          return detectOnMat(mat, width, height);
+        },
+        'detectCameraFrame': (message) {
+          final Uint8List frameBytes =
+              (message['bytes'] as TransferableTypedData)
+                  .materialize()
+                  .asUint8List();
+          final frameMat = _matFromCameraFrameMessage(message, frameBytes);
+          return detectOnMat(frameMat, frameMat.cols, frameMat.rows);
+        },
+      },
+      onDispose: () async {
+        await core?.dispose();
+        core = null;
+      },
+    );
   }
 
   /// Decodes a [CameraFrame] isolate message into a 3-channel BGR [cv.Mat],
