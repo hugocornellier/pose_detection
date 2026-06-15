@@ -1,7 +1,7 @@
 ## 3.3.0
 
-* Update flutter_litert -> 3.0.0
-* Move inference to the LiteRT Next `CompiledModel` API with a GPU path and automatic CPU fallback, replacing the manual GPU delegate setup.
+* Update flutter_litert -> 3.1.1
+* Add optional LiteRT Next `CompiledModel` inference (GPU with automatic CPU fallback); enable with `useCompiledModel: true`. The default engine remains the Interpreter, so existing code is unchanged.
 * Add a flat YOLO decoder and adopt the shared flutter_litert helpers (flat YOLO decode, GPU fallback, camera frame decode plan).
 
 ## 3.2.1

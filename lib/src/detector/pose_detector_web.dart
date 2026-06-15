@@ -149,7 +149,7 @@ class PoseDetector with WebGpuFallback {
     PerformanceConfig performanceConfig = PerformanceConfig.disabled,
     // Native-only; accepted here for API parity but ignored on web (the web
     // path uses its own CompiledModel pool via liteRtParallelism).
-    bool useCompiledModel = true,
+    bool useCompiledModel = false,
     bool useLiteRt = true,
     String liteRtAccelerator = 'auto',
   }) async {
@@ -187,7 +187,7 @@ class PoseDetector with WebGpuFallback {
     PerformanceConfig performanceConfig = PerformanceConfig.disabled,
     // Native-only; accepted here for API parity but ignored on web (the web
     // path uses its own CompiledModel pool via liteRtParallelism).
-    bool useCompiledModel = true,
+    bool useCompiledModel = false,
     bool useLiteRt = true,
     String liteRtAccelerator = 'auto',
   }) async {

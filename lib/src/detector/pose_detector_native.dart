@@ -108,7 +108,7 @@ class PoseDetector {
     double minLandmarkScore = 0.5,
     int interpreterPoolSize = 1,
     PerformanceConfig performanceConfig = const PerformanceConfig(),
-    bool useCompiledModel = true,
+    bool useCompiledModel = false,
     // Web-only; accepted here for API parity but ignored on native.
     bool useLiteRt = true,
     String liteRtAccelerator = 'auto',
@@ -148,7 +148,7 @@ class PoseDetector {
     double minLandmarkScore = 0.5,
     int interpreterPoolSize = 1,
     PerformanceConfig performanceConfig = const PerformanceConfig(),
-    bool useCompiledModel = true,
+    bool useCompiledModel = false,
     // Web-only; accepted here for API parity but ignored on native.
     bool useLiteRt = true,
     String liteRtAccelerator = 'auto',
@@ -205,7 +205,7 @@ class PoseDetector {
     double minLandmarkScore = 0.5,
     int interpreterPoolSize = 1,
     PerformanceConfig performanceConfig = const PerformanceConfig(),
-    bool useCompiledModel = true,
+    bool useCompiledModel = false,
   }) async {
     if (isReady) {
       throw StateError('PoseDetector already initialized');

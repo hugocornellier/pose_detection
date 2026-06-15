@@ -333,6 +333,7 @@ class _ExampleState extends State<Example> {
       await _poseDetector!.initialize(
         mode: _detectionMode,
         landmarkModel: _detectionModel,
+        useCompiledModel: true,
       );
     } catch (_) {}
     setState(() {});

@@ -36,7 +36,7 @@ class PoseDetector {
     double minLandmarkScore = 0.5,
     int interpreterPoolSize = 1,
     PerformanceConfig performanceConfig = PerformanceConfig.disabled,
-    bool useCompiledModel = true,
+    bool useCompiledModel = false,
     bool useLiteRt = true,
     String liteRtAccelerator = 'auto',
   }) => throw UnsupportedError('Not supported');
@@ -50,7 +50,7 @@ class PoseDetector {
     double minLandmarkScore = 0.5,
     int interpreterPoolSize = 1,
     PerformanceConfig performanceConfig = PerformanceConfig.disabled,
-    bool useCompiledModel = true,
+    bool useCompiledModel = false,
     bool useLiteRt = true,
     String liteRtAccelerator = 'auto',
   }) => throw UnsupportedError('Not supported');
@@ -66,7 +66,7 @@ class PoseDetector {
     double minLandmarkScore = 0.5,
     int interpreterPoolSize = 1,
     PerformanceConfig performanceConfig = PerformanceConfig.disabled,
-    bool useCompiledModel = true,
+    bool useCompiledModel = false,
   }) => throw UnsupportedError('Not supported');
 
   bool get isReady => false;
