@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart' show setEquals;
 import 'package:opencv_dart/opencv_dart.dart' as cv;
 import 'package:flutter_litert/flutter_litert.dart';
 import '../types.dart';
@@ -124,10 +125,17 @@ class PoseLandmarkModelRunner {
     PerformanceConfig? performanceConfig,
     bool useCompiledModel = false,
     bool compiledForceCpu = false,
+    Set<Accelerator> accelerators = const {Accelerator.gpu, Accelerator.cpu},
+    Precision precision = Precision.fp16,
   }) async {
     if (_isInitialized) await dispose();
     if (useCompiledModel) {
-      await _initCompiled(modelBytes, forceCpu: compiledForceCpu);
+      await _initCompiled(
+        modelBytes,
+        forceCpu: compiledForceCpu,
+        accelerators: accelerators,
+        precision: precision,
+      );
       return;
     }
     await _initWith(
@@ -149,14 +157,29 @@ class PoseLandmarkModelRunner {
   Future<void> _initCompiled(
     Uint8List modelBytes, {
     required bool forceCpu,
+    Set<Accelerator> accelerators = const {Accelerator.gpu, Accelerator.cpu},
+    Precision precision = Precision.fp16,
   }) async {
+    final effectiveAccelerators = forceCpu
+        ? const {Accelerator.cpu}
+        : accelerators;
+    final useGpuFallback = setEquals(effectiveAccelerators, const {
+      Accelerator.gpu,
+      Accelerator.cpu,
+    });
     _compiledPool.initialize(
       poolSize: poolSize,
       inputFloats: 256 * 256 * 3,
-      create: () => CompiledModel.fromBufferWithGpuFallback(
-        modelBytes,
-        forceCpu: forceCpu,
-      ),
+      create: () => useGpuFallback
+          ? CompiledModel.fromBufferWithGpuFallback(
+              modelBytes,
+              precision: precision,
+            )
+          : CompiledModel.fromBuffer(
+              modelBytes,
+              accelerators: effectiveAccelerators,
+              precision: precision,
+            ),
       onFirstModel: _identifyCompiledOutputs,
     );
     _isInitialized = true;

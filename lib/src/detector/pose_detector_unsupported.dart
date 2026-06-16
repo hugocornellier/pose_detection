@@ -2,7 +2,12 @@
 
 import 'dart:typed_data';
 import 'package:flutter_litert/flutter_litert.dart'
-    show PerformanceConfig, CameraFrame, CameraFrameRotation;
+    show
+        Accelerator,
+        Precision,
+        PerformanceConfig,
+        CameraFrame,
+        CameraFrameRotation;
 import '../types.dart';
 
 class PoseDetector {
@@ -37,6 +42,8 @@ class PoseDetector {
     int interpreterPoolSize = 1,
     PerformanceConfig performanceConfig = PerformanceConfig.disabled,
     bool useCompiledModel = false,
+    Set<Accelerator> accelerators = const {Accelerator.gpu, Accelerator.cpu},
+    Precision precision = Precision.fp16,
     bool useLiteRt = true,
     String liteRtAccelerator = 'auto',
   }) => throw UnsupportedError('Not supported');
@@ -51,6 +58,8 @@ class PoseDetector {
     int interpreterPoolSize = 1,
     PerformanceConfig performanceConfig = PerformanceConfig.disabled,
     bool useCompiledModel = false,
+    Set<Accelerator> accelerators = const {Accelerator.gpu, Accelerator.cpu},
+    Precision precision = Precision.fp16,
     bool useLiteRt = true,
     String liteRtAccelerator = 'auto',
   }) => throw UnsupportedError('Not supported');
@@ -67,6 +76,8 @@ class PoseDetector {
     int interpreterPoolSize = 1,
     PerformanceConfig performanceConfig = PerformanceConfig.disabled,
     bool useCompiledModel = false,
+    Set<Accelerator> accelerators = const {Accelerator.gpu, Accelerator.cpu},
+    Precision precision = Precision.fp16,
   }) => throw UnsupportedError('Not supported');
 
   bool get isReady => false;

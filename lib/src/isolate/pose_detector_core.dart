@@ -64,6 +64,8 @@ class PoseDetectorCore {
     required int interpreterPoolSize,
     required PerformanceConfig performanceConfig,
     bool useCompiledModel = false,
+    Set<Accelerator> accelerators = const {Accelerator.gpu, Accelerator.cpu},
+    Precision precision = Precision.fp16,
   }) async {
     _mode = mode;
     _maxDetections = maxDetections;
@@ -90,6 +92,8 @@ class PoseDetectorCore {
       performanceConfig: yoloConfig,
       useCompiledModel: useCompiledModel,
       compiledForceCpu: yoloCompiledForceCpu,
+      accelerators: accelerators,
+      precision: precision,
     );
 
     _lm = PoseLandmarkModelRunner(poolSize: interpreterPoolSize);
@@ -97,6 +101,8 @@ class PoseDetectorCore {
       landmarkBytes,
       performanceConfig: performanceConfig,
       useCompiledModel: useCompiledModel,
+      accelerators: accelerators,
+      precision: precision,
     );
   }
 

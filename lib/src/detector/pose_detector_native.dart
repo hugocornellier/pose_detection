@@ -26,6 +26,8 @@ class _DetectionIsolateStartupData {
   final String performanceModeName;
   final int? numThreads;
   final bool useCompiledModel;
+  final List<int> acceleratorIndices;
+  final int precisionIndex;
 
   _DetectionIsolateStartupData({
     required this.sendPort,
@@ -41,6 +43,8 @@ class _DetectionIsolateStartupData {
     required this.performanceModeName,
     required this.numThreads,
     required this.useCompiledModel,
+    required this.acceleratorIndices,
+    required this.precisionIndex,
   });
 }
 
@@ -109,6 +113,8 @@ class PoseDetector {
     int interpreterPoolSize = 1,
     PerformanceConfig performanceConfig = const PerformanceConfig(),
     bool useCompiledModel = false,
+    Set<Accelerator> accelerators = const {Accelerator.gpu, Accelerator.cpu},
+    Precision precision = Precision.fp16,
     // Web-only; accepted here for API parity but ignored on native.
     bool useLiteRt = true,
     String liteRtAccelerator = 'auto',
@@ -124,6 +130,8 @@ class PoseDetector {
       interpreterPoolSize: interpreterPoolSize,
       performanceConfig: performanceConfig,
       useCompiledModel: useCompiledModel,
+      accelerators: accelerators,
+      precision: precision,
     );
     return detector;
   }
@@ -149,6 +157,8 @@ class PoseDetector {
     int interpreterPoolSize = 1,
     PerformanceConfig performanceConfig = const PerformanceConfig(),
     bool useCompiledModel = false,
+    Set<Accelerator> accelerators = const {Accelerator.gpu, Accelerator.cpu},
+    Precision precision = Precision.fp16,
     // Web-only; accepted here for API parity but ignored on native.
     bool useLiteRt = true,
     String liteRtAccelerator = 'auto',
@@ -182,6 +192,8 @@ class PoseDetector {
       interpreterPoolSize: interpreterPoolSize,
       performanceConfig: performanceConfig,
       useCompiledModel: useCompiledModel,
+      accelerators: accelerators,
+      precision: precision,
     );
   }
 
@@ -206,6 +218,8 @@ class PoseDetector {
     int interpreterPoolSize = 1,
     PerformanceConfig performanceConfig = const PerformanceConfig(),
     bool useCompiledModel = false,
+    Set<Accelerator> accelerators = const {Accelerator.gpu, Accelerator.cpu},
+    Precision precision = Precision.fp16,
   }) async {
     if (isReady) {
       throw StateError('PoseDetector already initialized');
@@ -234,6 +248,8 @@ class PoseDetector {
         interpreterPoolSize: effectivePoolSize,
         performanceConfig: performanceConfig,
         useCompiledModel: useCompiledModel,
+        accelerators: accelerators,
+        precision: precision,
       );
     } catch (e) {
       if (worker.isReady) {
@@ -448,6 +464,11 @@ class PoseDetector {
         (m) => m.name == data.performanceModeName,
       );
 
+      final accelerators = data.acceleratorIndices
+          .map((i) => Accelerator.values[i])
+          .toSet();
+      final precision = Precision.values[data.precisionIndex];
+
       core = PoseDetectorCore();
       await core.initializeFromBuffers(
         yoloBytes: yoloBytes,
@@ -464,6 +485,8 @@ class PoseDetector {
           numThreads: data.numThreads,
         ),
         useCompiledModel: data.useCompiledModel,
+        accelerators: accelerators,
+        precision: precision,
       );
 
       mainSendPort.send(workerReceivePort.sendPort);
@@ -582,6 +605,8 @@ class _PoseDetectorWorker extends IsolateWorkerBase {
     required int interpreterPoolSize,
     required PerformanceConfig performanceConfig,
     required bool useCompiledModel,
+    required Set<Accelerator> accelerators,
+    required Precision precision,
   }) async {
     await initWorker(
       (sendPort) => Isolate.spawn(
@@ -600,6 +625,8 @@ class _PoseDetectorWorker extends IsolateWorkerBase {
           performanceModeName: performanceConfig.mode.name,
           numThreads: performanceConfig.numThreads,
           useCompiledModel: useCompiledModel,
+          acceleratorIndices: accelerators.map((a) => a.index).toList(),
+          precisionIndex: precision.index,
         ),
         debugName: 'PoseDetector',
       ),
