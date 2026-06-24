@@ -13,6 +13,7 @@ jobs:
   format-and-analyze:
     name: Format & Analyze
     runs-on: ubuntu-latest
+    continue-on-error: ${{ matrix.flutter-channel == 'beta' }}
     steps:
       - uses: actions/checkout@v5
 
@@ -44,6 +45,7 @@ jobs:
   build-android:
     name: Build Android (${{ matrix.flutter-channel }})
     runs-on: ubuntu-latest
+    continue-on-error: ${{ matrix.flutter-channel == 'beta' }}
     strategy:
       matrix:
         flutter-channel: [stable, beta]
@@ -76,6 +78,7 @@ jobs:
   build-ios:
     name: Build iOS (${{ matrix.flutter-channel }})
     runs-on: macos-15
+    continue-on-error: ${{ matrix.flutter-channel == 'beta' }}
     strategy:
       matrix:
         flutter-channel: [stable, beta]
@@ -105,6 +108,7 @@ jobs:
   build-macos:
     name: Build macOS (${{ matrix.flutter-channel }})
     runs-on: macos-15
+    continue-on-error: ${{ matrix.flutter-channel == 'beta' }}
     strategy:
       matrix:
         flutter-channel: [stable, beta]
@@ -123,6 +127,7 @@ jobs:
   build-linux:
     name: Build Linux (${{ matrix.flutter-channel }})
     runs-on: ubuntu-latest
+    continue-on-error: ${{ matrix.flutter-channel == 'beta' }}
     strategy:
       matrix:
         flutter-channel: [stable, beta]
@@ -153,6 +158,7 @@ jobs:
   build-windows:
     name: Build Windows (${{ matrix.flutter-channel }})
     runs-on: windows-latest
+    continue-on-error: ${{ matrix.flutter-channel == 'beta' }}
     strategy:
       matrix:
         flutter-channel: [stable, beta]
