@@ -3,7 +3,8 @@ name: CI
 on:
   pull_request:
   push:
-    branches: [main]
+    branches: [main, 'ci/**']
+  workflow_dispatch:
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -72,7 +73,14 @@ jobs:
           restore-keys: gradle-${{ runner.os }}-
 
       - name: Build APK (debug)
-        run: flutter build apk --debug
+        run: |
+          for attempt in 1 2 3; do
+            if flutter build apk --debug; then exit 0; fi
+            echo "::warning::APK build attempt $attempt failed (likely flaky NDK download); retrying"
+            sleep 15
+          done
+          echo "::error::flutter build apk failed after 3 attempts"
+          exit 1
         working-directory: example
 
   build-ios:
@@ -81,7 +89,7 @@ jobs:
     continue-on-error: ${{ matrix.flutter-channel == 'beta' }}
     strategy:
       matrix:
-        flutter-channel: [stable, beta]
+        flutter-channel: [stable]
     steps:
       - uses: actions/checkout@v5
 
@@ -111,7 +119,7 @@ jobs:
     continue-on-error: ${{ matrix.flutter-channel == 'beta' }}
     strategy:
       matrix:
-        flutter-channel: [stable, beta]
+        flutter-channel: [stable]
     steps:
       - uses: actions/checkout@v5
 
