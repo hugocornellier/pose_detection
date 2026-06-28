@@ -6,8 +6,7 @@ import 'dart:typed_data';
 import 'package:flutter/services.dart';
 import 'package:web/web.dart' as web;
 import 'package:flutter_litert/flutter_litert.dart';
-import 'package:flutter_litert/src/web/litertjs_interpreter.dart'
-    show LiteRtInterpreter;
+
 import 'person_detector_base.dart';
 
 /// Web implementation of YOLOv8n person detector.

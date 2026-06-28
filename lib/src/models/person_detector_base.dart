@@ -6,7 +6,7 @@ import 'package:flutter_litert/flutter_litert.dart';
 
 abstract class PersonDetectorBase {
   @protected
-  Interpreter? interpreter;
+  dynamic interpreter;
   @protected
   bool isInitializedFlag = false;
   @protected

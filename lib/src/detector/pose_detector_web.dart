@@ -12,8 +12,6 @@ import '../types.dart';
 import '../util/pose_helpers.dart';
 import '../models/person_detector_web.dart';
 import '../models/pose_landmark_model_web.dart';
-import 'package:flutter_litert/src/web/web_detector_utils.dart'
-    show decodeBitmap, WebGpuFallback;
 
 /// Per-stage timing accumulator (microseconds). Populated by `detect()` when
 /// `PoseDetector.debugTimings` is true; reset per call.

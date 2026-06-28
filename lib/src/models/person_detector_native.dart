@@ -1,7 +1,7 @@
 import 'dart:typed_data';
 import 'package:flutter/foundation.dart' show setEquals;
 import 'package:opencv_dart/opencv_dart.dart' as cv;
-import 'package:flutter_litert/flutter_litert.dart';
+import 'package:flutter_litert/native.dart';
 import '../util/native_image_utils.dart';
 import 'person_detector_base.dart';
 

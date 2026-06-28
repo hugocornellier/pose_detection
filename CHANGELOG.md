@@ -1,3 +1,8 @@
+## 3.4.0
+
+* Update flutter_litert -> 3.2.0
+* Import native-only flutter_litert APIs via `package:flutter_litert/native.dart` so they resolve under static analysis (flutter_litert 3.2.0 moved `InterpreterFactory`, `InterpreterPool`, and `IsolateWorkerBase` behind the native conditional export). No runtime or API change.
+
 ## 3.3.0
 
 * Update flutter_litert -> 3.1.1
