@@ -44,6 +44,7 @@ class PoseDetector {
     bool useCompiledModel = false,
     Set<Accelerator> accelerators = const {Accelerator.gpu, Accelerator.cpu},
     Precision precision = Precision.fp16,
+    bool enableSegmentation = false,
     bool useLiteRt = true,
     String liteRtAccelerator = 'auto',
   }) => throw UnsupportedError('Not supported');
@@ -60,6 +61,7 @@ class PoseDetector {
     bool useCompiledModel = false,
     Set<Accelerator> accelerators = const {Accelerator.gpu, Accelerator.cpu},
     Precision precision = Precision.fp16,
+    bool enableSegmentation = false,
     bool useLiteRt = true,
     String liteRtAccelerator = 'auto',
   }) => throw UnsupportedError('Not supported');
@@ -78,6 +80,7 @@ class PoseDetector {
     bool useCompiledModel = false,
     Set<Accelerator> accelerators = const {Accelerator.gpu, Accelerator.cpu},
     Precision precision = Precision.fp16,
+    bool enableSegmentation = false,
   }) => throw UnsupportedError('Not supported');
 
   bool get isReady => false;

@@ -292,6 +292,81 @@ CustomPaint(
 )
 ```
 
+## Segmentation Mask
+
+Alongside the 33 landmarks, the BlazePose model also emits a coarse
+person-vs-background segmentation mask. The model computes it on every landmark
+inference regardless, so returning it adds no inference cost, only the mask
+copy. It is opt-in and off by default.
+
+Enable it at initialization with `enableSegmentation: true` (requires
+`PoseMode.boxesAndLandmarks`):
+
+```dart
+final PoseDetector detector = await PoseDetector.create(
+  mode: PoseMode.boxesAndLandmarks,
+  enableSegmentation: true,
+);
+
+final List<Pose> poses = await detector.detect(imageBytes);
+for (final Pose pose in poses) {
+  final SegmentationMask? mask = pose.segmentationMask;
+  if (mask != null) {
+    // Person probability [0, 1] at an original-image pixel:
+    final double p = mask.confidenceAt(pose.boundingBox.center.x, pose.boundingBox.center.y);
+    print('center person probability: ${p.toStringAsFixed(2)}');
+  }
+}
+```
+
+Each detected person carries its own mask. The buffer is at model resolution
+(`width` x `height`, 256x256) and covers the square image region described by
+`imageLeft`, `imageTop`, `imageWidth`, and `imageHeight` (in original-image
+pixels). `confidenceAt(x, y)` maps an original-image pixel to that buffer and
+returns 0 outside the region.
+
+### Rendering the mask
+
+`toRgbaBytes()` expands the mask into a tinted RGBA buffer (alpha = person
+probability) ready for `dart:ui`'s `decodeImageFromPixels`:
+
+```dart
+import 'dart:async';
+import 'dart:ui' as ui;
+
+Future<ui.Image> maskToImage(SegmentationMask mask) {
+  final completer = Completer<ui.Image>();
+  ui.decodeImageFromPixels(
+    mask.toRgbaBytes(r: 0, g: 200, b: 255),
+    mask.width,
+    mask.height,
+    ui.PixelFormat.rgba8888,
+    completer.complete,
+  );
+  return completer.future;
+}
+
+// In a CustomPainter, blit it into the mask's image-space region:
+canvas.drawImageRect(
+  image,
+  Rect.fromLTWH(0, 0, mask.width.toDouble(), mask.height.toDouble()),
+  Rect.fromLTWH(mask.imageLeft, mask.imageTop, mask.imageWidth, mask.imageHeight),
+  Paint()..color = const Color(0x80FFFFFF), // global opacity
+);
+```
+
+**Notes and limitations:**
+
+- **Coarse silhouette.** BlazePose's mask is a soft person outline, good for
+  background blur or tinting, not a crisp cutout matte.
+- **Per-person crop.** Each mask only covers that person's padded crop region,
+  which may extend past the image edges.
+- **Platform support.** Populated on native platforms (iOS, Android, macOS,
+  Windows, Linux). On web the flag is accepted for API parity but
+  `segmentationMask` stays `null`.
+- **Requires landmarks.** Only produced under `PoseMode.boxesAndLandmarks` for
+  poses that pass `minLandmarkScore`; it is always `null` in `PoseMode.boxes`.
+
 ## Live Camera Detection
 
 For real-time pose detection from a camera feed, use `detectFromCameraImage`. All processing runs off the UI thread.

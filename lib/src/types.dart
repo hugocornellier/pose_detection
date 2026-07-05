@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:flutter_litert/flutter_litert.dart'
     show BoundingBox, LandmarkMixin;
 
@@ -38,8 +40,19 @@ class PoseLandmarks {
   /// Confidence score for the landmark extraction (0.0 to 1.0).
   final double score;
 
+  /// Raw person-segmentation buffer at model resolution (256x256), quantized to
+  /// 0-255, or null when segmentation was not requested. Row-major.
+  ///
+  /// This is the model-space buffer; the detector core maps it into image space
+  /// as a [SegmentationMask] before it reaches the public [Pose] API.
+  final Uint8List? segmentationMask;
+
   /// Creates a collection of pose landmarks with a confidence score.
-  PoseLandmarks({required this.landmarks, required this.score});
+  PoseLandmarks({
+    required this.landmarks,
+    required this.score,
+    this.segmentationMask,
+  });
 }
 
 /// A single body keypoint with 3D coordinates and visibility score.
@@ -267,6 +280,123 @@ const List<List<PoseLandmarkType>> poseLandmarkConnections = [
   [PoseLandmarkType.rightAnkle, PoseLandmarkType.rightFootIndex],
 ];
 
+/// A per-person segmentation mask produced by the BlazePose landmark model.
+///
+/// BlazePose emits a coarse person-vs-background probability map alongside the
+/// 33 landmarks. This is only populated when the detector is initialized with
+/// `enableSegmentation: true` and [PoseMode.boxesAndLandmarks]; otherwise the
+/// owning [Pose.segmentationMask] is null.
+///
+/// The mask buffer is at model resolution ([width] x [height], typically
+/// 256x256) and covers the square image region described by [imageLeft],
+/// [imageTop], [imageWidth], and [imageHeight] in original-image pixel
+/// coordinates. That region is the padded person crop and may extend past the
+/// image edges.
+///
+/// Example (render as a tinted overlay with `dart:ui`):
+/// ```dart
+/// final mask = pose.segmentationMask;
+/// if (mask != null) {
+///   ui.decodeImageFromPixels(
+///     mask.toRgbaBytes(r: 0, g: 200, b: 255),
+///     mask.width,
+///     mask.height,
+///     ui.PixelFormat.rgba8888,
+///     (ui.Image image) {
+///       // canvas.drawImageRect(image, src, dstRectInImageSpace, paint);
+///     },
+///   );
+/// }
+/// ```
+class SegmentationMask {
+  /// Mask buffer width in pixels (model resolution, e.g. 256).
+  final int width;
+
+  /// Mask buffer height in pixels (model resolution, e.g. 256).
+  final int height;
+
+  /// Row-major person probability per pixel, quantized to 0-255
+  /// (0 = background, 255 = person). Length is [width] * [height].
+  final Uint8List confidences;
+
+  /// Left edge (original-image pixels) of the region the mask covers.
+  final double imageLeft;
+
+  /// Top edge (original-image pixels) of the region the mask covers.
+  final double imageTop;
+
+  /// Width (original-image pixels) of the region the mask covers.
+  final double imageWidth;
+
+  /// Height (original-image pixels) of the region the mask covers.
+  final double imageHeight;
+
+  /// Creates a segmentation mask.
+  const SegmentationMask({
+    required this.width,
+    required this.height,
+    required this.confidences,
+    required this.imageLeft,
+    required this.imageTop,
+    required this.imageWidth,
+    required this.imageHeight,
+  });
+
+  /// Person probability in [0, 1] at original-image pixel ([x], [y]).
+  ///
+  /// Returns 0 for points outside the mask region. Uses nearest-neighbour
+  /// sampling.
+  double confidenceAt(num x, num y) {
+    if (imageWidth <= 0 || imageHeight <= 0) return 0.0;
+    final double u = (x - imageLeft) / imageWidth;
+    final double v = (y - imageTop) / imageHeight;
+    if (u < 0 || u >= 1 || v < 0 || v >= 1) return 0.0;
+    final int px = (u * width).floor().clamp(0, width - 1);
+    final int py = (v * height).floor().clamp(0, height - 1);
+    return confidences[py * width + px] / 255.0;
+  }
+
+  /// Expands the mask into an RGBA byte buffer ([width] * [height] * 4) tinted
+  /// with ([r], [g], [b]) and per-pixel alpha equal to the person probability.
+  ///
+  /// Feed the result to `dart:ui`'s `decodeImageFromPixels(bytes, width,
+  /// height, PixelFormat.rgba8888, ...)` to obtain a drawable image, then blit
+  /// it into the mask region with `Canvas.drawImageRect`.
+  Uint8List toRgbaBytes({int r = 0, int g = 255, int b = 0}) {
+    final Uint8List out = Uint8List(width * height * 4);
+    for (int i = 0; i < confidences.length; i++) {
+      final int o = i * 4;
+      out[o] = r;
+      out[o + 1] = g;
+      out[o + 2] = b;
+      out[o + 3] = confidences[i];
+    }
+    return out;
+  }
+
+  /// Serializes this mask to a map for isolate message passing.
+  Map<String, dynamic> toMap() => {
+    'width': width,
+    'height': height,
+    'confidences': confidences,
+    'imageLeft': imageLeft,
+    'imageTop': imageTop,
+    'imageWidth': imageWidth,
+    'imageHeight': imageHeight,
+  };
+
+  /// Deserializes a [SegmentationMask] from a map produced by [toMap].
+  static SegmentationMask fromMap(Map<String, dynamic> map) => SegmentationMask(
+    width: map['width'] as int,
+    height: map['height'] as int,
+    confidences: map['confidences'] as Uint8List,
+    imageLeft: (map['imageLeft'] as num).toDouble(),
+    imageTop: (map['imageTop'] as num).toDouble(),
+    imageWidth: (map['imageWidth'] as num).toDouble(),
+    imageHeight: (map['imageHeight'] as num).toDouble(),
+  );
+}
+
 /// Detected person with bounding box and optional body landmarks.
 ///
 /// This is the main result returned by [PoseDetector.detect].
@@ -304,6 +434,14 @@ class Pose {
   /// Height of the original image in pixels
   final int imageHeight;
 
+  /// Coarse person-segmentation mask for this pose, or null.
+  ///
+  /// Only populated when the detector was initialized with
+  /// `enableSegmentation: true` under [PoseMode.boxesAndLandmarks], the pose has
+  /// landmarks, and the platform supports segmentation (currently native, not
+  /// web). See [SegmentationMask].
+  final SegmentationMask? segmentationMask;
+
   /// Creates a detected pose with bounding box, landmarks, and image dimensions.
   const Pose({
     required this.boundingBox,
@@ -311,6 +449,7 @@ class Pose {
     required this.landmarks,
     required this.imageWidth,
     required this.imageHeight,
+    this.segmentationMask,
   });
 
   /// Serializes this pose to a map for isolate message passing.
@@ -320,6 +459,7 @@ class Pose {
     'landmarks': landmarks.map((l) => l.toMap()).toList(),
     'imageWidth': imageWidth,
     'imageHeight': imageHeight,
+    if (segmentationMask != null) 'segmentationMask': segmentationMask!.toMap(),
   };
 
   /// Deserializes a [Pose] from a map produced by [toMap].
@@ -333,6 +473,11 @@ class Pose {
         .toList(),
     imageWidth: map['imageWidth'] as int,
     imageHeight: map['imageHeight'] as int,
+    segmentationMask: map['segmentationMask'] == null
+        ? null
+        : SegmentationMask.fromMap(
+            Map<String, dynamic>.from(map['segmentationMask'] as Map),
+          ),
   );
 
   /// Gets a specific landmark by type, or null if not found

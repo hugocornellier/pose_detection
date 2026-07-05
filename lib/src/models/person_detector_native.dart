@@ -270,7 +270,13 @@ class YoloV8PersonDetector extends PersonDetectorBase {
       dh: dh,
       imageWidth: imageWidth,
       imageHeight: imageHeight,
-      confThres: confThres,
+      // The bundled YOLOv8 person model emits class probabilities in [0, 1],
+      // not raw logits, yet postProcessDetectionsFlat applies sigmoid to every
+      // score. Passing sigmoid(confThres) cancels that second activation, so the
+      // gate compares against the model's actual probability. Without it a
+      // background anchor near 0 clears the threshold as sigmoid(0) = 0.5,
+      // producing thousands of phantom boxes that NMS then collapses at random.
+      confThres: sigmoid(confThres),
       iouThres: iouThres,
       maxDet: maxDet,
       filterClassId: personOnly ? cocoPersonClassId : null,

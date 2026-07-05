@@ -72,6 +72,13 @@ class PoseLandmarkModelRunner {
   int _landmarksIdx = 0;
   int _scoreIdx = 1;
 
+  /// CompiledModel output index of the 256x256 segmentation tensor, or -1 when
+  /// the export does not expose it. Resolved in [_identifyCompiledOutputs].
+  int _maskIdx = -1;
+
+  /// When true, [run] decodes and returns the person-segmentation mask.
+  bool _enableSegmentation = false;
+
   bool _isInitialized = false;
 
   /// Creates a landmark model runner with the specified pool size.
@@ -127,8 +134,10 @@ class PoseLandmarkModelRunner {
     bool compiledForceCpu = false,
     Set<Accelerator> accelerators = const {Accelerator.gpu, Accelerator.cpu},
     Precision precision = Precision.fp16,
+    bool enableSegmentation = false,
   }) async {
     if (_isInitialized) await dispose();
+    _enableSegmentation = enableSegmentation;
     if (useCompiledModel) {
       await _initCompiled(
         modelBytes,
@@ -197,6 +206,8 @@ class PoseLandmarkModelRunner {
         _scoreIdx = i;
       } else if (floats[i] >= 165 && floats[i] % 5 == 0) {
         _landmarksIdx = i;
+      } else if (floats[i] == 256 * 256) {
+        _maskIdx = i;
       }
     }
   }
@@ -275,7 +286,16 @@ class PoseLandmarkModelRunner {
       return _compiledPool.withModel((model, input) async {
         NativeImageUtils.matToRgbFloat32Simd(mat, buffer: input);
         final List<Float32List> outs = await model.runAsync([input]);
-        return parsePoseLandmarksFlat(outs[_landmarksIdx], outs[_scoreIdx]);
+        final PoseLandmarks base = parsePoseLandmarksFlat(
+          outs[_landmarksIdx],
+          outs[_scoreIdx],
+        );
+        if (!_enableSegmentation || _maskIdx < 0) return base;
+        return PoseLandmarks(
+          landmarks: base.landmarks,
+          score: base.score,
+          segmentationMask: decodeSegmentationMask(outs[_maskIdx]),
+        );
       });
     }
 
@@ -297,7 +317,16 @@ class PoseLandmarkModelRunner {
         interp.runForMultipleInputs([buf.flatInputBuffer.buffer], outputs);
       }
 
-      return parsePoseLandmarksFlat(buf.outputLandmarks, buf.outputScore);
+      final PoseLandmarks base = parsePoseLandmarksFlat(
+        buf.outputLandmarks,
+        buf.outputScore,
+      );
+      if (!_enableSegmentation) return base;
+      return PoseLandmarks(
+        landmarks: base.landmarks,
+        score: base.score,
+        segmentationMask: decodeSegmentationMask(buf.outputMask),
+      );
     });
   }
 }

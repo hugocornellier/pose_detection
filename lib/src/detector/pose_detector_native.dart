@@ -28,6 +28,7 @@ class _DetectionIsolateStartupData {
   final bool useCompiledModel;
   final List<int> acceleratorIndices;
   final int precisionIndex;
+  final bool enableSegmentation;
 
   _DetectionIsolateStartupData({
     required this.sendPort,
@@ -45,6 +46,7 @@ class _DetectionIsolateStartupData {
     required this.useCompiledModel,
     required this.acceleratorIndices,
     required this.precisionIndex,
+    required this.enableSegmentation,
   });
 }
 
@@ -115,6 +117,7 @@ class PoseDetector {
     bool useCompiledModel = false,
     Set<Accelerator> accelerators = const {Accelerator.gpu, Accelerator.cpu},
     Precision precision = Precision.fp16,
+    bool enableSegmentation = false,
     // Web-only; accepted here for API parity but ignored on native.
     bool useLiteRt = true,
     String liteRtAccelerator = 'auto',
@@ -132,6 +135,7 @@ class PoseDetector {
       useCompiledModel: useCompiledModel,
       accelerators: accelerators,
       precision: precision,
+      enableSegmentation: enableSegmentation,
     );
     return detector;
   }
@@ -159,6 +163,7 @@ class PoseDetector {
     bool useCompiledModel = false,
     Set<Accelerator> accelerators = const {Accelerator.gpu, Accelerator.cpu},
     Precision precision = Precision.fp16,
+    bool enableSegmentation = false,
     // Web-only; accepted here for API parity but ignored on native.
     bool useLiteRt = true,
     String liteRtAccelerator = 'auto',
@@ -194,6 +199,7 @@ class PoseDetector {
       useCompiledModel: useCompiledModel,
       accelerators: accelerators,
       precision: precision,
+      enableSegmentation: enableSegmentation,
     );
   }
 
@@ -220,6 +226,7 @@ class PoseDetector {
     bool useCompiledModel = false,
     Set<Accelerator> accelerators = const {Accelerator.gpu, Accelerator.cpu},
     Precision precision = Precision.fp16,
+    bool enableSegmentation = false,
   }) async {
     if (isReady) {
       throw StateError('PoseDetector already initialized');
@@ -250,6 +257,7 @@ class PoseDetector {
         useCompiledModel: useCompiledModel,
         accelerators: accelerators,
         precision: precision,
+        enableSegmentation: enableSegmentation,
       );
     } catch (e) {
       if (worker.isReady) {
@@ -487,6 +495,7 @@ class PoseDetector {
         useCompiledModel: data.useCompiledModel,
         accelerators: accelerators,
         precision: precision,
+        enableSegmentation: data.enableSegmentation,
       );
 
       mainSendPort.send(workerReceivePort.sendPort);
@@ -607,6 +616,7 @@ class _PoseDetectorWorker extends IsolateWorkerBase {
     required bool useCompiledModel,
     required Set<Accelerator> accelerators,
     required Precision precision,
+    required bool enableSegmentation,
   }) async {
     await initWorker(
       (sendPort) => Isolate.spawn(
@@ -627,6 +637,7 @@ class _PoseDetectorWorker extends IsolateWorkerBase {
           useCompiledModel: useCompiledModel,
           acceleratorIndices: accelerators.map((a) => a.index).toList(),
           precisionIndex: precision.index,
+          enableSegmentation: enableSegmentation,
         ),
         debugName: 'PoseDetector',
       ),

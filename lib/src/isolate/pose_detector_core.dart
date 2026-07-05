@@ -66,6 +66,7 @@ class PoseDetectorCore {
     bool useCompiledModel = false,
     Set<Accelerator> accelerators = const {Accelerator.gpu, Accelerator.cpu},
     Precision precision = Precision.fp16,
+    bool enableSegmentation = false,
   }) async {
     _mode = mode;
     _maxDetections = maxDetections;
@@ -103,6 +104,7 @@ class PoseDetectorCore {
       useCompiledModel: useCompiledModel,
       accelerators: accelerators,
       precision: precision,
+      enableSegmentation: enableSegmentation,
     );
   }
 
@@ -239,6 +241,22 @@ class PoseDetectorCore {
         );
       }
 
+      // The raw 256x256 mask (when present) covers the padded square crop the
+      // landmark model saw, so it maps back to image space with the same
+      // cropX/cropY/side geometry used for the landmarks above.
+      final Uint8List? rawMask = lms.segmentationMask;
+      final SegmentationMask? mask = rawMask == null
+          ? null
+          : SegmentationMask(
+              width: 256,
+              height: 256,
+              confidences: rawMask,
+              imageLeft: data.cropX.toDouble(),
+              imageTop: data.cropY.toDouble(),
+              imageWidth: data.cropWidth.toDouble(),
+              imageHeight: data.cropHeight.toDouble(),
+            );
+
       results.add(
         Pose(
           boundingBox: BoundingBox.ltrb(
@@ -251,6 +269,7 @@ class PoseDetectorCore {
           landmarks: pts,
           imageWidth: imageWidth,
           imageHeight: imageHeight,
+          segmentationMask: mask,
         ),
       );
     }

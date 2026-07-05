@@ -148,6 +148,9 @@ class PoseDetector with WebGpuFallback {
     // Native-only; accepted here for API parity but ignored on web (the web
     // path uses its own CompiledModel pool via liteRtParallelism).
     bool useCompiledModel = false,
+    // Native-only; segmentation masks are not yet produced on web. Accepted
+    // for API parity so calls are portable; [Pose.segmentationMask] stays null.
+    bool enableSegmentation = false,
     bool useLiteRt = true,
     String liteRtAccelerator = 'auto',
   }) async {
@@ -186,6 +189,9 @@ class PoseDetector with WebGpuFallback {
     // Native-only; accepted here for API parity but ignored on web (the web
     // path uses its own CompiledModel pool via liteRtParallelism).
     bool useCompiledModel = false,
+    // Native-only; segmentation masks are not yet produced on web. Accepted
+    // for API parity so calls are portable; [Pose.segmentationMask] stays null.
+    bool enableSegmentation = false,
     bool useLiteRt = true,
     String liteRtAccelerator = 'auto',
   }) async {

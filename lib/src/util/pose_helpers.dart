@@ -48,6 +48,25 @@ PoseLandmarks parsePoseLandmarksFlat(
   return PoseLandmarks(landmarks: lm, score: score);
 }
 
+/// Decodes a raw BlazePose segmentation output tensor into a quantized
+/// person-probability mask.
+///
+/// The model emits [width] * [height] logits; this applies a sigmoid and
+/// quantizes each to 0-255 (0 = background, 255 = person). Allocates a fresh
+/// [Uint8List] so the caller may reuse the source buffer immediately.
+Uint8List decodeSegmentationMask(
+  Float32List maskLogits, {
+  int width = 256,
+  int height = 256,
+}) {
+  final int n = width * height;
+  final Uint8List out = Uint8List(n);
+  for (int i = 0; i < n; i++) {
+    out[i] = (sigmoid(maskLogits[i]) * 255.0).round().clamp(0, 255);
+  }
+  return out;
+}
+
 /// Parses raw BlazePose model outputs from dynamic nested lists into
 /// structured [PoseLandmarks]. Used by the web path where the JS
 /// interpreter returns nested `List<dynamic>` outputs.

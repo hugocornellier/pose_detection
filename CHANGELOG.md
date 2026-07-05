@@ -1,3 +1,8 @@
+## 3.5.0
+
+* Add opt-in person **segmentation masks**. Initialize with `enableSegmentation: true` (under `PoseMode.boxesAndLandmarks`) to receive a coarse BlazePose person mask per detected pose via `Pose.segmentationMask`. The landmark model already computes this mask on every inference, so returning it adds no inference cost. New `SegmentationMask` type exposes `confidenceAt(x, y)` sampling and `toRgbaBytes()` for rendering. Off by default; populated on native platforms only (web accepts the flag for API parity but leaves the mask `null`).
+* Fix the YOLOv8 person detector emitting phantom detections. The bundled model outputs class probabilities, not raw logits, but the shared decoder applies a sigmoid to every score, so background anchors near 0 cleared the confidence gate as `sigmoid(0) = 0.5`. That produced thousands of low-confidence boxes that NMS then collapsed into a random one-to-four detections. The detector now cancels the extra activation so the threshold compares against the model's actual probability.
+
 ## 3.4.0
 
 * Update flutter_litert -> 3.2.0

@@ -11,7 +11,8 @@ import 'package:image_picker/image_picker.dart';
 import 'package:flutter_colorpicker/flutter_colorpicker.dart';
 import 'package:camera/camera.dart';
 import 'package:pose_detection/pose_detection.dart';
-import 'package:flutter_litert/flutter_litert.dart' show OneEuroFilter;
+import 'package:flutter_litert/flutter_litert.dart'
+    show FrameThrottle, OneEuroFilter;
 import 'package:opencv_dart/opencv.dart' as cv;
 import 'package:path_provider/path_provider.dart';
 import 'package:sensors_plus/sensors_plus.dart';
@@ -637,7 +638,7 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
   int? _sensorOrientation;
   bool _isFrontCamera = false;
   bool _isSwitchingCamera = false;
-  bool _isProcessing = false;
+  final FrameThrottle _throttle = FrameThrottle();
   bool _isInitialized = false;
   DeviceOrientation _deviceOrientation = DeviceOrientation.portraitUp;
   StreamSubscription<AccelerometerEvent>? _accelerometerSub;
@@ -1141,59 +1142,52 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
       }
     }
 
-    if (_isProcessing) return;
+    await _throttle.run(() async {
+      try {
+        final startTime = DateTime.now();
 
-    _isProcessing = true;
+        if (_poseDetector == null || !mounted) return;
+        final sensor = _sensorOrientation;
+        final CameraFrameRotation? rotation = sensor == null
+            ? null
+            : rotationForFrame(
+                width: image.width,
+                height: image.height,
+                sensorOrientation: sensor,
+                isFrontCamera: _isFrontCamera,
+                deviceOrientation: _effectiveDeviceOrientation(context),
+              );
 
-    try {
-      final startTime = DateTime.now();
+        const int maxDim = 640;
+        final Size size = detectionSize(
+          width: image.width,
+          height: image.height,
+          rotation: rotation,
+          maxDim: maxDim,
+        );
 
-      if (_poseDetector == null || !mounted) {
-        _isProcessing = false;
-        return;
+        final poses = await _detectForLiveCamera(
+          image,
+          rotation: rotation,
+          maxDim: maxDim,
+        );
+
+        final endTime = DateTime.now();
+        final detectionTime = endTime.difference(startTime).inMilliseconds;
+        _recentInferenceMs.add(detectionTime);
+        _detThisSec++;
+
+        if (mounted) {
+          setState(() {
+            _poses = poses;
+            _imageSize = size;
+            _detectionTimeMs = detectionTime;
+          });
+        }
+      } catch (_) {
+        /// Silently handle errors during processing to keep the stream alive.
       }
-      final sensor = _sensorOrientation;
-      final CameraFrameRotation? rotation = sensor == null
-          ? null
-          : rotationForFrame(
-              width: image.width,
-              height: image.height,
-              sensorOrientation: sensor,
-              isFrontCamera: _isFrontCamera,
-              deviceOrientation: _effectiveDeviceOrientation(context),
-            );
-
-      const int maxDim = 640;
-      final Size size = detectionSize(
-        width: image.width,
-        height: image.height,
-        rotation: rotation,
-        maxDim: maxDim,
-      );
-
-      final poses = await _detectForLiveCamera(
-        image,
-        rotation: rotation,
-        maxDim: maxDim,
-      );
-
-      final endTime = DateTime.now();
-      final detectionTime = endTime.difference(startTime).inMilliseconds;
-      _recentInferenceMs.add(detectionTime);
-      _detThisSec++;
-
-      if (mounted) {
-        setState(() {
-          _poses = poses;
-          _imageSize = size;
-          _detectionTimeMs = detectionTime;
-        });
-      }
-    } catch (_) {
-      /// Silently handle errors during processing to keep the stream alive.
-    } finally {
-      _isProcessing = false;
-    }
+    });
   }
 
   @override

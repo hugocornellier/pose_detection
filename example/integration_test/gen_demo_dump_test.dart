@@ -85,7 +85,7 @@ void main() {
       idx++;
     }
 
-    frame?.dispose();
+    frame.dispose();
     cap.release();
     await detector.dispose();
 
@@ -94,7 +94,9 @@ void main() {
       jsonEncode({'fps': fps, 'w': vw, 'h': vh, 'frames': frames}),
     );
     // ignore: avoid_print
-    print('POSE_DUMP_DONE frames=${frames.length} size=${vw}x$vh -> ${out.path}');
+    print(
+      'POSE_DUMP_DONE frames=${frames.length} size=${vw}x$vh -> ${out.path}',
+    );
     expect(frames.length, greaterThan(0));
   });
 }

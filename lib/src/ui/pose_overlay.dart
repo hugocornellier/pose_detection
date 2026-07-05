@@ -1,7 +1,8 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
-import 'package:flutter_litert/flutter_litert.dart' show drawLandmarkMarker;
+import 'package:flutter_litert/flutter_litert.dart'
+    show CoverFitTransform, drawLandmarkMarker;
 import '../types.dart';
 
 /// Paints pose detection results over a still image.
@@ -397,24 +398,13 @@ class _CameraPoseStreamPainter extends CustomPainter {
     final double sourceHeight = imageSize.height;
     if (sourceWidth <= 0 || sourceHeight <= 0) return;
 
-    final double sourceAspect = sourceWidth / sourceHeight;
-    final double viewportAspect = size.width / size.height;
-
-    final double scale;
-    double offsetX = 0;
-    double offsetY = 0;
-    if (sourceAspect > viewportAspect) {
-      scale = size.height / sourceHeight;
-      offsetX = (size.width - sourceWidth * scale) / 2;
-    } else {
-      scale = size.width / sourceWidth;
-      offsetY = (size.height - sourceHeight * scale) / 2;
-    }
-
-    Offset transform(double x, double y) {
-      final double mx = mirrorHorizontally ? sourceWidth - x : x;
-      return Offset(mx * scale + offsetX, y * scale + offsetY);
-    }
+    final t = CoverFitTransform.cover(
+      sourceWidth: sourceWidth,
+      sourceHeight: sourceHeight,
+      viewWidth: size.width,
+      viewHeight: size.height,
+      mirror: mirrorHorizontally,
+    );
 
     final Paint boxPaint = Paint()
       ..style = PaintingStyle.stroke
@@ -427,8 +417,8 @@ class _CameraPoseStreamPainter extends CustomPainter {
       ..strokeCap = StrokeCap.round;
 
     for (final pose in poses) {
-      final p1 = transform(pose.boundingBox.left, pose.boundingBox.top);
-      final p2 = transform(pose.boundingBox.right, pose.boundingBox.bottom);
+      final p1 = t.map(pose.boundingBox.left, pose.boundingBox.top);
+      final p2 = t.map(pose.boundingBox.right, pose.boundingBox.bottom);
       canvas.drawRect(
         Rect.fromLTRB(
           math.min(p1.dx, p2.dx),
@@ -448,13 +438,13 @@ class _CameraPoseStreamPainter extends CustomPainter {
             b != null &&
             a.visibility > 0.5 &&
             b.visibility > 0.5) {
-          canvas.drawLine(transform(a.x, a.y), transform(b.x, b.y), linePaint);
+          canvas.drawLine(t.map(a.x, a.y), t.map(b.x, b.y), linePaint);
         }
       }
 
       for (final l in pose.landmarks) {
         if (l.visibility > 0.5) {
-          final o = transform(l.x, l.y);
+          final o = t.map(l.x, l.y);
           drawLandmarkMarker(
             canvas,
             o.dx,
