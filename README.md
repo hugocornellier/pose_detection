@@ -14,9 +14,9 @@
 Flutter plugin for on-device, multi-person pose detection and landmark estimation using TensorFlow Lite. Uses YOLOv8n for person detection and Google's [BlazePose](https://ai.google.dev/edge/mediapipe/solutions/vision/pose_landmarker) for 33-keypoint landmark extraction.
 
 <p align="center">
-  <img src="assets/screenshots/demo.gif" alt="Pose Detection Demo" width="420">
+  <img src="assets/screenshots/demo.webp" alt="On-device pose detection tracking a soccer player, built with pose_detection" width="420">
   <br>
-  <sub><i style="color: #888;">Generated using the built-in example app with <code>sample_videos/dancing_10s.mp4</code> as input.</i></sub>
+  <sub><i style="color: #888;">On-device pose detection and 33-point landmark tracking, rendered from <code>sample_videos/soccer_street.mp4</code>.</i></sub>
 </p>
 
 ## Quick Start
@@ -293,6 +293,29 @@ CustomPaint(
 ```
 
 ## Segmentation Mask
+
+<!--
+  Before/after in two rows (dancer, then group). Each row pairs the SAME photo
+  (identical aspect ratio), so both images take the same width and render at
+  equal size, side by side on mobile and desktop. Size with percentage width=
+  (NOT height=): pub.dev's stylesheet forces `img{height:auto}`, so a height=
+  is discarded and the pair would wrap onto separate lines. 45% + 45% keeps them
+  side by side at every width. Images live under assets/screenshots (pubignored)
+  and render via pub.dev's relative-path rewrite to the repo.
+-->
+<p align="center">
+  <img src="assets/screenshots/mask_before_dancer.jpg" alt="Original photo of a single subject, no mask" width="45%" align="middle">
+  &nbsp;&nbsp;&nbsp;
+  <img src="assets/screenshots/mask_after_dancer.jpg" alt="Same photo with an on-device BlazePose person segmentation mask, produced by pose_detection" width="45%" align="middle">
+</p>
+<p align="center">
+  <img src="assets/screenshots/mask_before_group.jpg" alt="Original photo of three people, no mask" width="45%" align="middle">
+  &nbsp;&nbsp;&nbsp;
+  <img src="assets/screenshots/mask_after_group.jpg" alt="Same photo with a per-person segmentation mask on each of the three people, produced by pose_detection" width="45%" align="middle">
+</p>
+<p align="center">
+  <sub><i style="color: #888;">Before / after: original photo (left) and on-device person segmentation (right), enabled with <code>enableSegmentation: true</code>. Each detected person gets their own mask. Photos via Wikimedia Commons (fire dancer by Myfirmann, CC BY-SA 4.0; group portrait, public domain); masks added.</i></sub>
+</p>
 
 Alongside the 33 landmarks, the BlazePose model also emits a coarse
 person-vs-background segmentation mask. The model computes it on every landmark

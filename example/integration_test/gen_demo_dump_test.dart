@@ -15,7 +15,7 @@ import 'package:pose_detection/pose_detection.dart';
 import 'package:pose_detection_example/main.dart' show PoseSmoother;
 
 const String kVideoPath =
-    '/Users/hugocornellier/IdeaProjects/pose_detection/sample_videos/dancing_10s.mp4';
+    '/Users/hugocornellier/IdeaProjects/pose_detection/sample_videos/soccer_street.mp4';
 const String kOutDir =
     '/private/tmp/claude-501/-Users-hugocornellier-IdeaProjects-flutter-litert/c0042546-26a9-49af-a45c-ef2d760c1514/scratchpad/pose_dump';
 

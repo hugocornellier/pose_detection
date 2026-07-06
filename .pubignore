@@ -62,3 +62,24 @@ app.*.map.json
 
 # Screenshots (referenced via GitHub URLs in README)
 assets/screenshots/
+
+# Package tests and dev scripts: not needed by consumers of the published archive
+test/
+android/src/test/
+windows/test/
+linux/test/
+runAllTests.sh
+runBenchmark.sh
+runWebBenchmark.sh
+scripts.txt
+
+# Example app: keep example/lib and example/pubspec.yaml (pub.dev Example tab and pana),
+# exclude runner scaffolding and tests, which only matter when cloning from GitHub
+example/android/
+example/ios/
+example/macos/
+example/windows/
+example/linux/
+example/web/
+example/integration_test/
+example/test_driver/
