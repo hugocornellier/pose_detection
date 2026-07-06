@@ -1,3 +1,11 @@
+## 3.5.1
+
+* Web: the `auto` accelerator now resolves through flutter_litert's capability probe (`resolveWebAccelerator`): WebGPU is selected only on Chromium with a real hardware adapter, and everything else starts on WASM. Fixes Firefox 152, whose WebGPU compiles and runs cleanly but far slower than WASM SIMD, so the error-driven fallback could never catch it.
+* Web: after an `auto` init lands on WebGPU, a timed warmup on the YOLO stage (`WebGpuFallback.maybeSwapIfWebGpuSlow`) swaps all runners to WASM when the median run exceeds the budget.
+* Web: Safari initializes again; flutter_litert now serves LiteRT.js from its wasm directory default, so Safari receives the compat build instead of failing to parse the relaxed-SIMD build (`relaxed simd instructions not supported`).
+* Update flutter_litert -> 3.4.1 (also brings the web `CompiledModel` WebGPU compile watchdog: a compile attempt that never settles falls back to WASM instead of hanging).
+* example_web: mirror backend + fps into the page title and add `?screen=camera|video|still` deep links for automated validation.
+
 ## 3.5.0
 
 * Add opt-in person **segmentation masks**. Initialize with `enableSegmentation: true` (under `PoseMode.boxesAndLandmarks`) to receive a coarse BlazePose person mask per detected pose via `Pose.segmentationMask`. The landmark model already computes this mask on every inference, so returning it adds no inference cost. New `SegmentationMask` type exposes `confidenceAt(x, y)` sampling and `toRgbaBytes()` for rendering. Off by default; populated on native platforms only (web accepts the flag for API parity but leaves the mask `null`).

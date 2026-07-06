@@ -231,6 +231,23 @@ class PoseDetector with WebGpuFallback {
     _cropCanvas!.height = 256;
     _cropCtx = _cropCanvas!.getContext('2d') as web.CanvasRenderingContext2D;
 
+    // Catch slow-but-functional WebGPU stacks (e.g. Firefox) that the
+    // error-driven fallback can never see: 'auto' requests that landed on
+    // WebGPU get a timed warmup and swap to WASM past the budget.
+    if (_useLiteRt &&
+        liteRtAccelerator == 'auto' &&
+        activeAccelerator == 'webgpu') {
+      final web.HTMLCanvasElement probe = web.HTMLCanvasElement()
+        ..width = 64
+        ..height = 64;
+      final ctx = probe.getContext('2d') as web.CanvasRenderingContext2D;
+      ctx.fillStyle = 'rgb(127,127,127)'.toJS;
+      ctx.fillRect(0, 0, 64, 64);
+      await maybeSwapIfWebGpuSlow(
+        probe: () => _yolo.detect(probe, imageWidth: 64, imageHeight: 64),
+      );
+    }
+
     _isInitialized = true;
   }
 

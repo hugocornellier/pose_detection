@@ -62,11 +62,10 @@ class YoloV8PersonDetector extends PersonDetectorBase {
 
     if (useLiteRt) {
       final ByteData raw = await rootBundle.load(assetPath);
-      // 'auto' prefers WebGPU; flutter_litert falls back to WASM if compile
-      // fails (e.g., no navigator.gpu, or unsupported ops).
-      final String resolved = liteRtAccelerator == 'auto'
-          ? 'webgpu'
-          : liteRtAccelerator;
+      // 'auto' picks WebGPU only on Chromium with a hardware adapter (see
+      // resolveWebAccelerator); flutter_litert still falls back to WASM when
+      // the WebGPU compile fails (e.g., unsupported ops).
+      final String resolved = await resolveWebAccelerator(liteRtAccelerator);
       final lrt = await LiteRtInterpreter.fromBytes(
         raw.buffer.asUint8List(),
         accelerator: resolved,

@@ -10,6 +10,8 @@ import 'package:flutter_litert/src/web/js_interop/tfjs_tensor.dart';
 import 'package:flutter_litert/src/web/litertjs_interpreter.dart'
     show LiteRtInterpreter;
 import 'package:flutter_litert/src/web/model.dart' as litert_web;
+import 'package:flutter_litert/src/web/web_detector_utils.dart'
+    show resolveWebAccelerator;
 import '../types.dart';
 import '../util/pose_helpers.dart';
 import '../util/web_image_utils.dart';
@@ -86,11 +88,10 @@ class PoseLandmarkModelRunner {
     final Uint8List bytes = rawAssetFile.buffer.asUint8List();
 
     if (useLiteRt) {
-      // 'auto' prefers WebGPU; flutter_litert falls back to WASM if compile
-      // fails (e.g., no navigator.gpu, or unsupported ops).
-      final String resolved = liteRtAccelerator == 'auto'
-          ? 'webgpu'
-          : liteRtAccelerator;
+      // 'auto' picks WebGPU only on Chromium with a hardware adapter (see
+      // resolveWebAccelerator); flutter_litert still falls back to WASM when
+      // the WebGPU compile fails (e.g., unsupported ops).
+      final String resolved = await resolveWebAccelerator(liteRtAccelerator);
       for (int i = 0; i < _liteRtParallelism; i++) {
         _liteRtItps.add(
           await LiteRtInterpreter.fromBytes(bytes, accelerator: resolved),

@@ -138,6 +138,22 @@ mixin DetectionOverlayMixin<T extends StatefulWidget> on State<T> {
 
   // ---- Detector lifecycle ---------------------------------------------
 
+  int _lastTitleUpdateMs = 0;
+
+  /// Mirrors backend + FPS into the page title so automated runs (and
+  /// curious users) can read the pipeline state without a DOM inspector.
+  void updateStatusTitle({double? fps}) {
+    final int now = DateTime.now().millisecondsSinceEpoch;
+    if (fps != null && now - _lastTitleUpdateMs < 1000) return;
+    _lastTitleUpdateMs = now;
+    final String backend = activeAccelerator == '?'
+        ? 'tflite-js'
+        : activeAccelerator;
+    web.document.title = fps == null
+        ? 'pose demo · $backend'
+        : 'pose demo · $backend · ${fps.toStringAsFixed(0)} fps';
+  }
+
   Future<void> initializeDetector() async {
     try {
       detector = await PoseDetector.create(
@@ -152,6 +168,7 @@ mixin DetectionOverlayMixin<T extends StatefulWidget> on State<T> {
         return;
       }
       isModelReady = true;
+      updateStatusTitle();
       onDetectorReady(
         activeAccelerator == '?' ? 'tflite-js' : activeAccelerator,
       );
@@ -214,6 +231,7 @@ mixin DetectionOverlayMixin<T extends StatefulWidget> on State<T> {
           lastDetectionMs = sw.elapsedMilliseconds;
           detectedPoses = poses.length;
         });
+        updateStatusTitle(fps: fpsCounter.fps.toDouble());
       }
     } catch (_) {
       // Swallow per-frame errors (e.g. video not ready) to avoid stopping the

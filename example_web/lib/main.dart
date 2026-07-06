@@ -19,8 +19,36 @@ class MyApp extends StatelessWidget {
   }
 }
 
-class HomeScreen extends StatelessWidget {
+class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
+
+  @override
+  State<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends State<HomeScreen> {
+  @override
+  void initState() {
+    super.initState();
+    // Deep-link hook (also used by automated validation):
+    // /?screen=camera|video|still opens a demo screen directly.
+    final String? screen = Uri.base.queryParameters['screen'];
+    if (screen == null) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final Widget? target = switch (screen) {
+        'camera' => const LiveCameraScreen(),
+        'video' => const VideoFileScreen(),
+        'still' => const StillImageScreen(),
+        _ => null,
+      };
+      if (target != null) {
+        Navigator.of(
+          context,
+        ).push(MaterialPageRoute<void>(builder: (_) => target));
+      }
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
