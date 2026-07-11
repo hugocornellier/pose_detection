@@ -1,3 +1,7 @@
+## 3.5.2
+
+* Update flutter_litert -> 3.5.0
+
 ## 3.5.1
 
 * Web: the `auto` accelerator now resolves through flutter_litert's capability probe (`resolveWebAccelerator`): WebGPU is selected only on Chromium with a real hardware adapter, and everything else starts on WASM. Fixes Firefox 152, whose WebGPU compiles and runs cleanly but far slower than WASM SIMD, so the error-driven fallback could never catch it.
