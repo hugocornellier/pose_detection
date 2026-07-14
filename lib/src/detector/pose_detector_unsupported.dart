@@ -12,7 +12,7 @@ import '../types.dart';
 
 class PoseDetector {
   static const String _packageVersion = '3.1.0';
-  static const String _pipelineVersion = 'pipeline_v1';
+  static const String _pipelineVersion = 'pipeline_v2';
 
   /// Version key for the default pose detection pipeline.
   static const String modelVersion =

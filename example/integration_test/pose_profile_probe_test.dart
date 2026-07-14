@@ -216,6 +216,7 @@ double _benchDecode(
     iouThres: 0.45,
     maxDet: 10,
     filterClassId: 0,
+    scoresAreProbabilities: true,
   );
   for (int i = 0; i < 10; i++) {
     run();

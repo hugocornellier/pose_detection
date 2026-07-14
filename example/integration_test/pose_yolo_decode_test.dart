@@ -122,6 +122,7 @@ void main() {
           iouThres: 0.45,
           maxDet: 10,
           filterClassId: 0,
+          scoresAreProbabilities: true,
           // omit the flag entirely when fast == null to exercise the default.
           useFastSingleClass: fast ?? false,
         );
@@ -225,6 +226,8 @@ void main() {
       iouThres: 0.45,
       maxDet: 10,
       filterClassId: 0,
+      // This fixture intentionally contains logits to exercise the legacy
+      // decoder contract, unlike the bundled YOLO model used above/below.
       useFastSingleClass: fast,
     );
 
@@ -286,6 +289,7 @@ void main() {
         iouThres: 0.45,
         maxDet: 10,
         filterClassId: 0,
+        scoresAreProbabilities: true,
         useFastSingleClass: fast,
       );
 

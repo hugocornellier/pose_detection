@@ -10,8 +10,10 @@ String poseLandmarkModelPath(PoseLandmarkModel model) =>
 /// Parses raw BlazePose model outputs from flat Float32List buffers into
 /// structured [PoseLandmarks].
 ///
-/// Applies sigmoid activation to score, visibility, and presence values.
-/// Normalizes x/y coordinates from 256x256 pixel space to [0, 1] range.
+/// The overall pose score is already a probability because the model output is
+/// produced by a LOGISTIC op. Visibility and presence remain logits and are
+/// activated here. Normalizes x/y coordinates from 256x256 pixel space to
+/// [0, 1] range.
 ///
 /// Expected buffer layouts:
 /// - [landmarksData]: at least 165 floats = 33 landmarks *
@@ -22,7 +24,7 @@ PoseLandmarks parsePoseLandmarksFlat(
   Float32List landmarksData,
   Float32List scoreData,
 ) {
-  final double score = sigmoid(scoreData[0]);
+  final double score = scoreData[0];
   final List<PoseLandmark> lm = <PoseLandmark>[];
 
   for (int i = 0; i < 33; i++) {

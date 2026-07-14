@@ -1,3 +1,18 @@
+## 3.5.3
+
+* Fix landmark confidence decoding for the lite, full, and heavy BlazePose
+  models. Their overall score tensor is already produced by a TFLite
+  `LOGISTIC` op, so it is now used directly instead of passing through a
+  second sigmoid. The default `minLandmarkScore: 0.5` gate can once again
+  reject blank or low-confidence crops.
+* Return the bundled YOLOv8 person's actual class probability as `Pose.score`.
+  The detector now uses flutter_litert's explicit probability mode rather than
+  compensating for its legacy logit decoder by transforming the threshold.
+  Filtering is unchanged, while reported confidence is calibrated correctly.
+* Bump the pose pipeline cache key because identical inputs can now produce
+  different landmark inclusion and confidence output.
+* Update flutter_litert -> 3.5.1.
+
 ## 3.5.2
 
 * Update flutter_litert -> 3.5.0

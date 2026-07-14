@@ -222,9 +222,8 @@ class YoloV8PersonDetector extends PersonDetectorBase {
         dh: dh,
         imageWidth: imageWidth,
         imageHeight: imageHeight,
-        // Model emits probabilities; cancel the decode's sigmoid so the gate
-        // compares against the actual probability (see person_detector_native).
-        confThres: sigmoid(confThres),
+        confThres: confThres,
+        scoresAreProbabilities: true,
         iouThres: iouThres,
         maxDet: maxDet,
         filterClassId: personOnly ? cocoPersonClassId : null,
@@ -249,9 +248,8 @@ class YoloV8PersonDetector extends PersonDetectorBase {
       dh: dh,
       imageWidth: imageWidth,
       imageHeight: imageHeight,
-      // Model emits probabilities; cancel the decode's sigmoid so the gate
-      // compares against the actual probability (see person_detector_native).
-      confThres: sigmoid(confThres),
+      confThres: confThres,
+      scoresAreProbabilities: true,
       iouThres: iouThres,
       topkPreNms: 0,
       maxDet: maxDet,
