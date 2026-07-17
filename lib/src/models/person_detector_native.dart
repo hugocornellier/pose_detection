@@ -1,5 +1,5 @@
 import 'dart:typed_data';
-import 'package:flutter/foundation.dart' show setEquals;
+import 'package:flutter/foundation.dart' show debugPrint, setEquals;
 import 'package:opencv_dart/opencv_dart.dart' as cv;
 import 'package:flutter_litert/native.dart';
 import '../util/native_image_utils.dart';
@@ -62,8 +62,8 @@ class YoloV8PersonDetector extends PersonDetectorBase {
   ///
   /// When [useCompiledModel] is true, a LiteRT Next [CompiledModel] backs
   /// inference instead of an [Interpreter]. [compiledForceCpu] pins the
-  /// CompiledModel to CPU (no GPU attempt); the caller uses this on iOS to
-  /// avoid Metal floating-point variance changing detection counts.
+  /// CompiledModel to CPU (no GPU attempt); no caller forces it by default,
+  /// it remains as an escape hatch for GPU-hostile environments.
   Future<void> initializeFromBuffer(
     Uint8List modelBytes, {
     PerformanceConfig? performanceConfig,
@@ -125,12 +125,19 @@ class YoloV8PersonDetector extends PersonDetectorBase {
         ? CompiledModel.fromBufferWithGpuFallback(
             modelBytes,
             precision: precision,
+            onFallback: (e) => debugPrint(
+              '[pose-accel] YOLO GPU compile failed, using CPU: $e',
+            ),
           )
         : CompiledModel.fromBuffer(
             modelBytes,
             accelerators: effectiveAccelerators,
             precision: precision,
           );
+    debugPrint(
+      '[pose-accel] YOLO CompiledModel accelerators=${_compiled!.accelerators} '
+      'precision=${precision.name}',
+    );
     isInitializedFlag = true;
   }
 

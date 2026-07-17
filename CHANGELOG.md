@@ -1,3 +1,18 @@
+## 3.6.0
+
+* iOS now runs the YOLO person detector on the Metal GPU on the default
+  CompiledModel path, cutting live-camera latency roughly 4x on device
+  (measured on iPhone: ~100ms to ~22ms per frame, with detection keeping
+  pace with the 24 fps camera stream). The CPU pin dated from v2.0.6, when
+  the old TFLite Metal GPU delegate produced inconsistent detection counts
+  (10 vs 2 on the same image); the LiteRT Next Metal accelerator used by
+  the CompiledModel path shows stable counts at fp16 on device. The
+  interpreter path keeps its XNNPACK override on iOS because it still uses
+  the old delegate.
+* CompiledModel GPU-to-CPU fallbacks are no longer silent: the YOLO and
+  landmark models log the fallback error and the compiled accelerator set
+  in debug builds (`[pose-accel]` lines).
+
 ## 3.5.3
 
 * Fix landmark confidence decoding for the lite, full, and heavy BlazePose

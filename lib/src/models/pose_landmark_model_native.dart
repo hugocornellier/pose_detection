@@ -1,6 +1,6 @@
 import 'dart:typed_data';
 
-import 'package:flutter/foundation.dart' show setEquals;
+import 'package:flutter/foundation.dart' show debugPrint, setEquals;
 import 'package:opencv_dart/opencv_dart.dart' as cv;
 import 'package:flutter_litert/native.dart';
 import '../types.dart';
@@ -183,13 +183,22 @@ class PoseLandmarkModelRunner {
           ? CompiledModel.fromBufferWithGpuFallback(
               modelBytes,
               precision: precision,
+              onFallback: (e) => debugPrint(
+                '[pose-accel] landmark GPU compile failed, using CPU: $e',
+              ),
             )
           : CompiledModel.fromBuffer(
               modelBytes,
               accelerators: effectiveAccelerators,
               precision: precision,
             ),
-      onFirstModel: _identifyCompiledOutputs,
+      onFirstModel: (model) {
+        debugPrint(
+          '[pose-accel] landmark CompiledModel '
+          'accelerators=${model.accelerators} precision=${precision.name}',
+        );
+        _identifyCompiledOutputs(model);
+      },
     );
     _isInitialized = true;
   }

@@ -82,17 +82,17 @@ class PoseDetectorCore {
         ? PerformanceConfig.xnnpack()
         : performanceConfig;
 
-    // The CompiledModel analogue of the iOS XNNPACK override: pin the YOLO
-    // CompiledModel to CPU on iOS so Metal floating-point variance does not
-    // change detection counts. The landmark model keeps the GPU|CPU fallback.
-    final bool yoloCompiledForceCpu = Platform.isIOS;
-
+    // Unlike the interpreter path above, the CompiledModel path does NOT pin
+    // YOLO to CPU on iOS. The detection-count variance that motivated the pin
+    // (10 vs 2 detections on the same image, v2.0.6) was a defect of the old
+    // TFLite Metal GPU delegate; the LiteRT Next Metal accelerator used here
+    // produces stable counts on-device at fp16 while cutting live latency
+    // roughly 4x (measured iPhone, 2026-07-17: ~100ms pinned vs ~22ms GPU).
     _yolo = YoloV8PersonDetector();
     await _yolo!.initializeFromBuffer(
       yoloBytes,
       performanceConfig: yoloConfig,
       useCompiledModel: useCompiledModel,
-      compiledForceCpu: yoloCompiledForceCpu,
       accelerators: accelerators,
       precision: precision,
     );
