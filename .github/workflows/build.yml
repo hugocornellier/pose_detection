@@ -152,12 +152,17 @@ jobs:
           channel: ${{ matrix.flutter-channel }}
           cache: true
 
+      # Deliberately no restore-keys. The cached tree contains CMake caches with
+      # the dartcv4 source path baked in as an absolute path. A prefix fallback
+      # restores a tree built against a *different* dartcv4 source (e.g. after a
+      # dependency_overrides switch from pub.dev to a git fork), and CMake then
+      # hard-fails with "does not match the source used to generate cache".
+      # A lockfile change has to pay for a clean native rebuild.
       - name: Cache opencv_dart native build
         uses: actions/cache@v5
         with:
           path: example/.dart_tool/hooks_runner/shared
           key: opencv-native-linux-${{ hashFiles('pubspec.lock', 'example/pubspec.lock') }}
-          restore-keys: opencv-native-linux-
 
       - name: Build Linux
         run: flutter build linux --debug
@@ -178,12 +183,12 @@ jobs:
           channel: ${{ matrix.flutter-channel }}
           cache: true
 
+      # No restore-keys, for the same reason as the Linux job above.
       - name: Cache opencv_dart native build
         uses: actions/cache@v5
         with:
           path: example/.dart_tool/hooks_runner/shared
           key: opencv-native-windows-${{ hashFiles('pubspec.lock', 'example/pubspec.lock') }}
-          restore-keys: opencv-native-windows-
 
       - name: Build Windows
         run: flutter build windows --debug

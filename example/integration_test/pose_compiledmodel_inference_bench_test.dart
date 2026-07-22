@@ -76,7 +76,10 @@ double _std(List<int> t) {
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
-  final isMacOS = Platform.isMacOS;
+  // macOS exercises the real Metal GPU; Android and iOS devices exercise
+  // their real mobile GPU (OpenCL on Android, Metal on iOS). Everything else
+  // (simulators, desktop CI without a GPU) stays skipped.
+  final hasRealGpu = Platform.isMacOS || Platform.isAndroid || Platform.isIOS;
 
   final summary = <String>[];
   final jsonRows = <Map<String, dynamic>>[];
@@ -86,7 +89,7 @@ void main() {
       test(
         '$name : cpu vs gpu|cpu',
         timeout: const Timeout(Duration(minutes: 10)),
-        skip: isMacOS ? false : 'macOS-only (real Metal GPU)',
+        skip: hasRealGpu ? false : 'needs a real GPU (macOS/Android/iOS)',
         () async {
           final data = await rootBundle.load(asset);
           final bytes = data.buffer.asUint8List();

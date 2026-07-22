@@ -1,7 +1,7 @@
 name: pose_detection_example
 description: Example app for pose_detection
 publish_to: 'none'
-version: 1.0.0
+version: 1.0.1+2
 
 environment:
   sdk: '>=3.10.0 <4.0.0'
@@ -32,6 +32,15 @@ dependencies:
 # upstream package is fixed.
 dependency_overrides:
   video_player_avfoundation: 2.9.4
+  # dartcv4 2.2.1+4 hardcodes macOS DEPLOYMENT_TARGET=10.15 in its build hook,
+  # which the Xcode 27 SDK rejects (minimum is 12.0), so the CMake try-compile
+  # fails and the whole macOS build dies. Point at a patched fork of the exact
+  # 2.2.1+4 release (10.15 raised to 12.0) until upstream ships a fix.
+  dartcv4:
+    git:
+      url: https://github.com/hugocornellier/opencv_dart.git
+      ref: 4c10de166f225c7093ed4cd9afe373d37955492a
+      path: packages/dartcv
 
 dev_dependencies:
   flutter_test:

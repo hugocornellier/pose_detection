@@ -653,6 +653,7 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
   // Live backend benchmarking: default to CompiledModel, with a one-tap
   // XNNPACK fallback for immediate A/B checks in the camera view.
   bool _useCompiledModel = true;
+  Precision _precision = Precision.fp16;
   PerformanceConfig get _perfConfig => const PerformanceConfig.xnnpack();
   final List<int> _recentInferenceMs = [];
   int _detThisSec = 0;
@@ -699,6 +700,7 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
         landmarkModel: _detectionModel,
         performanceConfig: _perfConfig,
         useCompiledModel: _useCompiledModel,
+        precision: _precision,
       );
     } catch (e) {
       if (!_useCompiledModel) rethrow;
@@ -742,7 +744,7 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
     // ignore: avoid_print
     print(
       '[live-bench] switching backend -> '
-      '${_useCompiledModel ? 'compiledmodel' : 'xnnpack'}',
+      '${_useCompiledModel ? 'compiledmodel-${_precision.name}' : 'xnnpack'}',
     );
     await _reinitDetectorIsolate();
   }
@@ -963,6 +965,37 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
                   ),
               ],
             ),
+            const Divider(color: Colors.white24, height: 24),
+            const Text('PRECISION · COMPILEDMODEL', style: sectionLabelStyle),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: [
+                for (final (v, label) in const [
+                  (Precision.fp16, 'FP16'),
+                  (Precision.fp32, 'FP32'),
+                ])
+                  chip<Precision>(
+                    value: v,
+                    current: _precision,
+                    label: label,
+                    onTap: () async {
+                      if (v == _precision) return;
+                      update(() {
+                        _precision = v;
+                        _recentInferenceMs.clear();
+                      });
+                      // ignore: avoid_print
+                      print('[live-bench] switching precision -> ${v.name}');
+                      if (_useCompiledModel) {
+                        await _reinitDetectorIsolate();
+                      }
+                      if (mounted) setMenuState(() {});
+                    },
+                  ),
+              ],
+            ),
           ],
         ),
       ),
@@ -1117,7 +1150,9 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
       final meanMs = n == 0
           ? 0
           : (_recentInferenceMs.reduce((a, b) => a + b) / n).round();
-      final backend = _useCompiledModel ? 'compiledmodel' : 'xnnpack';
+      final backend = _useCompiledModel
+          ? 'compiledmodel-${_precision.name}'
+          : 'xnnpack';
       // ignore: avoid_print
       print(
         '[live-bench] backend=$backend '

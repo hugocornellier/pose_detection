@@ -10,6 +10,12 @@ android {
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
 
+    // Build the androidTest instrumentation APK against the profile variant:
+    // it pairs with the profile app APK sent to Firebase Test Lab, and the
+    // camerax plugin's debug javac currently fails on a missing
+    // androidx.concurrent compile-classpath entry that profile doesn't hit.
+    testBuildType = "profile"
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
@@ -28,6 +34,9 @@ android {
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+        // Runs the Dart integration_test targets as instrumentation tests
+        // (locally and on Firebase Test Lab physical devices).
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     buildTypes {
@@ -41,4 +50,11 @@ android {
 
 flutter {
     source = "../.."
+}
+
+dependencies {
+    // Pinned to the versions integration_test's Android library already pulls
+    // into the app runtime classpath; AGP consistent resolution rejects newer.
+    androidTestImplementation("androidx.test:runner:1.3.0")
+    androidTestImplementation("androidx.test:rules:1.2.0")
 }

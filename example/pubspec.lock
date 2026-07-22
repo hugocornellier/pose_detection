@@ -146,12 +146,13 @@ packages:
     source: hosted
     version: "1.0.9"
   dartcv4:
-    dependency: transitive
+    dependency: "direct overridden"
     description:
-      name: dartcv4
-      sha256: "5764d13550055da3bb35ca28e6866b837579dfb4b594582b7a7753785ca5dfef"
-      url: "https://pub.dev"
-    source: hosted
+      path: "packages/dartcv"
+      ref: "4c10de166f225c7093ed4cd9afe373d37955492a"
+      resolved-ref: "4c10de166f225c7093ed4cd9afe373d37955492a"
+      url: "https://github.com/hugocornellier/opencv_dart.git"
+    source: git
     version: "2.2.1+4"
   fake_async:
     dependency: transitive
@@ -613,7 +614,7 @@ packages:
       path: ".."
       relative: true
     source: path
-    version: "3.5.3"
+    version: "3.6.0"
   process:
     dependency: transitive
     description:
