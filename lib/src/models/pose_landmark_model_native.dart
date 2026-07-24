@@ -1,6 +1,6 @@
 import 'dart:typed_data';
 
-import 'package:flutter/foundation.dart' show debugPrint, setEquals;
+import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:opencv_dart/opencv_dart.dart' as cv;
 import 'package:flutter_litert/native.dart';
 import '../types.dart';
@@ -169,29 +169,18 @@ class PoseLandmarkModelRunner {
     Set<Accelerator> accelerators = const {Accelerator.gpu, Accelerator.cpu},
     Precision precision = Precision.fp16,
   }) async {
-    final effectiveAccelerators = forceCpu
-        ? const {Accelerator.cpu}
-        : accelerators;
-    final useGpuFallback = setEquals(effectiveAccelerators, const {
-      Accelerator.gpu,
-      Accelerator.cpu,
-    });
     _compiledPool.initialize(
       poolSize: poolSize,
       inputFloats: 256 * 256 * 3,
-      create: () => useGpuFallback
-          ? CompiledModel.fromBufferWithGpuFallback(
-              modelBytes,
-              precision: precision,
-              onFallback: (e) => debugPrint(
-                '[pose-accel] landmark GPU compile failed, using CPU: $e',
-              ),
-            )
-          : CompiledModel.fromBuffer(
-              modelBytes,
-              accelerators: effectiveAccelerators,
-              precision: precision,
-            ),
+      create: () => compiledModelFromBufferAuto(
+        modelBytes,
+        accelerators: accelerators,
+        precision: precision,
+        forceCpu: forceCpu,
+        onGpuFallback: (e) => debugPrint(
+          '[pose-accel] landmark GPU compile failed, using CPU: $e',
+        ),
+      ),
       onFirstModel: (model) {
         debugPrint(
           '[pose-accel] landmark CompiledModel '

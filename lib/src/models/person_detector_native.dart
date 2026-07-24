@@ -1,5 +1,5 @@
 import 'dart:typed_data';
-import 'package:flutter/foundation.dart' show debugPrint, setEquals;
+import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:opencv_dart/opencv_dart.dart' as cv;
 import 'package:flutter_litert/native.dart';
 import '../util/native_image_utils.dart';
@@ -114,26 +114,14 @@ class YoloV8PersonDetector extends PersonDetectorBase {
     }
     _computeYoloLayout();
 
-    final effectiveAccelerators = forceCpu
-        ? const {Accelerator.cpu}
-        : accelerators;
-    _compiled =
-        setEquals(effectiveAccelerators, const {
-          Accelerator.gpu,
-          Accelerator.cpu,
-        })
-        ? CompiledModel.fromBufferWithGpuFallback(
-            modelBytes,
-            precision: precision,
-            onFallback: (e) => debugPrint(
-              '[pose-accel] YOLO GPU compile failed, using CPU: $e',
-            ),
-          )
-        : CompiledModel.fromBuffer(
-            modelBytes,
-            accelerators: effectiveAccelerators,
-            precision: precision,
-          );
+    _compiled = compiledModelFromBufferAuto(
+      modelBytes,
+      accelerators: accelerators,
+      precision: precision,
+      forceCpu: forceCpu,
+      onGpuFallback: (e) =>
+          debugPrint('[pose-accel] YOLO GPU compile failed, using CPU: $e'),
+    );
     debugPrint(
       '[pose-accel] YOLO CompiledModel accelerators=${_compiled!.accelerators} '
       'precision=${precision.name}',

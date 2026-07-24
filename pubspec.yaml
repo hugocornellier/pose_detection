@@ -1,15 +1,16 @@
 name: pose_detection
-description: Pose, person and landmark detection using on-device TFLite models.
+description: Pose, person and landmark detection using on-device LiteRT (formerly TensorFlow Lite) models.
 version: 3.6.0
 
 repository: https://github.com/hugocornellier/pose_detection
 homepage: https://github.com/hugocornellier/pose_detection
 
 topics:
+  - litert
   - tflite
   - pose-detection
   - computer-vision
-  - flutter-plugin
+  - on-device-ml
 
 environment:
   sdk: ">=3.10.0 <4.0.0"
@@ -18,7 +19,7 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  flutter_litert: ^3.5.1
+  flutter_litert: ^3.6.0
   opencv_dart: ^2.2.1+4
   meta: ^1.17.0
   web: ^1.1.1

@@ -12,6 +12,30 @@
 * CompiledModel GPU-to-CPU fallbacks are no longer silent: the YOLO and
   landmark models log the fallback error and the compiled accelerator set
   in debug builds (`[pose-accel]` lines).
+* Fix (example): `PoseSmoother` rebuilt each `Pose` to write filtered landmark
+  coordinates but omitted `segmentationMask` from the constructor call, so
+  enabling smoothing silently dropped masks. The example app never enables
+  segmentation so nothing surfaced it, but the smoother reads as
+  general-purpose and example code exists to be copied. Adds `example/test`
+  with a regression test that fails without the fix, plus coverage for the
+  null-mask case, the unfiltered scalar fields, and the disabled no-op path.
+* Deprecate `CameraPoseOverlayPainter` in favour of `CameraPoseOverlay`. The
+  painter scales x and y independently, so it only maps correctly when the
+  paint box already matches the detection image's aspect ratio; over a
+  cover-fitted preview it stretches the overlay. The widget performs the same
+  job through a cover fit. Deprecated rather than changed, since altering its
+  mapping would move overlays for downstream users who sized their box to match.
+* Adopt the shared `flutter_litert` 3.6.0 helpers in place of local copies:
+  `aggregateActiveAccelerator` for the multi-runner accelerator aggregation
+  (this package already had the correct any-WebGPU behaviour, so this is
+  de-duplication rather than a fix), `compiledModelFromBufferAuto` for the
+  `{gpu, cpu}` branch at both CompiledModel call sites, and `iouLTRB` for
+  track matching.
+* Remove the `web_image_utils` re-export shim and import from `flutter_litert`
+  directly.
+* Update flutter_litert -> 3.6.0.
+* Expand the README live camera section with the full production pipeline
+  (frame throttling, orientation handling, cover-fit overlay mapping).
 
 ## 3.5.3
 

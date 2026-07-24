@@ -5,7 +5,8 @@ import 'dart:js_interop_unsafe';
 import 'dart:typed_data';
 
 import 'package:flutter/services.dart';
-import 'package:flutter_litert/flutter_litert.dart' show PerformanceConfig;
+import 'package:flutter_litert/flutter_litert.dart'
+    show PerformanceConfig, rgbaToRgbFloat32;
 import 'package:flutter_litert/src/web/js_interop/tfjs_tensor.dart';
 import 'package:flutter_litert/src/web/litertjs_interpreter.dart'
     show LiteRtInterpreter;
@@ -14,7 +15,6 @@ import 'package:flutter_litert/src/web/web_detector_utils.dart'
     show resolveWebAccelerator;
 import '../types.dart';
 import '../util/pose_helpers.dart';
-import '../util/web_image_utils.dart';
 
 /// Web implementation of BlazePose landmark extraction model runner.
 ///

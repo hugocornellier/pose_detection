@@ -265,12 +265,10 @@ class PoseDetector with WebGpuFallback {
   /// May change at runtime if a `LiteRtRuntimeError` fires on the WebGPU
   /// path and the detector swaps to WASM.
   @override
-  String? get activeAccelerator {
-    final String? yolo = _yolo.activeAccelerator;
-    final String? landmarks = _lm.activeAccelerator;
-    if (yolo == 'webgpu' || landmarks == 'webgpu') return 'webgpu';
-    return yolo ?? landmarks;
-  }
+  String? get activeAccelerator => aggregateActiveAccelerator(<String?>[
+    _yolo.activeAccelerator,
+    _lm.activeAccelerator,
+  ]);
 
   @override
   Future<void> swapToWasm() async {
