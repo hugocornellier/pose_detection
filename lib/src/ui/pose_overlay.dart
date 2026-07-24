@@ -141,6 +141,15 @@ class MultiOverlayPainter extends CustomPainter {
 ///
 /// Handles optional horizontal mirroring for front cameras, draws bounding
 /// boxes, skeleton connections, and landmark markers.
+///
+/// Scales x and y independently, so it only maps correctly when the paint box
+/// already matches the detection image's aspect ratio. Over a cover-fitted
+/// preview it stretches the overlay. [CameraPoseOverlay] performs the same job
+/// against a cover fit and handles the aspect-ratio box for you.
+@Deprecated(
+  'Use CameraPoseOverlay, which maps coordinates through a cover fit instead '
+  'of scaling x and y independently. Will be removed in 4.0.0.',
+)
 class CameraPoseOverlayPainter extends CustomPainter {
   /// Poses to render.
   final List<Pose> poses;
