@@ -1,6 +1,6 @@
 name: pose_detection
 description: Pose, person and landmark detection using on-device LiteRT (formerly TensorFlow Lite) models.
-version: 3.6.0
+version: 3.6.1
 
 repository: https://github.com/hugocornellier/pose_detection
 homepage: https://github.com/hugocornellier/pose_detection

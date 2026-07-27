@@ -1,3 +1,13 @@
+## 3.6.1
+
+* Rename the example app's engine badge from `CM` / `XNN` to
+  `CM` / `Interpreter`. `XNNPACK` is only the delegate the `Interpreter` path
+  uses on desktop and Android; on iOS that path runs the Metal delegate, so an
+  `XNN` label was wrong there. The badge switches between the two
+  `flutter_litert` engine classes, `CompiledModel` and `Interpreter`, so it now
+  names those. The button is fixed-width so swapping labels does not shift the
+  surrounding controls. Example-only change; no library code is affected.
+
 ## 3.6.0
 
 * iOS now runs the YOLO person detector on the Metal GPU on the default
