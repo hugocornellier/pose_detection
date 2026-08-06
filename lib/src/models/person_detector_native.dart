@@ -70,7 +70,7 @@ class YoloV8PersonDetector extends PersonDetectorBase {
     bool useCompiledModel = false,
     bool compiledForceCpu = false,
     Set<Accelerator> accelerators = const {Accelerator.gpu, Accelerator.cpu},
-    Precision precision = Precision.fp16,
+    Precision precision = Precision.fp32,
   }) async {
     if (isInitializedFlag) await dispose();
     if (useCompiledModel) {
@@ -97,7 +97,7 @@ class YoloV8PersonDetector extends PersonDetectorBase {
     Uint8List modelBytes, {
     required bool forceCpu,
     Set<Accelerator> accelerators = const {Accelerator.gpu, Accelerator.cpu},
-    Precision precision = Precision.fp16,
+    Precision precision = Precision.fp32,
   }) async {
     final Interpreter probe = Interpreter.fromBuffer(modelBytes);
     try {

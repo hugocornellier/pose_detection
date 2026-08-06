@@ -133,7 +133,7 @@ class PoseLandmarkModelRunner {
     bool useCompiledModel = false,
     bool compiledForceCpu = false,
     Set<Accelerator> accelerators = const {Accelerator.gpu, Accelerator.cpu},
-    Precision precision = Precision.fp16,
+    Precision precision = Precision.fp32,
     bool enableSegmentation = false,
   }) async {
     if (_isInitialized) await dispose();
@@ -167,7 +167,7 @@ class PoseLandmarkModelRunner {
     Uint8List modelBytes, {
     required bool forceCpu,
     Set<Accelerator> accelerators = const {Accelerator.gpu, Accelerator.cpu},
-    Precision precision = Precision.fp16,
+    Precision precision = Precision.fp32,
   }) async {
     _compiledPool.initialize(
       poolSize: poolSize,

@@ -1,5 +1,21 @@
-## 3.6.1
+## 3.7.0
 
+* **Default precision is now `Precision.fp32` instead of `fp16`.** This changes
+  numeric output. `flutter_litert` 3.8.0 changed its own default for the same
+  reason: across 29 published detection models measured on five GPUs, fp16
+  matched a plain-CPU reference for only about a fifth of them, while fp32
+  matched every model that compiled. These graphs emit pixel-space coordinates
+  and landmark positions, and fp16 carries about three decimal digits of
+  mantissa, so the error lands directly on output geometry. The cost is real and
+  worth stating plainly: fp32 is a median 29.9% slower on GPU across those five
+  GPUs, with Apple M4 the lone exception at 6.5% faster. Pass
+  `precision: Precision.fp16` explicitly to restore the previous behaviour,
+  ideally per model and validated on your target GPU.
+* Pose models had the worst fp16 accuracy of any family measured:
+  `pose_landmark_lite` missed CPU-reference parity by 159x the tolerance on
+  Adreno 740 and `pose_landmark_full` by 75-85x on every other GPU tested. The
+  new fp32 default is therefore especially significant here.
+* Pin `flutter_litert` to `^3.8.0`.
 * Rename the example app's engine badge from `CM` / `XNN` to
   `CM` / `Interpreter`. `XNNPACK` is only the delegate the `Interpreter` path
   uses on desktop and Android; on iOS that path runs the Metal delegate, so an

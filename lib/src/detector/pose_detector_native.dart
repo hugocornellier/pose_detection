@@ -116,7 +116,7 @@ class PoseDetector {
     PerformanceConfig performanceConfig = const PerformanceConfig(),
     bool useCompiledModel = false,
     Set<Accelerator> accelerators = const {Accelerator.gpu, Accelerator.cpu},
-    Precision precision = Precision.fp16,
+    Precision precision = Precision.fp32,
     bool enableSegmentation = false,
     // Web-only; accepted here for API parity but ignored on native.
     bool useLiteRt = true,
@@ -162,7 +162,7 @@ class PoseDetector {
     PerformanceConfig performanceConfig = const PerformanceConfig(),
     bool useCompiledModel = false,
     Set<Accelerator> accelerators = const {Accelerator.gpu, Accelerator.cpu},
-    Precision precision = Precision.fp16,
+    Precision precision = Precision.fp32,
     bool enableSegmentation = false,
     // Web-only; accepted here for API parity but ignored on native.
     bool useLiteRt = true,
@@ -225,7 +225,7 @@ class PoseDetector {
     PerformanceConfig performanceConfig = const PerformanceConfig(),
     bool useCompiledModel = false,
     Set<Accelerator> accelerators = const {Accelerator.gpu, Accelerator.cpu},
-    Precision precision = Precision.fp16,
+    Precision precision = Precision.fp32,
     bool enableSegmentation = false,
   }) async {
     if (isReady) {
