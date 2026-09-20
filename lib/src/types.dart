@@ -342,7 +342,7 @@ class SegmentationMask {
     required this.imageHeight,
   });
 
-  /// Person probability in [0, 1] at original-image pixel ([x], [y]).
+  /// Person probability in `[0, 1]` at original-image pixel ([x], [y]).
   ///
   /// Returns 0 for points outside the mask region. Uses nearest-neighbour
   /// sampling.

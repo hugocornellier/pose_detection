@@ -13,7 +13,7 @@ String poseLandmarkModelPath(PoseLandmarkModel model) =>
 /// The overall pose score is already a probability because the model output is
 /// produced by a LOGISTIC op. Visibility and presence remain logits and are
 /// activated here. Normalizes x/y coordinates from 256x256 pixel space to
-/// [0, 1] range.
+/// `[0, 1]` range.
 ///
 /// Expected buffer layouts:
 /// - [landmarksData]: at least 165 floats = 33 landmarks *

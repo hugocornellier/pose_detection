@@ -694,7 +694,7 @@ class PoseDetector with WebGpuFallback {
   /// Inverse of the exact-bbox crop + letterbox resize used before the landmark model.
   ///
   /// Parameters:
-  /// - [landmarks]: Landmarks with x/y in [0, 1] normalized space
+  /// - [landmarks]: Landmarks with x/y in `[0, 1]` normalized space
   /// - [cropX]: X origin of the crop region in original image
   /// - [cropY]: Y origin of the crop region in original image
   /// - [ratio]: Resize ratio used to fit the crop into 256x256
