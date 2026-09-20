@@ -242,89 +242,83 @@ void main() {
     expect(fast.length, 1, reason: 'fast path preserves person recall');
   });
 
-  test(
-    'decodeYoloFlat: A/B benchmark fast vs reference (p50/p95)',
-    () async {
-      final yoloBytes = (await rootBundle.load(
-        'packages/pose_detection/assets/models/yolov8n_float32.tflite',
-      )).buffer.asUint8List();
-      final lay = _resolveLayout(yoloBytes);
-      final compiled = CompiledModel.fromBufferWithGpuFallback(
-        yoloBytes,
-        forceCpu: false,
-      );
-      final inputBuf = Float32List(lay.inH * lay.inW * 3);
+  test('decodeYoloFlat: A/B benchmark fast vs reference (p50/p95)', () async {
+    final yoloBytes = (await rootBundle.load(
+      'packages/pose_detection/assets/models/yolov8n_float32.tflite',
+    )).buffer.asUint8List();
+    final lay = _resolveLayout(yoloBytes);
+    final compiled = CompiledModel.fromBufferWithGpuFallback(
+      yoloBytes,
+      forceCpu: false,
+    );
+    final inputBuf = Float32List(lay.inH * lay.inW * 3);
 
-      final mat = cv.imdecode(
-        (await rootBundle.load(
-          'assets/samples/pose1.jpg',
-        )).buffer.asUint8List(),
-        cv.IMREAD_COLOR,
-      );
-      final iw = mat.cols, ih = mat.rows;
-      final (letter, r, dw, dh) = NativeImageUtils.letterbox(
-        mat,
-        lay.inW,
-        lay.inH,
-      );
-      NativeImageUtils.matToTensorYolo(letter, buffer: inputBuf);
-      letter.dispose();
-      final out0 = (await compiled.runAsync([inputBuf]))[0];
-      compiled.close();
-      mat.dispose();
+    final mat = cv.imdecode(
+      (await rootBundle.load('assets/samples/pose1.jpg')).buffer.asUint8List(),
+      cv.IMREAD_COLOR,
+    );
+    final iw = mat.cols, ih = mat.rows;
+    final (letter, r, dw, dh) = NativeImageUtils.letterbox(
+      mat,
+      lay.inW,
+      lay.inH,
+    );
+    NativeImageUtils.matToTensorYolo(letter, buffer: inputBuf);
+    letter.dispose();
+    final out0 = (await compiled.runAsync([inputBuf]))[0];
+    compiled.close();
+    mat.dispose();
 
-      List<Detection> decode(bool fast) => postProcessDetectionsFlat(
-        out0,
-        channels: lay.channels,
-        anchors: lay.anchors,
-        channelMajor: lay.channelMajor,
-        inputWidth: lay.inW,
-        inputHeight: lay.inH,
-        r: r,
-        dw: dw,
-        dh: dh,
-        imageWidth: iw,
-        imageHeight: ih,
-        confThres: 0.5,
-        iouThres: 0.45,
-        maxDet: 10,
-        filterClassId: 0,
-        scoresAreProbabilities: true,
-        useFastSingleClass: fast,
-      );
+    List<Detection> decode(bool fast) => postProcessDetectionsFlat(
+      out0,
+      channels: lay.channels,
+      anchors: lay.anchors,
+      channelMajor: lay.channelMajor,
+      inputWidth: lay.inW,
+      inputHeight: lay.inH,
+      r: r,
+      dw: dw,
+      dh: dh,
+      imageWidth: iw,
+      imageHeight: ih,
+      confThres: 0.5,
+      iouThres: 0.45,
+      maxDet: 10,
+      filterClassId: 0,
+      scoresAreProbabilities: true,
+      useFastSingleClass: fast,
+    );
 
-      // Interleave the two so thermal/scheduler drift cancels.
-      const int n = 400, warmup = 40;
-      for (int i = 0; i < warmup; i++) {
-        decode(true);
-        decode(false);
-      }
-      final fastUs = <int>[], refUs = <int>[];
-      for (int i = 0; i < n; i++) {
-        final s1 = Stopwatch()..start();
-        decode(true);
-        s1.stop();
-        fastUs.add(s1.elapsedMicroseconds);
-        final s2 = Stopwatch()..start();
-        decode(false);
-        s2.stop();
-        refUs.add(s2.elapsedMicroseconds);
-      }
-      final fp50 = _p(fastUs, 0.5), fp95 = _p(fastUs, 0.95);
-      final rp50 = _p(refUs, 0.5), rp95 = _p(refUs, 0.95);
-      print('\nDECODE A/B (interleaved, n=$n, pose1)');
-      print(
-        'reference  p50=${rp50.toStringAsFixed(3)}ms p95=${rp95.toStringAsFixed(3)}ms',
-      );
-      print(
-        'fast       p50=${fp50.toStringAsFixed(3)}ms p95=${fp95.toStringAsFixed(3)}ms',
-      );
-      print(
-        'delta p50  ${(rp50 - fp50).toStringAsFixed(3)}ms '
-        '(${(100 * (rp50 - fp50) / rp50).toStringAsFixed(1)}% faster)',
-      );
-      expect(fp50, lessThan(rp50), reason: 'fast path must be faster at p50');
-    },
-    timeout: const Timeout(Duration(minutes: 10)),
-  );
+    // Interleave the two so thermal/scheduler drift cancels.
+    const int n = 400, warmup = 40;
+    for (int i = 0; i < warmup; i++) {
+      decode(true);
+      decode(false);
+    }
+    final fastUs = <int>[], refUs = <int>[];
+    for (int i = 0; i < n; i++) {
+      final s1 = Stopwatch()..start();
+      decode(true);
+      s1.stop();
+      fastUs.add(s1.elapsedMicroseconds);
+      final s2 = Stopwatch()..start();
+      decode(false);
+      s2.stop();
+      refUs.add(s2.elapsedMicroseconds);
+    }
+    final fp50 = _p(fastUs, 0.5), fp95 = _p(fastUs, 0.95);
+    final rp50 = _p(refUs, 0.5), rp95 = _p(refUs, 0.95);
+    print('\nDECODE A/B (interleaved, n=$n, pose1)');
+    print(
+      'reference  p50=${rp50.toStringAsFixed(3)}ms p95=${rp95.toStringAsFixed(3)}ms',
+    );
+    print(
+      'fast       p50=${fp50.toStringAsFixed(3)}ms p95=${fp95.toStringAsFixed(3)}ms',
+    );
+    print(
+      'delta p50  ${(rp50 - fp50).toStringAsFixed(3)}ms '
+      '(${(100 * (rp50 - fp50) / rp50).toStringAsFixed(1)}% faster)',
+    );
+    expect(fp50, lessThan(rp50), reason: 'fast path must be faster at p50');
+  }, timeout: const Timeout(Duration(minutes: 10)));
 }

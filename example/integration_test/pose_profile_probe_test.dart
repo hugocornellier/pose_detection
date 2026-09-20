@@ -53,113 +53,103 @@ Future<double> _bench(Future<void> Function() once) async {
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
-  test(
-    'compute probe (profile vs debug)',
-    () async {
-      final mode = kReleaseMode
-          ? 'RELEASE'
-          : kProfileMode
-          ? 'PROFILE/AOT'
-          : 'DEBUG/JIT';
+  test('compute probe (profile vs debug)', () async {
+    final mode = kReleaseMode
+        ? 'RELEASE'
+        : kProfileMode
+        ? 'PROFILE/AOT'
+        : 'DEBUG/JIT';
 
-      Future<Uint8List> load(String f) async => (await rootBundle.load(
-        'packages/pose_detection/assets/models/$f',
-      )).buffer.asUint8List();
-      final yoloBytes = await load('yolov8n_float32.tflite');
+    Future<Uint8List> load(String f) async => (await rootBundle.load(
+      'packages/pose_detection/assets/models/$f',
+    )).buffer.asUint8List();
+    final yoloBytes = await load('yolov8n_float32.tflite');
 
-      final mat = cv.imdecode(
-        (await rootBundle.load(
-          'assets/samples/pose1.jpg',
-        )).buffer.asUint8List(),
-        cv.IMREAD_COLOR,
-      );
-      final iw = mat.cols, ih = mat.rows;
+    final mat = cv.imdecode(
+      (await rootBundle.load('assets/samples/pose1.jpg')).buffer.asUint8List(),
+      cv.IMREAD_COLOR,
+    );
+    final iw = mat.cols, ih = mat.rows;
 
-      // YOLO detect split (PRE/INF/POST) on the main isolate.
-      final yolo = YoloV8PersonDetector();
-      await yolo.initializeFromBuffer(yoloBytes, useCompiledModel: true);
-      final probe = Interpreter.fromBuffer(yoloBytes)..allocateTensors();
-      final os = probe.getOutputTensor(0).shape;
-      final ins = probe.getInputTensor(0).shape;
-      probe.close();
-      final inW = ins[2], inH = ins[1];
-      final d1 = os[os.length - 2], d2 = os[os.length - 1];
-      final channelMajor = d1 < d2 && (d1 == 84 || d1 == 85);
-      final channels = channelMajor ? d1 : d2, anchors = channelMajor ? d2 : d1;
+    // YOLO detect split (PRE/INF/POST) on the main isolate.
+    final yolo = YoloV8PersonDetector();
+    await yolo.initializeFromBuffer(yoloBytes, useCompiledModel: true);
+    final probe = Interpreter.fromBuffer(yoloBytes)..allocateTensors();
+    final os = probe.getOutputTensor(0).shape;
+    final ins = probe.getInputTensor(0).shape;
+    probe.close();
+    final inW = ins[2], inH = ins[1];
+    final d1 = os[os.length - 2], d2 = os[os.length - 1];
+    final channelMajor = d1 < d2 && (d1 == 84 || d1 == 85);
+    final channels = channelMajor ? d1 : d2, anchors = channelMajor ? d2 : d1;
 
-      final (l0, r, dw, dh) = NativeImageUtils.letterbox(mat, inW, inH);
-      l0.dispose();
+    final (l0, r, dw, dh) = NativeImageUtils.letterbox(mat, inW, inH);
+    l0.dispose();
 
-      final rows = <String>[];
-      void rep(String k, double ms) =>
-          rows.add('${k.padRight(38)} ${ms.toStringAsFixed(3)} ms');
+    final rows = <String>[];
+    void rep(String k, double ms) =>
+        rows.add('${k.padRight(38)} ${ms.toStringAsFixed(3)} ms');
 
-      rep(
-        'yolo detect (pre+inf+post)',
-        await _bench(
-          () => yolo.detect(
-            mat,
-            imageWidth: iw,
-            imageHeight: ih,
-            personOnly: true,
-          ),
-        ),
-      );
+    rep(
+      'yolo detect (pre+inf+post)',
+      await _bench(
+        () =>
+            yolo.detect(mat, imageWidth: iw, imageHeight: ih, personOnly: true),
+      ),
+    );
 
-      // Decode-only on a zero buffer: no candidate passes conf, so this exercises
-      // the full 8400x80 per-anchor argmax scan (the dominant, GPU-free scalar
-      // cost) in isolation -- the part JIT punishes most vs AOT.
-      rep(
-        'yolo decode-only (scalar argmax)',
-        _benchDecode(
-          inW,
-          inH,
-          iw,
-          ih,
-          channels,
-          anchors,
-          channelMajor,
-          r,
-          dw,
-          dh,
-        ),
-      );
+    // Decode-only on a zero buffer: no candidate passes conf, so this exercises
+    // the full 8400x80 per-anchor argmax scan (the dominant, GPU-free scalar
+    // cost) in isolation -- the part JIT punishes most vs AOT.
+    rep(
+      'yolo decode-only (scalar argmax)',
+      _benchDecode(
+        inW,
+        inH,
+        iw,
+        ih,
+        channels,
+        anchors,
+        channelMajor,
+        r,
+        dw,
+        dh,
+      ),
+    );
 
-      await yolo.dispose();
+    await yolo.dispose();
 
-      // Full isolate round-trip.
-      final det = await PoseDetector.create(
-        landmarkModel: PoseLandmarkModel.heavy,
-        useCompiledModel: true,
-      );
-      await det.detectFromMat(mat);
-      rep(
-        'FULL detectFromMat (isolate round-trip)',
-        await _bench(() => det.detectFromMat(mat)),
-      );
+    // Full isolate round-trip.
+    final det = await PoseDetector.create(
+      landmarkModel: PoseLandmarkModel.heavy,
+      useCompiledModel: true,
+    );
+    await det.detectFromMat(mat);
+    rep(
+      'FULL detectFromMat (isolate round-trip)',
+      await _bench(() => det.detectFromMat(mat)),
+    );
 
-      // Same detectFromCameraImage code path the live screen uses, but driven in a
-      // tight loop with a synthetic BGRA frame (no live camera stream / event-loop
-      // flood). If this is ~detectFromMat but the live app is ~3x slower, the gap
-      // is the live environment (camera-stream event-loop congestion), not code.
-      final frame = _FakeCameraImage.bgra(640, 480);
-      await det.detectFromCameraImage(frame, isBgra: true, maxDim: 640);
-      rep(
-        'detectFromCameraImage (synthetic 640x480 BGRA loop)',
-        await _bench(
-          () => det.detectFromCameraImage(frame, isBgra: true, maxDim: 640),
-        ),
-      );
-      await det.dispose();
+    // Same detectFromCameraImage code path the live screen uses, but driven in a
+    // tight loop with a synthetic BGRA frame (no live camera stream / event-loop
+    // flood). If this is ~detectFromMat but the live app is ~3x slower, the gap
+    // is the live environment (camera-stream event-loop congestion), not code.
+    final frame = _FakeCameraImage.bgra(640, 480);
+    await det.detectFromCameraImage(frame, isBgra: true, maxDim: 640);
+    rep(
+      'detectFromCameraImage (synthetic 640x480 BGRA loop)',
+      await _bench(
+        () => det.detectFromCameraImage(frame, isBgra: true, maxDim: 640),
+      ),
+    );
+    await det.dispose();
 
-      mat.dispose();
-      print('\nCOMPUTE PROBE [$mode] (p50, pose1 ${iw}x$ih, GPU, heavy)');
-      for (final r in rows) {
-        print(r);
-      }
-    },
-    timeout: const Timeout(Duration(minutes: 10)),
-  );
+    mat.dispose();
+    print('\nCOMPUTE PROBE [$mode] (p50, pose1 ${iw}x$ih, GPU, heavy)');
+    for (final r in rows) {
+      print(r);
+    }
+  }, timeout: const Timeout(Duration(minutes: 10)));
 }
 
 // Minimal CameraImage-shaped object for the synthetic detectFromCameraImage
