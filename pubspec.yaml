@@ -1,6 +1,6 @@
 name: pose_detection
 description: Pose, person and landmark detection using on-device LiteRT (formerly TensorFlow Lite) models.
-version: 3.7.0
+version: 3.8.0
 
 repository: https://github.com/hugocornellier/pose_detection
 homepage: https://github.com/hugocornellier/pose_detection
@@ -14,14 +14,20 @@ topics:
 
 environment:
   sdk: ">=3.10.0 <4.0.0"
-  flutter: ">=3.22.0"
+  # flutter_test in Flutter 3.44 and earlier pins meta 1.18.0, which cannot
+  # coexist with dartcv4 2.3.1 (meta ^1.19.0). 3.47.5 is the validated floor.
+  flutter: ">=3.47.5"
 
 dependencies:
   flutter:
     sdk: flutter
-  flutter_litert: ^3.8.0
-  opencv_dart: ^2.2.1+4
-  meta: ^1.17.0
+  flutter_litert: ^3.9.0
+  opencv_dart: ^2.2.2
+  # Direct constraint so resolution can never fall back to a dartcv4 whose iOS
+  # CMake hook hardcodes a 12.0 deployment target (rejected by Xcode 27).
+  # No Dart source imports it; it is a compatibility floor only.
+  dartcv4: ^2.3.1
+  meta: ^1.19.0
   web: ^1.1.1
   flutter_web_plugins:
     sdk: flutter
