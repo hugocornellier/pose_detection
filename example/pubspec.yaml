@@ -18,11 +18,11 @@ dependencies:
     path: ../
   # Direct dependency so the example can import OneEuroFilter (and CompiledModel
   # benchmarks can import flutter_litert).
-  flutter_litert: ^3.9.0
+  flutter_litert: ^3.9.1
   flutter_colorpicker: ^1.1.0
   path_provider: ^2.1.5
   camera: ^0.12.0
-  camera_desktop: ^1.2.1
+  camera_desktop: ^1.2.2
   opencv_dart: ^2.2.2
   dartcv4: ^2.3.1
   sensors_plus: ^6.1.1
