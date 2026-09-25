@@ -21,7 +21,7 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  flutter_litert: ^3.9.1
+  flutter_litert: ^3.9.2
   opencv_dart: ^2.2.2
   # Direct constraint so resolution can never fall back to a dartcv4 whose iOS
   # CMake hook hardcodes a 12.0 deployment target (rejected by Xcode 27).
