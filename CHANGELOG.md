@@ -10,6 +10,12 @@
   Kotlin 2.4.20).
 * The example app's Linux build configures with CMake 4 again: its plugin
   tests use googletest 1.14.0.
+* Depend on `flutter_litert ^4.1.1` (was `^3.9.2`). This package's API is
+  unchanged, but flutter_litert 4.x needs Android `minSdk` 24 and iOS 15.0,
+  Flutter's defaults for new apps.
+* Android: flutter_litert 4.0.0 removed the Interpreter GPU delegate, so
+  `PerformanceConfig.gpu()` runs XNNPACK there. Use `useCompiledModel: true`
+  for the GPU on Android. The README's acceleration notes now say so.
 * No API changes.
 
 ## 3.9.1
