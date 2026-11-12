@@ -1,5 +1,6 @@
 // ignore_for_file: public_member_api_docs
 
+// ignore: deprecated_member_use
 import 'package:flutter/material.dart';
 
 /// Compact checkbox with an inline label, sized for dense settings panels.
